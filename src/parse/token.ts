@@ -1,11 +1,6 @@
 import { DataType, genConstructors, VariantOf } from "itsamatch";
 import { match } from 'ts-pattern';
 
-export type TokenPos = {
-  line: number,
-  column: number,
-};
-
 export type Token = DataType<{
   Symbol: { value: Symbol },
   Keyword: { value: Keyword },
@@ -24,6 +19,11 @@ export const Token = {
     .with({ variant: 'Const' }, ({ value }) => Const.show(value))
     .with({ variant: 'Identifier' }, ({ name }) => name)
     .exhaustive(),
+};
+
+export type TokenPos = {
+  line: number,
+  column: number,
 };
 
 export type TokenWithPos = DataType<{
@@ -61,19 +61,16 @@ export const Keyword = {
 export type Const = DataType<{
   u32: { value: number },
   bool: { value: boolean },
-  unit: {},
 }>;
 
-const { u32, bool, unit } = genConstructors<Const>()('u32', 'bool', 'unit');
+const { u32, bool } = genConstructors<Const>()('u32', 'bool');
 
 export const Const = {
   u32: (value: number) => u32({ value }),
   bool: (value: boolean) => bool({ value }),
-  unit: () => unit({}),
   show: (c: Const) => match(c)
     .with({ variant: 'u32' }, ({ value }) => `${value}`)
     .with({ variant: 'bool' }, ({ value }) => `${value}`)
-    .with({ variant: 'unit' }, () => '()')
     .exhaustive(),
 };
 

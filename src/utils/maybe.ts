@@ -38,6 +38,14 @@ export class Maybe<T> {
     return None;
   }
 
+  or(other: Maybe<T>): Maybe<T> {
+    if (this.raw.type === 'some') {
+      return this;
+    }
+
+    return other;
+  }
+
   match<U>(actions: { Some: (data: T) => U, None: () => U }): U {
     if (this.raw.type === 'some') {
       return actions.Some(this.raw.data);
@@ -51,7 +59,7 @@ export class Maybe<T> {
       return this.raw.data;
     }
 
-    panic('Tried to unwrap a None value');
+    return panic('Tried to unwrap a None value');
   }
 
   show(showData: (data: T) => string = JSON.stringify): string {

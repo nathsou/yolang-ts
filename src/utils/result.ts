@@ -46,7 +46,7 @@ export class Result<T, E> {
       return this.res.data;
     }
 
-    panic(`Tried to unwrap an error result: ${this.show()}`);
+    return panic(`Tried to unwrap an error result: ${this.show()}`);
   }
 
   show(

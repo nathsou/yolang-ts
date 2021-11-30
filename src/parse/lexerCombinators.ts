@@ -2,6 +2,7 @@ import { Slice } from "../utils/slice";
 import { Maybe, None, Some } from "../utils/maybe";
 import { firstSomeBy } from "../utils/array";
 import { Spaces } from "./token";
+import { Trie, Node } from "../utils/trie";
 
 export type Char = string;
 
@@ -88,4 +89,23 @@ export const not = <T>(lexer: Lexer<T>): Lexer<T> => {
       Some: () => None,
       None: () => Slice.head(input).map(h => [h, Slice.tail(input)]),
     });
+};
+
+export const trie = (strings: readonly string[]): Lexer<string> => {
+  const trie = Trie.fromStrings(strings);
+  const root = trie.getRoot();
+
+  return (input: Slice<Char>) => {
+    let inp = { ...input };
+    let next = Some(root);
+    let prev: Maybe<Node<string>> = None;
+    while (!Slice.isEmpty(inp) && next.isSome()) {
+      const char = Slice.head(inp).unwrap();
+      inp.start += 1;
+      prev = next;
+      next = Trie.step(prev.unwrap(), char);
+    }
+
+    return prev.flatMap(node => node.value.map(value => [value, Slice.step(inp, -1)]));
+  };
 };

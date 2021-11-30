@@ -2,7 +2,7 @@ import { lex } from "./parse/lex";
 
 const res = lex(`
   fn main() {
-    let x = 1 in x + 17;
+    let letinfnif = 1 in x + 17;
   }
 `);
 

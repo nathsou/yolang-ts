@@ -1,14 +1,13 @@
-import { match } from 'ts-pattern';
 import { Error, Ok, Result } from '../utils/result';
 import { Slice } from "../utils/slice";
-import { alphaNum, alt, digit, letter, many, map, not, some, spaces, str, then } from "./lexerCombinators";
+import { alphaNum, alt, digit, letter, many, map, not, some, spaces, str, then, trie } from "./lexerCombinators";
 import { Const, Keyword, Space, Spaces, Symbol, Token, TokenPos, TokenWithPos, withPos } from "./token";
 
-export const symbol = map(alt(...Symbol.values.map(str)), s => Token.symbol(s as Symbol));
+export const symbol = map(trie(Symbol.values), s => Token.symbol(s as Symbol));
 
 export const keyword = map(
   then(
-    alt(...Keyword.values.map(str)),
+    trie(Keyword.values),
     not(alphaNum)
   ),
   ([kw, _]) => Token.keyword(kw as Keyword)
@@ -18,35 +17,36 @@ const digits = map(some(digit), digits => parseInt(digits.join(''), 10));
 
 export const u32 = map(digits, n => Token.const(Const.u32(n)));
 export const bool = map(alt(str('true'), str('false')), b => Token.const(Const.bool(b === 'true')));
-export const unit = map(str('()'), () => Token.const(Const.unit()));
-export const ident = map(then(letter, many(alphaNum)), ([h, tl]) => Token.identifier([h, ...tl].join('')));
+export const ident = map(then(letter, many(alphaNum)), ([h, tl]) => Token.identifier(h + tl.join('')));
 
-export const token = alt(u32, bool, unit, keyword, symbol, ident);
+export const token = alt(u32, bool, keyword, symbol, ident);
 
 export const lex = (input: string): Result<TokenWithPos[], string> => {
   const tokens: TokenWithPos[] = [];
   const pos: TokenPos = { line: 1, column: 1 };
   const slice = Slice.from((input + ' ').split(''));
 
+  const spaceActionMap: { [S in Space]: (pos: TokenPos) => void } = {
+    [Spaces.enum.space]: pos => {
+      pos.column += 1;
+    },
+    [Spaces.enum.newline]: pos => {
+      pos.line += 1;
+      pos.column = 1;
+    },
+    [Spaces.enum.tab]: pos => {
+      pos.column += 4;
+    },
+    [Spaces.enum.carriageReturn]: pos => {
+      pos.column = 1;
+    },
+  };
+
   const skipSpaces = () => {
     spaces(slice).match({
       Some: ([spaces, rem]) => {
         spaces.forEach(space => {
-          match(space as Space)
-            .with(Spaces.enum.space, () => {
-              pos.column++;
-            })
-            .with(Spaces.enum.newline, () => {
-              pos.line++;
-              pos.column = 1;
-            })
-            .with(Spaces.enum.tab, () => {
-              pos.column += 4;
-            })
-            .with(Spaces.enum.carriageReturn, () => {
-              pos.column = 1;
-            })
-            .exhaustive();
+          spaceActionMap[space as Space](pos);
         });
 
         slice.start = rem.start;
