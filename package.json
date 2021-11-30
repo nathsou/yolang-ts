@@ -1,0 +1,33 @@
+{
+  "name": "yolang",
+  "version": "1.0.0",
+  "description": "Rust-like language targetting WebAssembly",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "esbuild src/main.ts --bundle --outfile=dist/yolang.js",
+    "watch": "esbuild src/main.ts --bundle --outfile=dist/yolang.js --watch",
+    "typeCheck": "npx tsc --noEmit"
+  },
+  "devDependencies": {
+    "ts-pattern": "^3.3.3",
+    "itsamatch": "^1.0.1",
+    "esbuild": "^0.14.0",
+    "typescript": "^4.5.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nathsou/yolang-ts.git"
+  },
+  "keywords": [
+    "Yoang",
+    "Rust",
+    "Wasm"
+  ],
+  "author": "Nathan Soufflet",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/nathsou/yolang-ts/issues"
+  },
+  "homepage": "https://github.com/nathsou/yolang-ts#readme"
+}

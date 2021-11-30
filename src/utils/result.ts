@@ -1,3 +1,4 @@
+import { panic } from './misc';
 
 type Res<T, E> = { type: 'ok', data: T } | { type: 'error', data: E };
 
@@ -30,6 +31,33 @@ export class Result<T, E> {
     }
 
     return Result.Error(this.res.data);
+  }
+
+  match<U>(actions: { Ok: (data: T) => U, Error: (error: E) => U }): U {
+    if (this.res.type === 'ok') {
+      return actions.Ok(this.res.data);
+    }
+
+    return actions.Error(this.res.data);
+  }
+
+  unwrap(): T {
+    if (this.res.type === 'ok') {
+      return this.res.data;
+    }
+
+    panic(`Tried to unwrap an error result: ${this.show()}`);
+  }
+
+  show(
+    showData: (data: T) => string = JSON.stringify,
+    showError: (error: E) => string = JSON.stringify
+  ): string {
+    if (this.res.type === 'ok') {
+      return `Ok(${showData(this.res.data)})`;
+    }
+
+    return `Error(${showError(this.res.data)})`;
   }
 }
 
