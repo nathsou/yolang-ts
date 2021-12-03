@@ -1,9 +1,11 @@
 import { lex } from "./parse/lex";
+import { parseExpr } from "./parse/parse";
+import { Slice } from "./utils/slice";
 
-const res = lex(`
-  fn main() {
-    let letinfnif = 1 in x + 17;
-  }
-`);
+const parse = (source: string) => {
+  return lex(source).flatMap(tokens => parseExpr(Slice.from(tokens)));
+};
+
+const res = parse('3 * 7 + -1');
 
 console.log(res.unwrap());

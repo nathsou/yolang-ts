@@ -4,13 +4,13 @@ type M<T> = { type: 'some', data: T } | { type: 'none' };
 
 export class Maybe<T> {
   private raw: M<T>;
-  public static readonly None = new Maybe<any>({ type: 'none' });
+  public static readonly none = new Maybe<any>({ type: 'none' });
 
   private constructor(value: M<T>) {
     this.raw = value;
   }
 
-  static Some<T>(val: T): Maybe<T> {
+  static some<T>(val: T): Maybe<T> {
     return new Maybe({ type: 'some', data: val });
   }
 
@@ -24,10 +24,10 @@ export class Maybe<T> {
 
   map<U>(f: (val: T) => U): Maybe<U> {
     if (this.raw.type === 'some') {
-      return Some(f(this.raw.data));
+      return some(f(this.raw.data));
     }
 
-    return None;
+    return none;
   }
 
   flatMap<U>(f: (val: T) => Maybe<U>): Maybe<U> {
@@ -35,7 +35,7 @@ export class Maybe<T> {
       return f(this.raw.data);
     }
 
-    return None;
+    return none;
   }
 
   or(other: Maybe<T>): Maybe<T> {
@@ -71,4 +71,4 @@ export class Maybe<T> {
   }
 }
 
-export const { None, Some } = Maybe;
+export const { none, some } = Maybe;

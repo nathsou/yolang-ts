@@ -1,4 +1,4 @@
-import { Maybe, None, Some } from "./maybe";
+import { Maybe, none, some } from "./maybe";
 
 type Char = string;
 
@@ -13,7 +13,7 @@ export class Trie<K> {
   constructor() {
     this.root = {
       children: {},
-      value: None,
+      value: none,
     };
   }
 
@@ -38,14 +38,14 @@ export class Trie<K> {
       if (!(char in node.children)) {
         node.children[char] = {
           children: {},
-          value: None,
+          value: none,
         };
       }
 
       node = node.children[char];
     }
 
-    node.value = Some(value);
+    node.value = some(value);
 
     return this;
   }
@@ -55,7 +55,7 @@ export class Trie<K> {
 
     for (const char of key) {
       if (!(char in node.children)) {
-        return None;
+        return none;
       }
 
       node = node.children[char];
@@ -67,13 +67,13 @@ export class Trie<K> {
   static step<K>(node: Node<K>, key: string): Maybe<Node<K>> {
     for (const char of key) {
       if (!(char in node.children)) {
-        return None;
+        return none;
       }
 
       node = node.children[char];
     }
 
-    return Some(node);
+    return some(node);
   }
 
   getRoot(): Node<K> {

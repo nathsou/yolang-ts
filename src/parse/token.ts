@@ -1,5 +1,5 @@
 import { DataType, genConstructors, VariantOf } from "itsamatch";
-import { match } from 'ts-pattern';
+import { match, select } from 'ts-pattern';
 
 export type Token = DataType<{
   Symbol: { value: Symbol },
@@ -19,18 +19,24 @@ export const Token = {
     .with({ variant: 'Const' }, ({ value }) => Const.show(value))
     .with({ variant: 'Identifier' }, ({ name }) => name)
     .exhaustive(),
+  eq: (a: Token, b: Token) => match<[Token, Token]>([a, b])
+    .with([{ variant: 'Symbol' }, { variant: 'Symbol' }], ([a, b]) => Symbol.eq(a.value, b.value))
+    .with([{ variant: 'Keyword' }, { variant: 'Keyword' }], ([a, b]) => Keyword.eq(a.value, b.value))
+    .with([{ variant: 'Const' }, { variant: 'Const' }], ([a, b]) => Const.eq(a.value, b.value))
+    .with([{ variant: 'Identifier' }, { variant: 'Identifier' }], ([a, b]) => a.name === b.name)
+    .otherwise(() => false),
 };
 
-export type TokenPos = {
+export type Position = {
   line: number,
   column: number,
 };
 
 export type TokenWithPos = DataType<{
-  [Variant in Token['variant']]: VariantOf<Token, Variant> & { pos: TokenPos }
+  [Variant in Token['variant']]: VariantOf<Token, Variant> & { pos: Position }
 }>;
 
-export const withPos = (token: Token, pos: TokenPos): TokenWithPos => ({
+export const withPos = (token: Token, pos: Position): TokenWithPos => ({
   ...token,
   pos: { ...pos },
 });
@@ -45,6 +51,7 @@ export type Symbol = (typeof symbols)[number];
 
 export const Symbol = {
   values: symbols,
+  eq: (a: Symbol, b: Symbol) => a === b,
 };
 
 const keywords = [
@@ -56,6 +63,7 @@ export type Keyword = (typeof keywords)[number];
 
 export const Keyword = {
   values: keywords,
+  eq: (a: Keyword, b: Keyword) => a === b,
 };
 
 export type Const = DataType<{
@@ -72,6 +80,7 @@ export const Const = {
     .with({ variant: 'u32' }, ({ value }) => `${value}`)
     .with({ variant: 'bool' }, ({ value }) => `${value}`)
     .exhaustive(),
+  eq: (a: Const, b: Const) => a.variant === b.variant && a.value === b.value,
 };
 
 const spaces = {

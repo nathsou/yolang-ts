@@ -1,6 +1,8 @@
 import { panic } from './misc';
 
-type Res<T, E> = { type: 'ok', data: T } | { type: 'error', data: E };
+type Ok<T> = { type: 'ok', data: T };
+type Err<E> = { type: 'error', data: E };
+type Res<T, E> = Ok<T> | Err<E>;
 
 export class Result<T, E> {
   private res: Res<T, E>;
@@ -9,20 +11,28 @@ export class Result<T, E> {
     this.res = res;
   }
 
-  static Ok<T, E>(data: T): Result<T, E> {
+  static ok<T, E>(data: T): Result<T, E> {
     return new Result<T, E>({ type: 'ok', data });
   }
 
-  static Error<T, E>(data: E): Result<T, E> {
+  static error<T, E>(data: E): Result<T, E> {
     return new Result<T, E>({ type: 'error', data });
+  }
+
+  isOk(): boolean {
+    return this.res.type === 'ok';
+  }
+
+  isError(): boolean {
+    return this.res.type === 'error';
   }
 
   map<U>(f: (data: T) => U): Result<U, E> {
     if (this.res.type === 'ok') {
-      return Result.Ok(f(this.res.data));
+      return Result.ok(f(this.res.data));
     }
 
-    return Result.Error(this.res.data);
+    return Result.error(this.res.data);
   }
 
   flatMap<U>(f: (data: T) => Result<U, E>): Result<U, E> {
@@ -30,7 +40,7 @@ export class Result<T, E> {
       return f(this.res.data);
     }
 
-    return Result.Error(this.res.data);
+    return Result.error(this.res.data);
   }
 
   match<U>(actions: { Ok: (data: T) => U, Error: (error: E) => U }): U {
@@ -61,4 +71,4 @@ export class Result<T, E> {
   }
 }
 
-export const { Ok, Error } = Result;
+export const { ok, error } = Result;

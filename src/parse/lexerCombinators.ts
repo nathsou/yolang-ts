@@ -1,5 +1,5 @@
 import { Slice } from "../utils/slice";
-import { Maybe, None, Some } from "../utils/maybe";
+import { Maybe, none, some } from "../utils/maybe";
 import { firstSomeBy } from "../utils/array";
 import { Spaces } from "./token";
 import { Trie, Node } from "../utils/trie";
@@ -11,7 +11,7 @@ export type Lexer<T> = (input: Slice<Char>) => Maybe<[T, Slice<Char>]>;
 export const satisfy = (predicate: (char: Char) => boolean): Lexer<Char> => {
   return (input: Slice<Char>) =>
     Slice.head(input)
-      .flatMap(char => predicate(char) ? Some([char, Slice.tail(input)]) : None);
+      .flatMap(char => predicate(char) ? some([char, Slice.tail(input)]) : none);
 };
 
 const isLowerCaseLetter = (c: Char) => c >= 'a' && c <= 'z';
@@ -38,10 +38,10 @@ export const many = <T>(lexer: Lexer<T>, acc: T[] = []): Lexer<T[]> => {
     if (!Slice.isEmpty(input)) {
       return lexer(input).match({
         Some: ([t, rem]) => many(lexer, [...acc, t])(rem),
-        None: () => Some([acc, input]),
+        None: () => some([acc, input]),
       });
     } else {
-      return Some([acc, input]);
+      return some([acc, input]);
     }
   };
 };
@@ -53,7 +53,7 @@ export const then = <A, B>(la: Lexer<A>, lb: Lexer<B>): Lexer<[A, B]> => {
     la(input).flatMap(([a, rem1]) => lb(rem1).map(([b, rem2]) => [[a, b], rem2]));
 };
 
-export const some = <T>(lexer: Lexer<T>): Lexer<T[]> =>
+export const oneOrMore = <T>(lexer: Lexer<T>): Lexer<T[]> =>
   map(then(lexer, many(lexer)), ([head, tail]) => [head, ...tail]);
 
 export const seq3 = <A, B, C>(la: Lexer<A>, lb: Lexer<B>, lc: Lexer<C>): Lexer<[A, B, C]> => {
@@ -66,7 +66,7 @@ export const seq3 = <A, B, C>(la: Lexer<A>, lb: Lexer<B>, lc: Lexer<C>): Lexer<[
 export const seq = <T>(lexers: Lexer<T>[]): Lexer<T[]> => {
   return (input: Slice<Char>) => {
     if (lexers.length === 0) {
-      return Some([[], input]);
+      return some([[], input]);
     }
 
     const [head, ...tail] = lexers;
@@ -86,7 +86,7 @@ export const str = (str: string): Lexer<string> => {
 export const not = <T>(lexer: Lexer<T>): Lexer<T> => {
   return (input: Slice<Char>) =>
     lexer(input).match({
-      Some: () => None,
+      Some: () => none,
       None: () => Slice.head(input).map(h => [h, Slice.tail(input)]),
     });
 };
@@ -97,8 +97,8 @@ export const trie = (strings: readonly string[]): Lexer<string> => {
 
   return (input: Slice<Char>) => {
     let inp = { ...input };
-    let next = Some(root);
-    let prev: Maybe<Node<string>> = None;
+    let next = some(root);
+    let prev: Maybe<Node<string>> = none;
     while (!Slice.isEmpty(inp) && next.isSome()) {
       const char = Slice.head(inp).unwrap();
       inp.start += 1;
