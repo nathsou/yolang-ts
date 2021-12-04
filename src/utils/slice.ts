@@ -17,4 +17,11 @@ export const Slice = {
   }),
   length: <T>(slice: Slice<T>): number => slice.end - slice.start,
   isEmpty: <T>(slice: Slice<T>): boolean => Slice.length(slice) === 0,
+  at: <T>(slice: Slice<T>, index: number): Maybe<T> => {
+    if (index < 0 || index >= Slice.length(slice)) {
+      return none;
+    }
+
+    return some(slice.elems[slice.start + index]);
+  },
 };

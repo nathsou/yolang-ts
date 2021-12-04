@@ -18,13 +18,14 @@ const digits = map(oneOrMore(digit), digits => parseInt(digits.join(''), 10));
 export const u32 = map(digits, n => Token.const(Const.u32(n)));
 export const bool = map(alt(str('true'), str('false')), b => Token.const(Const.bool(b === 'true')));
 export const ident = map(then(letter, many(alphaNum)), ([h, tl]) => Token.identifier(h + tl.join('')));
+export const EOF = map(str('#EOF'), Token.eof);
 
-export const token = alt(u32, bool, keyword, symbol, ident);
+export const token = alt(u32, bool, keyword, symbol, ident, EOF);
 
 export const lex = (input: string): Result<TokenWithPos[], string> => {
   const tokens: TokenWithPos[] = [];
   const pos: Position = { line: 1, column: 1 };
-  const slice = Slice.from((input + ' ').split(''));
+  const slice = Slice.from((input + '\n#EOF').split(''));
 
   const spaceActionMap: { [S in Space]: (pos: Position) => void } = {
     [Spaces.enum.space]: pos => {

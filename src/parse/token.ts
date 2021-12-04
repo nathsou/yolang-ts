@@ -1,11 +1,12 @@
 import { DataType, genConstructors, VariantOf } from "itsamatch";
-import { match, select } from 'ts-pattern';
+import { match } from 'ts-pattern';
 
 export type Token = DataType<{
   Symbol: { value: Symbol },
   Keyword: { value: Keyword },
   Const: { value: Const },
   Identifier: { name: string },
+  EOF: {}
 }>;
 
 export const Token = {
@@ -13,11 +14,13 @@ export const Token = {
   keyword: (value: Keyword): Token => ({ variant: 'Keyword', value }),
   const: (value: Const): Token => ({ variant: 'Const', value }),
   identifier: (name: string): Token => ({ variant: 'Identifier', name }),
+  eof: (): Token => ({ variant: 'EOF' }),
   show: (token: Token) => match(token)
     .with({ variant: 'Symbol' }, ({ value }) => value)
     .with({ variant: 'Keyword' }, ({ value }) => value)
     .with({ variant: 'Const' }, ({ value }) => Const.show(value))
     .with({ variant: 'Identifier' }, ({ name }) => name)
+    .with({ variant: 'EOF' }, () => 'EOF')
     .exhaustive(),
   eq: (a: Token, b: Token) => match<[Token, Token]>([a, b])
     .with([{ variant: 'Symbol' }, { variant: 'Symbol' }], ([a, b]) => Symbol.eq(a.value, b.value))
