@@ -11,6 +11,14 @@ export type ParserError = {
   recovery?: RecoveryStrategy,
 };
 
+export const uninitialized = <T>(): Parser<T> => {
+  return ref(tokens => [error({ message: 'uninitialized', pos: tokens.start }), tokens, []]);
+};
+
+export const initParser = <T>(l: Parser<T>, r: Parser<T>): void => {
+  l.ref = r.ref;
+};
+
 export const formatError = (error: ParserError, tokens: TokenWithPos[]): string => {
   const { pos } = tokens[error.pos];
   return `${error.message} at ${pos.line}:${pos.column}`;
@@ -24,7 +32,7 @@ const farthest = <T>(a: Slice<T>, b: Slice<T>) => a.start > b.start ? a : b;
 
 export type Parser<T> = Ref<(tokens: Slice<Token>) => ParserResult<T>>;
 
-export const satisfy = (pred: (t: Token) => boolean, name = () => pred.name): Parser<Token> => {
+export const satisfy = (pred: (t: Token) => boolean): Parser<Token> => {
   return ref(tokens => {
     const err = error<Token, ParserError>({
       message: fail,
@@ -38,10 +46,10 @@ export const satisfy = (pred: (t: Token) => boolean, name = () => pred.name): Pa
   });
 };
 
-export const satisfyBy = <T>(f: (t: Token) => Result<T, ParserError['message']>): Parser<T> => {
+export const satisfyBy = <T>(f: (t: Token) => Maybe<T>): Parser<T> => {
   return ref(tokens => Slice.head(tokens).match({
     Some: h => [
-      f(h).match({ Ok: x => ok(x), Error: () => error({ message: fail, pos: tokens.start }) }),
+      f(h).match({ Some: x => ok(x), None: () => error({ message: fail, pos: tokens.start }) }),
       Slice.tail(tokens),
       []
     ],
@@ -50,7 +58,7 @@ export const satisfyBy = <T>(f: (t: Token) => Result<T, ParserError['message']>)
 };
 
 export const token = (token: Token): Parser<Token> => {
-  return satisfy(t => Token.eq(t, token), () => Token.show(token));
+  return satisfy(t => Token.eq(t, token));
 };
 
 export const symbol = (symb: Symbol) => token(Token.symbol(symb));
@@ -67,6 +75,12 @@ export const flatMap = <T, U>(p: Parser<T>, f: (t: T, tokens: Slice<Token>) => R
   return ref(tokens => {
     const [t, rem, errs] = p.ref(tokens);
     return [t.flatMap(x => f(x, rem)), rem, errs];
+  });
+};
+
+export const mapParserResult = <T, U>(p: Parser<T>, f: (r: ParserResult<T>) => ParserResult<U>): Parser<U> => {
+  return ref(tokens => {
+    return f(p.ref(tokens));
   });
 };
 
@@ -129,10 +143,6 @@ export const alt = <T>(...parsers: Parser<T>[]): Parser<T> => {
   });
 };
 
-export const oneOrMore = <T>(p: Parser<T>): Parser<T[]> => {
-  return map(seq(p, many(p)), ([h, tl]) => [h, ...tl]);
-};
-
 export const many = <T>(p: Parser<T>): Parser<T[]> => {
   return ref(tokens => {
     const [t, rem, errs] = p.ref(tokens);
@@ -155,24 +165,28 @@ export const many = <T>(p: Parser<T>): Parser<T[]> => {
   });
 };
 
-export const leftAssoc = <A, B>(
-  left: Parser<A>,
-  right: Parser<B>,
-  combine: (left: A, right: B) => A
-): Parser<A> => {
+export const oneOrMore = <T>(p: Parser<T>): Parser<T[]> => {
+  return map(seq(p, many(p)), ([h, tl]) => [h, ...tl]);
+};
+
+export const leftAssoc = <L, R>(
+  left: Parser<L>,
+  right: Parser<R>,
+  combine: (left: L, right: R) => L
+): Parser<L> => {
   return map(
     seq(left, many(right)),
     ([h, tl]) => tl.length === 0 ? h : tl.reduce(combine, h)
   );
 };
 
-export const chainLeft = <T, U, Op>(
-  a: Parser<T>,
+export const chainLeft = <L, Op, R>(
+  l: Parser<L>,
   op: Parser<Op>,
-  b: Parser<U>,
-  combine: (lhs: T, op: Op, rhs: U) => T
-): Parser<T> => {
-  return leftAssoc(a, seq(op, b), (lhs, [op, rhs]) => combine(lhs, op, rhs));
+  r: Parser<R>,
+  combine: (lhs: L, op: Op, rhs: R) => L
+): Parser<L> => {
+  return leftAssoc(l, seq(op, r), (lhs, [op, rhs]) => combine(lhs, op, rhs));
 };
 
 export const sepBy = <S>(sep: Parser<S>) => <T>(p: Parser<T>): Parser<T[]> => {
@@ -229,18 +243,24 @@ export const consumeAll = <T>(p: Parser<T>): Parser<T> => {
     const [t, rem, errs] = p.ref(tokens);
     const lastToken = Slice.head(rem).unwrap();
 
+    const err: ParserError = {
+      message: `Unexpected token: '${Token.show(lastToken)}'`,
+      pos: rem.start
+    };
+
+    const allConsumed = lastToken.variant === 'EOF';
+
     return t.match({
       Ok: t => [
-        lastToken.variant === 'EOF' ?
-          ok(t) :
-          error({
-            message: `Unexpected token: '${Token.show(lastToken)}'`,
-            pos: rem.start
-          }),
-        rem,
+        allConsumed ? ok(t) : error(err),
+        Slice.tail(rem),
         errs
       ],
-      Error: e => [error(e), rem, errs],
+      Error: e => [
+        allConsumed ? error(e) : error(err),
+        rem,
+        allConsumed ? [...errs, e] : [...errs, e, err]
+      ],
     });
   });
 };

@@ -1,12 +1,13 @@
 import { match, select } from 'ts-pattern';
 import { Expr } from '../ast/sweet';
-import { Maybe } from '../utils/maybe';
-import { ref } from '../utils/misc';
+import { Maybe, none, some } from '../utils/maybe';
 import { error, ok } from '../utils/result';
 import { Slice } from '../utils/slice';
-import { alt, chainLeft, consumeAll, expect, map, Parser, ParserError, satisfyBy, seq, symbol } from './combinators';
+import { alt, chainLeft, consumeAll, expect, initParser, map, mapParserResult, Parser, ParserError, ParserResult, satisfy, satisfyBy, seq, symbol, uninitialized } from './combinators';
 import { RecoveryStrategy } from './recovery';
 import { Const, Symbol, Token } from './token';
+
+const expr = uninitialized<Expr>();
 
 export const nestedBy = (left: Symbol, right: Symbol) => <T>(p: Parser<T>): Parser<Maybe<T>> => {
   return map(
@@ -38,9 +39,9 @@ const integer = satisfyBy<Expr>(token =>
         value: select()
       }
     },
-      n => ok<Expr, string>(Expr.const(Const.u32(n)))
+      n => some(Expr.const(Const.u32(n)))
     )
-    .otherwise(() => error('token is not an integer'))
+    .otherwise(() => none)
 );
 
 const bool = satisfyBy<Expr>(token =>
@@ -52,9 +53,39 @@ const bool = satisfyBy<Expr>(token =>
         value: select()
       }
     },
-      b => ok<Expr, string>(Expr.const(Const.bool(b)))
+      b => some(Expr.const(Const.bool(b)))
     )
-    .otherwise(() => error('token is not a bool'))
+    .otherwise(() => none)
+);
+
+const invalid = mapParserResult(
+  satisfy(token => token.variant === 'Invalid'),
+  ([token, rem, errs]) => token.match({
+    Ok: token => [
+      ok(Expr.error(Token.show(token))),
+      rem,
+      [...errs, {
+        message: Token.show(token),
+        pos: rem.start,
+      }],
+    ],
+    Error: err => [error(err), rem, errs] as ParserResult<Expr>,
+  })
+);
+
+const unexpected = mapParserResult(
+  satisfy(() => true),
+  ([token, rem, errs]) => {
+    const msg = `Unexpected token: '${Token.show(token.unwrap())}'`;
+    return [
+      token.map(() => Expr.error(msg)),
+      rem,
+      [...errs, {
+        message: msg,
+        pos: rem.start,
+      }],
+    ];
+  }
 );
 
 const unaryOp = alt(
@@ -73,13 +104,14 @@ const additiveOp = alt(
   map(symbol('-'), () => '-' as const),
 );
 
-const expr: Parser<Expr> = ref(tokens => [error({ message: 'unset', pos: tokens.start }), tokens, []]);
-
-const primary = alt(integer, bool, parens(expr));
+const primary = alt(integer, bool, parens(expr), invalid, unexpected);
 
 const factor = primary;
 
-const unary = alt(map(seq(unaryOp, factor), ([op, expr]) => Expr.unaryOp(op, expr)), factor);
+const unary = alt(
+  map(seq(unaryOp, factor), ([op, expr]) => Expr.unaryOp(op, expr)),
+  factor
+);
 
 const multiplicative = chainLeft(
   unary,
@@ -101,7 +133,7 @@ const additive = chainLeft(
   )
 );
 
-expr.ref = additive.ref;
+initParser(expr, additive);
 
 export const parseExpr = (tokens: Slice<Token>): [Expr, ParserError[]] => {
   const [res, _, errs] = consumeAll(expr).ref(tokens);

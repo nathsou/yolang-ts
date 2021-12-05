@@ -1,4 +1,4 @@
-import { DataType, genConstructors, VariantOf } from "itsamatch";
+import { DataType, genConstructors, VariantOf, match as matchVariant } from "itsamatch";
 import { match } from 'ts-pattern';
 
 export type Token = DataType<{
@@ -6,7 +6,8 @@ export type Token = DataType<{
   Keyword: { value: Keyword },
   Const: { value: Const },
   Identifier: { name: string },
-  EOF: {}
+  EOF: {},
+  Invalid: { lexeme: string },
 }>;
 
 export const Token = {
@@ -15,18 +16,22 @@ export const Token = {
   const: (value: Const): Token => ({ variant: 'Const', value }),
   identifier: (name: string): Token => ({ variant: 'Identifier', name }),
   eof: (): Token => ({ variant: 'EOF' }),
-  show: (token: Token) => match(token)
-    .with({ variant: 'Symbol' }, ({ value }) => value)
-    .with({ variant: 'Keyword' }, ({ value }) => value)
-    .with({ variant: 'Const' }, ({ value }) => Const.show(value))
-    .with({ variant: 'Identifier' }, ({ name }) => name)
-    .with({ variant: 'EOF' }, () => 'EOF')
-    .exhaustive(),
+  invalid: (lexeme: string): Token => ({ variant: 'Invalid', lexeme }),
+  show: (token: Token) => matchVariant(token, {
+    Symbol: ({ value }) => value,
+    Keyword: ({ value }) => value,
+    Const: ({ value }) => Const.show(value),
+    Identifier: ({ name }) => name,
+    EOF: () => 'EOF',
+    Invalid: ({ lexeme: message }) => `Invalid token: '${message}'`,
+  }),
   eq: (a: Token, b: Token) => match<[Token, Token]>([a, b])
     .with([{ variant: 'Symbol' }, { variant: 'Symbol' }], ([a, b]) => Symbol.eq(a.value, b.value))
     .with([{ variant: 'Keyword' }, { variant: 'Keyword' }], ([a, b]) => Keyword.eq(a.value, b.value))
     .with([{ variant: 'Const' }, { variant: 'Const' }], ([a, b]) => Const.eq(a.value, b.value))
     .with([{ variant: 'Identifier' }, { variant: 'Identifier' }], ([a, b]) => a.name === b.name)
+    .with([{ variant: 'EOF' }, { variant: 'EOF' }], () => true)
+    .with([{ variant: 'Invalid' }, { variant: 'Invalid' }], ([a, b]) => a.lexeme === b.lexeme)
     .otherwise(() => false),
 };
 
@@ -79,10 +84,10 @@ const { u32, bool } = genConstructors<Const>()('u32', 'bool');
 export const Const = {
   u32: (value: number) => u32({ value }),
   bool: (value: boolean) => bool({ value }),
-  show: (c: Const) => match(c)
-    .with({ variant: 'u32' }, ({ value }) => `${value}`)
-    .with({ variant: 'bool' }, ({ value }) => `${value}`)
-    .exhaustive(),
+  show: (c: Const) => matchVariant(c, {
+    u32: ({ value }) => `${value}`,
+    bool: ({ value }) => `${value}`,
+  }),
   eq: (a: Const, b: Const) => a.variant === b.variant && a.value === b.value,
 };
 

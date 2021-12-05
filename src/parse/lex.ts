@@ -1,7 +1,6 @@
-import { error, ok, Result } from '../utils/result';
 import { Slice } from "../utils/slice";
 import { alphaNum, alt, digit, letter, many, map, not, oneOrMore, spaces, str, then, trie } from "./lexerCombinators";
-import { Const, Keyword, Space, Spaces, Symbol, Token, Position, TokenWithPos, withPos } from "./token";
+import { Const, Keyword, Position, Space, Spaces, Symbol, Token, TokenWithPos, withPos } from "./token";
 
 export const symbol = map(trie(Symbol.values), s => Token.symbol(s as Symbol));
 
@@ -18,14 +17,15 @@ const digits = map(oneOrMore(digit), digits => parseInt(digits.join(''), 10));
 export const u32 = map(digits, n => Token.const(Const.u32(n)));
 export const bool = map(alt(str('true'), str('false')), b => Token.const(Const.bool(b === 'true')));
 export const ident = map(then(letter, many(alphaNum)), ([h, tl]) => Token.identifier(h + tl.join('')));
-export const EOF = map(str('#EOF'), Token.eof);
 
-export const token = alt(u32, bool, keyword, symbol, ident, EOF);
+export const token = alt(u32, bool, keyword, symbol, ident);
 
-export const lex = (input: string): Result<TokenWithPos[], string> => {
+const invalid = map(oneOrMore(not(token)), chars => Token.invalid(chars.join('').trim()));
+
+export const lex = (input: string): TokenWithPos[] => {
   const tokens: TokenWithPos[] = [];
   const pos: Position = { line: 1, column: 1 };
-  const slice = Slice.from((input + '\n#EOF').split(''));
+  const slice = Slice.from((input + ' ').split(''));
 
   const spaceActionMap: { [S in Space]: (pos: Position) => void } = {
     [Spaces.enum.space]: pos => {
@@ -59,19 +59,13 @@ export const lex = (input: string): Result<TokenWithPos[], string> => {
   skipSpaces();
 
   while (!Slice.isEmpty(slice)) {
-    const res = token(slice);
-    if (res.isNone()) {
-      const context = slice.elems.slice(slice.start, slice.start + 10).join('');
-      return error(`Unrecognized token near '${context}' at ${pos.line}:${pos.column}`);
-    } else {
-      const [tok, rem] = res.unwrap();
-      tokens.push(withPos(tok, pos));
-      pos.column += rem.start - slice.start;
-      slice.start = rem.start;
-    }
+    const [tok, rem] = alt(token, invalid)(slice).unwrap();
+    tokens.push(withPos(tok, pos));
+    pos.column += rem.start - slice.start;
+    slice.start = rem.start;
 
     skipSpaces();
   }
 
-  return ok(tokens);
+  return [...tokens, withPos(Token.eof(), pos)];
 };

@@ -83,7 +83,7 @@ export const str = (str: string): Lexer<string> => {
   return map(seq(str.split('').map(char)), () => str);
 };
 
-export const not = <T>(lexer: Lexer<T>): Lexer<T> => {
+export const not = (lexer: Lexer<any>): Lexer<string> => {
   return (input: Slice<Char>) =>
     lexer(input).match({
       Some: () => none,
