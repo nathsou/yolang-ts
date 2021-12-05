@@ -22,3 +22,7 @@ export const firstOkBy = <T, E, U>(elems: T[], f: (elem: T) => Result<U, E>, err
 
   return error(err);
 };
+
+export const joinWith = <T>(elems: T[], f: (elem: T) => string, sep: string): string => {
+  return elems.map(f).join(sep);
+};

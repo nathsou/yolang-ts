@@ -1,15 +1,33 @@
-import { Expr } from "./ast/sweet";
+import { Decl } from "./ast/sweet";
 import { lex } from "./parse/lex";
-import { parseExpr } from "./parse/parse";
+import { parseProg } from "./parse/parse";
+import { joinWith } from "./utils/array";
 import { Slice } from "./utils/slice";
 
-const parse = (source: string): Expr => {
+const parse = (source: string): Decl[] => {
   const tokens = lex(source);
-  const [expr] = parseExpr(Slice.from(tokens));
+  const [decls, errs] = parseProg(Slice.from(tokens));
 
-  return expr;
+  if (errs.length > 0) {
+    console.log(errs);
+  }
+
+  return decls;
 };
 
-const res = parse('3 * * + 1 / 4 - (12 * -$)');
+const decls = parse(`
+  fn add(a, b) {
+    let sum = a + b
+    sum
+  }
 
-console.log(Expr.show(res));
+  fn max(a, b) {
+    if a > b { a } else { b }
+  }
+
+  fn main() {
+    add(3, 7)
+  }
+`);
+
+console.log(joinWith(decls, Decl.show, '\n\n'));

@@ -146,12 +146,16 @@ export const alt = <T>(...parsers: Parser<T>[]): Parser<T> => {
 export const many = <T>(p: Parser<T>): Parser<T[]> => {
   return ref(tokens => {
     const [t, rem, errs] = p.ref(tokens);
+    if (Slice.isEmpty(tokens)) {
+      return [t.map(t => [t]), rem, errs];
+    }
+
     return t.match({
       Ok: t => {
         const [ts, rem2, errs2] = many(p).ref(rem);
         return ts.match({
           Ok: ts => [ok([t, ...ts]), rem2, [...errs, ...errs2]], // rep.2
-          Error: () => [ok([t]), rem, errs], // rep.4
+          Error: () => [ok([t]), rem2, errs], // rep.4
         });
       },
       Error: l => {
@@ -167,6 +171,16 @@ export const many = <T>(p: Parser<T>): Parser<T[]> => {
 
 export const oneOrMore = <T>(p: Parser<T>): Parser<T[]> => {
   return map(seq(p, many(p)), ([h, tl]) => [h, ...tl]);
+};
+
+export const optional = <T>(p: Parser<T>): Parser<Maybe<T>> => {
+  return ref(tokens => {
+    const [t, rem, errs] = p.ref(tokens);
+    return t.match({
+      Ok: t => [ok(some(t)), rem, errs],
+      Error: () => [ok(none), rem, errs],
+    });
+  });
 };
 
 export const leftAssoc = <L, R>(
@@ -194,6 +208,7 @@ export const sepBy = <S>(sep: Parser<S>) => <T>(p: Parser<T>): Parser<T[]> => {
 };
 
 export const commas = sepBy(symbol(','));
+export const semicolons = sepBy(symbol(';'));
 
 export const not = <T>(p: Parser<T>): Parser<null> => {
   return ref(tokens => {
@@ -238,29 +253,60 @@ export const expect = <T>(
   });
 };
 
+export const expectOrDefault = <T>(
+  p: Parser<T>,
+  message: ParserError['message'],
+  defaultValue: T | ((message: string) => T),
+  recovery?: ParserError['recovery']
+): Parser<T> => {
+  const defaultVal = typeof defaultValue === 'function' ? (defaultValue as any)(message) : defaultValue;
+
+  return map(
+    expect(p, message, recovery),
+    maybe => maybe.orDefault(defaultVal)
+  );
+};
+
 export const consumeAll = <T>(p: Parser<T>): Parser<T> => {
   return ref(tokens => {
     const [t, rem, errs] = p.ref(tokens);
-    const lastToken = Slice.head(rem).unwrap();
 
-    const err: ParserError = {
-      message: `Unexpected token: '${Token.show(lastToken)}'`,
-      pos: rem.start
-    };
+    return Slice.head(rem).match({
+      Some: lastToken => {
+        const err: ParserError = {
+          message: `Unexpected token: '${Token.show(lastToken)}'`,
+          pos: rem.start
+        };
 
-    const allConsumed = lastToken.variant === 'EOF';
-
-    return t.match({
-      Ok: t => [
-        allConsumed ? ok(t) : error(err),
-        Slice.tail(rem),
-        errs
-      ],
-      Error: e => [
-        allConsumed ? error(e) : error(err),
-        rem,
-        allConsumed ? [...errs, e] : [...errs, e, err]
-      ],
+        return t.match({
+          Ok: () => [
+            error(err),
+            Slice.tail(rem),
+            errs
+          ],
+          Error: e => [
+            error(err),
+            rem,
+            [...errs, e, err]
+          ],
+        });
+      },
+      None: () => [t, rem, errs]
     });
   });
 };
+
+export const nestedBy = (left: Symbol, right: Symbol) => <T>(p: Parser<T>): Parser<T> => {
+  return map(
+    seq(
+      symbol(left),
+      p,
+      expect(symbol(right), `Expected closing '${right}'`, RecoveryStrategy.skipNested(left, right))
+    ),
+    ([, t,]) => t
+  );
+};
+
+export const parens = nestedBy('(', ')');
+export const squareBrackets = nestedBy('[', ']');
+export const curlyBrackets = nestedBy('{', '}');

@@ -54,6 +54,14 @@ export class Maybe<T> {
     return other;
   }
 
+  orDefault(defaultValue: T): T {
+    if (this.raw.type === 'some') {
+      return this.raw.data;
+    }
+
+    return defaultValue;
+  }
+
   match<U>(actions: { Some: (data: T) => U, None: () => U }): U {
     if (this.raw.type === 'some') {
       return actions.Some(this.raw.data);

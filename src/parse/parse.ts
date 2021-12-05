@@ -1,34 +1,17 @@
 import { match, select } from 'ts-pattern';
-import { Expr } from '../ast/sweet';
-import { Maybe, none, some } from '../utils/maybe';
+import { Decl, Expr, Stmt } from '../ast/sweet';
+import { none, some } from '../utils/maybe';
+import { snd } from '../utils/misc';
 import { error, ok } from '../utils/result';
 import { Slice } from '../utils/slice';
-import { alt, chainLeft, consumeAll, expect, initParser, map, mapParserResult, Parser, ParserError, ParserResult, satisfy, satisfyBy, seq, symbol, uninitialized } from './combinators';
-import { RecoveryStrategy } from './recovery';
-import { Const, Symbol, Token } from './token';
+import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, many, map, mapParserResult, optional, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, seq, symbol, uninitialized } from './combinators';
+import { Const, Token } from './token';
 
 const expr = uninitialized<Expr>();
+const stmt = uninitialized<Stmt>();
+const decl = uninitialized<Decl>();
 
-export const nestedBy = (left: Symbol, right: Symbol) => <T>(p: Parser<T>): Parser<Maybe<T>> => {
-  return map(
-    seq(
-      symbol(left),
-      expect(p, `Expected expression after '${left}'`),
-      expect(symbol(right), `Expected closing '${right}'`, RecoveryStrategy.skipNested(left, right))
-    ),
-    ([, t,]) => t
-  );
-};
-
-export const parens = (p: Parser<Expr>) => map(nestedBy('(', ')')(p), t => {
-  return t.match({
-    Some: t => t,
-    None: () => Expr.error('Expected expression'),
-  });
-});
-
-export const squareBrackets = nestedBy('[', ']');
-export const curlyBrackets = nestedBy('{', '}');
+// EXPRESSIONS
 
 const integer = satisfyBy<Expr>(token =>
   match(token)
@@ -39,7 +22,7 @@ const integer = satisfyBy<Expr>(token =>
         value: select()
       }
     },
-      n => some(Expr.const(Const.u32(n)))
+      n => some(Expr.Const(Const.u32(n)))
     )
     .otherwise(() => none)
 );
@@ -53,38 +36,49 @@ const bool = satisfyBy<Expr>(token =>
         value: select()
       }
     },
-      b => some(Expr.const(Const.bool(b)))
+      b => some(Expr.Const(Const.bool(b)))
     )
+    .otherwise(() => none)
+);
+
+const ident = satisfyBy<string>(token =>
+  match(token)
+    .with({ variant: 'Identifier' }, ({ name }) => some(name))
     .otherwise(() => none)
 );
 
 const invalid = mapParserResult(
   satisfy(token => token.variant === 'Invalid'),
-  ([token, rem, errs]) => token.match({
-    Ok: token => [
-      ok(Expr.error(Token.show(token))),
-      rem,
-      [...errs, {
-        message: Token.show(token),
-        pos: rem.start,
-      }],
-    ],
-    Error: err => [error(err), rem, errs] as ParserResult<Expr>,
-  })
+  ([token, rem, errs]) => {
+    return token.match({
+      Ok: token => [
+        ok(Expr.Error(Token.show(token))),
+        rem,
+        [...errs, {
+          message: Token.show(token),
+          pos: rem.start,
+        }],
+      ],
+      Error: err => [error(err), rem, errs] as ParserResult<Expr>,
+    });
+  }
 );
 
 const unexpected = mapParserResult(
   satisfy(() => true),
   ([token, rem, errs]) => {
-    const msg = `Unexpected token: '${Token.show(token.unwrap())}'`;
-    return [
-      token.map(() => Expr.error(msg)),
-      rem,
-      [...errs, {
-        message: msg,
-        pos: rem.start,
-      }],
-    ];
+    return token.match({
+      Ok: token => [
+        ok(Expr.Error(`Unexpected token: '${Token.show(token)}'`)),
+        rem,
+        [...errs, { message: `Unexpected token: '${Token.show(token)}'`, pos: rem.start }],
+      ],
+      Error: err => [
+        ok(Expr.Error(err.message)),
+        rem,
+        errs,
+      ],
+    });
   }
 );
 
@@ -104,12 +98,44 @@ const additiveOp = alt(
   map(symbol('-'), () => '-' as const),
 );
 
-const primary = alt(integer, bool, parens(expr), invalid, unexpected);
+const relationalOp = alt(
+  map(symbol('<'), () => '<' as const),
+  map(symbol('>'), () => '>' as const),
+  map(symbol('<='), () => '<=' as const),
+  map(symbol('>='), () => '>=' as const),
+);
 
-const factor = primary;
+const equalityOp = alt(
+  map(symbol('=='), () => '==' as const),
+  map(symbol('!='), () => '!=' as const),
+);
+
+const variable = map(ident, Expr.Variable);
+
+const block: Parser<Expr> = map(curlyBrackets(many(stmt)), Expr.Block);
+
+const primary = alt(
+  integer,
+  bool,
+  variable,
+  parens(expectOrDefault(expr, `Expected expression after '('`, Expr.Error)),
+  block,
+  invalid,
+  // unexpected
+);
+
+const app = alt(
+  map(
+    seq(ident, parens(optional(commas(expr)))),
+    ([name, args]) => Expr.Call(name, args.orDefault([])),
+  ),
+  primary
+);
+
+const factor = app;
 
 const unary = alt(
-  map(seq(unaryOp, factor), ([op, expr]) => Expr.unaryOp(op, expr)),
+  map(seq(unaryOp, factor), ([op, expr]) => Expr.UnaryOp(op, expr)),
   factor
 );
 
@@ -118,8 +144,8 @@ const multiplicative = chainLeft(
   multiplicativeOp,
   expect(unary, 'Expected expression after multiplicative operator'),
   (a, op, b) => b.mapWithDefault(
-    b => Expr.binaryOp(a, op, b),
-    Expr.error(`Expected expression after '${op}' operator`)
+    b => Expr.BinaryOp(a, op, b),
+    Expr.Error(`Expected expression after '${op}' operator`)
   )
 );
 
@@ -128,18 +154,114 @@ const additive = chainLeft(
   additiveOp,
   expect(multiplicative, 'Expected expression after additive operator'),
   (a, op, b) => b.mapWithDefault(
-    b => Expr.binaryOp(a, op, b),
-    Expr.error(`Expected expression after '${op}' operator`)
+    b => Expr.BinaryOp(a, op, b),
+    Expr.Error(`Expected expression after '${op}' operator`)
   )
 );
 
-initParser(expr, additive);
+const relational = chainLeft(
+  additive,
+  relationalOp,
+  expect(additive, 'Expected expression after relational operator'),
+  (a, op, b) => b.mapWithDefault(
+    b => Expr.BinaryOp(a, op, b),
+    Expr.Error(`Expected expression after '${op}' operator`)
+  )
+);
+
+const equality = chainLeft(
+  relational,
+  equalityOp,
+  expect(relational, 'Expected expression after equality operator'),
+  (a, op, b) => b.mapWithDefault(
+    b => Expr.BinaryOp(a, op, b),
+    Expr.Error(`Expected expression after '${op}' operator`)
+  )
+);
+
+const ifThenElse = alt(
+  map(
+    seq(
+      keyword('if'),
+      expectOrDefault(expr, `Expected condition after 'if'`, Expr.Error),
+      expectOrDefault(block, `Expected block after condidtion`, Expr.Block([])),
+      optional(seq(
+        keyword('else'),
+        expectOrDefault(block, `Expected block after 'else'`, Expr.Block([])),
+      ))
+    ),
+    ([_, cond, then, else_]) => Expr.IfThenElse(cond, then, else_.map(snd))
+  ),
+  equality
+);
+
+initParser(expr, ifThenElse);
+
+// STATEMENTS
+
+const exprStmt = map(expr, Stmt.Expr);
+
+const letStmt = alt(
+  map(
+    seq(
+      alt(keyword('let'), keyword('mut')),
+      expectOrDefault(ident, `Expected identifier after 'let' or 'mut' keyword`, '<?>'),
+      expect(symbol('='), `Expected '=' after identifier`),
+      expectOrDefault(expr, `Expected expression after '='`, Expr.Error),
+    ),
+    ([kw, name, _, expr]) => Stmt.Let(name, expr, Token.eq(kw, Token.keyword('mut')))
+  ),
+  exprStmt
+);
+
+initParser(
+  stmt,
+  map(
+    // seq(letStmt, expectOrDefault(symbol(';'), 'Expected semicolon after statement', Token.symbol(';'))),
+    seq(letStmt, optional(symbol(';'))),
+    ([stmt]) => stmt
+  )
+);
+
+const argument = alt(
+  map(
+    seq(
+      keyword('mut'),
+      expectOrDefault(ident, `Expected identifier after 'mut' keyword`, '<?>'),
+    ),
+    ([_, name]) => ({ name, mutable: true })
+  ),
+  map(ident, name => ({ name, mutable: false }))
+);
+
+// DECLARATIONS
+
+const funcDecl = map(
+  seq(
+    keyword('fn'),
+    expectOrDefault(ident, `Expected identifier after 'fn' keyword`, '<?>'),
+    expectOrDefault(parens(optional(commas(argument))), 'Expected arguments after function name', none),
+    expectOrDefault(block, 'Expected block after function arguments', Expr.Error),
+  ),
+  ([_, name, args, body]) => Decl.Function(name, args.orDefault([]), body)
+);
+
+initParser(decl, funcDecl);
 
 export const parseExpr = (tokens: Slice<Token>): [Expr, ParserError[]] => {
   const [res, _, errs] = consumeAll(expr).ref(tokens);
 
   return res.match({
-    Ok: e => [e, errs],
-    Error: e => [Expr.error(e.message), [...errs, e]],
+    Ok: expr => [expr, errs],
+    Error: err => [Expr.Error(err.message), [...errs, err]],
+  });
+};
+
+export const parseProg = (tokens: Slice<Token>): [Decl[], ParserError[]] => {
+  const [res, _, errs] = consumeAll(many(decl)).ref(tokens);
+
+  return res.match({
+    Ok: decls => [decls, errs],
+    Error: err => [[Decl.Error(err.message)], [...errs, err]],
   });
 };
