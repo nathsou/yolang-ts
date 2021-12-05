@@ -1,7 +1,8 @@
+import { Decl as BitterDecl } from "./ast/bitter";
 import { Decl } from "./ast/sweet";
+import { formatError } from "./parse/combinators";
 import { lex } from "./parse/lex";
 import { parseProg } from "./parse/parse";
-import { joinWith } from "./utils/array";
 import { Slice } from "./utils/slice";
 
 const parse = (source: string): Decl[] => {
@@ -9,25 +10,23 @@ const parse = (source: string): Decl[] => {
   const [decls, errs] = parseProg(Slice.from(tokens));
 
   if (errs.length > 0) {
-    console.log(errs);
+    errs.forEach(err => console.error(formatError(err, tokens)));
+    console.log('');
   }
 
   return decls;
 };
 
 const decls = parse(`
-  fn add(a, b) {
-    let sum = a + b
-    sum
-  }
-
-  fn max(a, b) {
-    if a > b { a } else { b }
-  }
-
   fn main() {
-    add(3, 7)
+    mut n = 3
+    n += 7
   }
 `);
 
-console.log(joinWith(decls, Decl.show, '\n\n'));
+const nameEnv = {};
+const bitter = decls.map(d => BitterDecl.fromSweet(d, nameEnv));
+
+// console.log(joinWith(decls, Decl.show, '\n\n'));
+
+console.log(JSON.stringify(bitter, null, 2));

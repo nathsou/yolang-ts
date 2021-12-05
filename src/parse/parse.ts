@@ -1,3 +1,4 @@
+import { match as matchVariant } from 'itsamatch';
 import { match, select } from 'ts-pattern';
 import { Decl, Expr, Stmt } from '../ast/sweet';
 import { none, some } from '../utils/maybe';
@@ -41,11 +42,10 @@ const bool = satisfyBy<Expr>(token =>
     .otherwise(() => none)
 );
 
-const ident = satisfyBy<string>(token =>
-  match(token)
-    .with({ variant: 'Identifier' }, ({ name }) => some(name))
-    .otherwise(() => none)
-);
+const ident = satisfyBy<string>(token => matchVariant(token, {
+  Identifier: ({ name }) => some(name),
+  _: () => none
+}));
 
 const invalid = mapParserResult(
   satisfy(token => token.variant === 'Invalid'),
@@ -110,6 +110,15 @@ const equalityOp = alt(
   map(symbol('!='), () => '!=' as const),
 );
 
+const assignmentOp = alt(
+  map(symbol('='), () => '=' as const),
+  map(symbol('+='), () => '+=' as const),
+  map(symbol('-='), () => '-=' as const),
+  map(symbol('*='), () => '*=' as const),
+  map(symbol('/='), () => '/=' as const),
+  map(symbol('%='), () => '%=' as const),
+);
+
 const variable = map(ident, Expr.Variable);
 
 const block: Parser<Expr> = map(curlyBrackets(many(stmt)), Expr.Block);
@@ -135,7 +144,10 @@ const app = alt(
 const factor = app;
 
 const unary = alt(
-  map(seq(unaryOp, factor), ([op, expr]) => Expr.UnaryOp(op, expr)),
+  map(seq(
+    unaryOp,
+    expectOrDefault(factor, `Expected expression after unary operator`, Expr.Error)
+  ), ([op, expr]) => Expr.UnaryOp(op, expr)),
   factor
 );
 
@@ -195,7 +207,25 @@ const ifThenElse = alt(
   equality
 );
 
-initParser(expr, ifThenElse);
+const assignment = alt(
+  map(
+    seq(
+      ifThenElse,
+      assignmentOp,
+      expectOrDefault(expr, `Expected expression after assignment operator`, Expr.Error),
+    ),
+    ([lhs, op, rhs]) => {
+      if (op === '=') {
+        return Expr.Assignment(lhs, rhs);
+      } else {
+        return Expr.CompoundAssignment(lhs, op, rhs);
+      }
+    }
+  ),
+  ifThenElse
+);
+
+initParser(expr, assignment);
 
 // STATEMENTS
 

@@ -24,7 +24,7 @@ export const formatError = (error: ParserError, tokens: TokenWithPos[]): string 
   return `${error.message} at ${pos.line}:${pos.column}`;
 };
 
-export type ParserResult<T> = [res: Result<T, ParserError>, remaning: Slice<Token>, errors: ParserError[]];
+export type ParserResult<T> = [res: Result<T, ParserError>, remaining: Slice<Token>, errors: ParserError[]];
 
 const fail: ParserError['message'] = '<fail>';
 
