@@ -24,8 +24,7 @@ const decls = parse(`
   }
 `);
 
-const nameEnv = {};
-const bitter = decls.map(d => BitterDecl.fromSweet(d, nameEnv));
+const bitter = decls.map(d => BitterDecl.fromSweet(d, {}));
 
 // console.log(joinWith(decls, Decl.show, '\n\n'));
 

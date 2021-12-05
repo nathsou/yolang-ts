@@ -1,3 +1,4 @@
+import { addSet } from "../utils/set";
 import { MonoTy, PolyTy, TyVarId } from "./types";
 
 export type Env = Record<string, PolyTy>;
@@ -15,9 +16,7 @@ export const Env = {
     const freeTypeVars = new Set<TyVarId>();
 
     for (const [, ty] of Object.entries(env)) {
-      for (const tyVar of PolyTy.freeTypeVars(ty)) {
-        freeTypeVars.add(tyVar);
-      }
+      addSet(freeTypeVars, PolyTy.freeTypeVars(ty));
     }
 
     return freeTypeVars;

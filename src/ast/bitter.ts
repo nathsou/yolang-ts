@@ -6,7 +6,7 @@ import { Expr as SweetExpr, Stmt as SweetStmt, Decl as SweetDecl, BinaryOperator
 
 // Bitter expressions are *unsugared* representations
 // of the structure of yolang source code
-// with type information attached and identifier use references
+// with attached type information and lexically resolved identifier references
 
 type Name = {
   readonly original: string,

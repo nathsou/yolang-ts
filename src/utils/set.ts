@@ -1,5 +1,5 @@
 
-const keepSet = <T>(set: Set<T>, predicate: (value: T) => boolean): Set<T> => {
+export const keepSet = <T>(set: Set<T>, predicate: (value: T) => boolean): Set<T> => {
   const kept = new Set<T>();
 
   for (const value of set) {
@@ -11,6 +11,12 @@ const keepSet = <T>(set: Set<T>, predicate: (value: T) => boolean): Set<T> => {
   return kept;
 };
 
-const diffSet = <T>(a: Set<T>, b: Set<T>): Set<T> => {
+export const diffSet = <T>(a: Set<T>, b: Set<T>): Set<T> => {
   return keepSet(a, value => !b.has(value));
+};
+
+export const addSet = <T>(set: Set<T>, values: Iterable<T>): void => {
+  for (const value of values) {
+    set.add(value);
+  }
 };
