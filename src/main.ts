@@ -39,6 +39,8 @@ const decls = parse(`
   fn main() {
     id(abs(-7))
     id(even(fact(11)))
+    mut a = 7
+    a += 2
   }
 `);
 

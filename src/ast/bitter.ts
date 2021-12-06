@@ -12,13 +12,15 @@ type Name = {
   readonly original: string,
   renaming: string,
   ty: MonoTy,
+  readonly mutable: boolean,
 };
 
 const Name = {
-  fresh: (name: string): Name => ({
+  fresh: (name: string, mutable: boolean): Name => ({
     original: name,
     renaming: name,
     ty: MonoTy.fresh(),
+    mutable,
   }),
 };
 
@@ -27,8 +29,8 @@ type NameEnv = Record<string, Name>;
 const NameEnv = {
   make: (): NameEnv => ({}),
   clone: (env: NameEnv): NameEnv => ({ ...env }),
-  declare: (env: NameEnv, name: string): Name => {
-    const fresh = Name.fresh(name);
+  declare: (env: NameEnv, name: string, mutable: boolean): Name => {
+    const fresh = Name.fresh(name, mutable);
     env[name] = fresh;
     return fresh;
   },
@@ -54,7 +56,7 @@ export type Expr = DataType<WithSweetRef<{
   BinaryOp: { lhs: Expr, op: BinaryOperator, rhs: Expr, ty: MonoTy },
   UnaryOp: { op: UnaryOperator, expr: Expr, ty: MonoTy },
   Error: { message: string, ty: MonoTy },
-  Closure: { args: { name: Name, mutable: boolean }[], body: Expr, ty: MonoTy },
+  Closure: { args: { name: string, mutable: boolean }[], body: Expr, ty: MonoTy },
   Block: { statements: Stmt[], ty: MonoTy },
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr>, ty: MonoTy },
   Assignment: { lhs: Expr, rhs: Expr, ty: MonoTy },
@@ -73,7 +75,7 @@ export const Expr = {
   BinaryOp: (lhs: Expr, op: BinaryOperator, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'BinaryOp', lhs, op, rhs }, sweet),
   UnaryOp: (op: UnaryOperator, expr: Expr, sweet: SweetExpr): Expr => typed({ variant: 'UnaryOp', op, expr }, sweet),
   Error: (message: string, sweet: SweetExpr): Expr => typed({ variant: 'Error', message }, sweet),
-  Closure: (args: { name: Name, mutable: boolean }[], body: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Closure', args, body }, sweet),
+  Closure: (args: { name: string, mutable: boolean }[], body: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Closure', args, body }, sweet),
   Block: (statements: Stmt[], sweet: SweetExpr): Expr => typed({ variant: 'Block', statements }, sweet),
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>, sweet: SweetExpr): Expr => typed({ variant: 'IfThenElse', condition, then, else_ }, sweet),
   Assignment: (lhs: Expr, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Assignment', lhs, rhs }, sweet),
@@ -85,7 +87,7 @@ export const Expr = {
       BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(Expr.fromSweet(lhs, nameEnv), op, Expr.fromSweet(rhs, nameEnv), sweet),
       UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, Expr.fromSweet(expr, nameEnv), sweet),
       Error: ({ message }) => Expr.Error(message, sweet),
-      Closure: ({ args, body }) => Expr.Closure(args.map(({ name, mutable }) => ({ name: NameEnv.resolve(nameEnv, name), mutable })), Expr.fromSweet(body, nameEnv), sweet),
+      Closure: ({ args, body }) => Expr.Closure(args, Expr.fromSweet(body, nameEnv), sweet),
       Block: ({ statements }) => {
         const newNameEnv = NameEnv.clone(nameEnv);
         return Expr.Block(statements.map(s => Stmt.fromSweet(s, newNameEnv)), sweet);
@@ -153,7 +155,7 @@ export const Stmt = {
   fromSweet: (sweet: SweetStmt, nameEnv: NameEnv): Stmt => {
     return matchVariant(sweet, {
       Let: ({ name, expr, mutable }) => Stmt.Let(
-        NameEnv.declare(nameEnv, name),
+        NameEnv.declare(nameEnv, name, mutable),
         Expr.fromSweet(expr, nameEnv),
         mutable
       ),
@@ -180,8 +182,8 @@ export const Decl = {
     matchVariant(sweet, {
       Function: ({ name, args, body }) =>
         Decl.Function(
-          delcareFunctionNames ? NameEnv.declare(nameEnv, name) : NameEnv.resolve(nameEnv, name),
-          args.map(({ name: arg, mutable }) => ({ name: NameEnv.declare(nameEnv, arg), mutable })),
+          delcareFunctionNames ? NameEnv.declare(nameEnv, name, false) : NameEnv.resolve(nameEnv, name),
+          args.map(({ name: arg, mutable }) => ({ name: NameEnv.declare(nameEnv, arg, mutable), mutable })),
           Expr.fromSweet(body, nameEnv)
         ),
       Error: ({ message }) => Decl.Error(message),
@@ -198,7 +200,7 @@ export const Prog = {
     // so that they can be used anywhere in the program
     for (const decl of prog) {
       if (decl.variant === 'Function') {
-        NameEnv.declare(nameEnv, decl.name);
+        NameEnv.declare(nameEnv, decl.name, false);
       }
     }
 

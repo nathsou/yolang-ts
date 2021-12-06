@@ -1,6 +1,7 @@
 import { match as matchVariant, VariantOf } from 'itsamatch';
 import { Decl, Expr, Prog, Stmt } from '../ast/bitter';
 import { BinaryOperator, UnaryOperator } from '../ast/sweet';
+import { zip } from '../utils/array';
 import { Env } from './env';
 import { MonoTy, PolyTy } from './types';
 import { unify as unif } from './unification';
@@ -116,15 +117,26 @@ export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingEr
       const rhsTy = Expr.ty(rhs);
       unify(lhsTy, rhsTy);
       unify(tau, MonoTy.unit());
+
+      // mutability check
+      if (lhs.variant === 'Variable') {
+        if (!lhs.name.mutable) {
+          errors.push(`variable '${lhs.name.original}' is not mutable`);
+        }
+      } else {
+        errors.push(`cannot assign to ${Expr.showSweet(lhs)}`);
+      }
     },
     Closure: ({ args, body }) => {
-      args.forEach(arg => {
-        Env.addMono(env, arg.name.original, arg.name.ty);
-      });
+      const argTys = args.map(arg => MonoTy.fresh());
+
+      for (const [arg, ty] of zip(args, argTys)) {
+        Env.addMono(env, arg.name, ty);
+      }
 
       inferExpr(body, env, errors);
       const retTy = Expr.ty(body);
-      const funTy = MonoTy.TyFun(args.map(arg => arg.name.ty), retTy);
+      const funTy = MonoTy.TyFun(argTys, retTy);
       unify(tau, funTy);
     },
     Error: ({ message }) => {
