@@ -13,3 +13,10 @@ export const unreachable = (msg: string): never => {
 
 export const fst = <A, B>([a, _]: [A, B]): A => a;
 export const snd = <A, B>([_, b]: [A, B]): B => b;
+
+export const cond = <T>(
+  condition: boolean,
+  branches: { then: () => T, else: () => T }
+): T => {
+  return condition ? branches.then() : branches.else();
+};

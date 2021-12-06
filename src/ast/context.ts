@@ -1,4 +1,4 @@
-import { MonoTy, TyVarId } from "../infer/types";
+import { TyVarId } from "../infer/types";
 
 export type Context = {
   typeVarIndex: TyVarId,

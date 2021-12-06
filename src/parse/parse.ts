@@ -135,8 +135,8 @@ const primary = alt(
 
 const app = alt(
   map(
-    seq(ident, parens(optional(commas(expr)))),
-    ([name, args]) => Expr.Call(name, args.orDefault([])),
+    seq(primary, parens(optional(commas(expr)))),
+    ([lhs, args]) => Expr.Call(lhs, args.orDefault([])),
   ),
   primary
 );

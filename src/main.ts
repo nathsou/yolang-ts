@@ -1,11 +1,11 @@
-import { Decl as BitterDecl } from "./ast/bitter";
-import { Decl } from "./ast/sweet";
+import { Prog } from "./ast/bitter";
+import { infer } from "./infer/infer";
 import { formatError } from "./parse/combinators";
 import { lex } from "./parse/lex";
 import { parseProg } from "./parse/parse";
 import { Slice } from "./utils/slice";
 
-const parse = (source: string): Decl[] => {
+const parse = (source: string): Prog => {
   const tokens = lex(source);
   const [decls, errs] = parseProg(Slice.from(tokens));
 
@@ -14,18 +14,34 @@ const parse = (source: string): Decl[] => {
     console.log('');
   }
 
-  return decls;
+  return Prog.fromSweet(decls);
 };
 
 const decls = parse(`
+  fn id(x) { x }
+
+  fn abs(x) {
+    if x < 0 { -x } else { x }
+  }
+
+  fn fact(n) {
+    if n == 0 { 1 } else { n * fact(n - 1) }
+  }
+
+  fn odd(n) {
+    if n == 0 { false } else { even(n - 1) }
+  }
+
+  fn even(n) {
+    if n == 0 { true } else { odd(n - 1) }
+  }
+
   fn main() {
-    mut n = 3
-    n += 7
+    id(abs(-7))
+    id(even(fact(11)))
   }
 `);
 
-const bitter = decls.map(d => BitterDecl.fromSweet(d, {}));
+const errs = infer(decls);
 
-// console.log(joinWith(decls, Decl.show, '\n\n'));
-
-console.log(JSON.stringify(bitter, null, 2));
+console.log(errs);

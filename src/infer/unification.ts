@@ -4,30 +4,13 @@ import { MonoTy, TyVarId } from "./types";
 
 export type UnificationError = string;
 
-// reduce type variable link chains:
-// Link -> Link -> Link -> ty becomes Link -> ty
-const simplifyLinks = (ty: MonoTy): MonoTy => {
-  return matchVariant(ty, {
-    TyVar: ({ value }) => {
-      if (value.kind === 'Link') {
-        const leaf = simplifyLinks(value.ref);
-        value.ref = leaf;
-        return leaf;
-      } else {
-        return ty;
-      }
-    },
-    _: ty => ty,
-  });
-};
-
 const occurs = (x: TyVarId, t: MonoTy): boolean => {
   return matchVariant(t, {
     TyVar: ({ value }) => {
       if (value.kind === 'Var') {
         return value.id === x;
       } else {
-        simplifyLinks(t);
+        MonoTy.simplifyLinks(t);
         return occurs(x, value.ref);
       }
     },
@@ -67,6 +50,8 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
           for (let i = 0; i < s.args.length; i++) {
             eqs.push([s.args[i], t.args[i]]);
           }
+        } else {
+          errors.push(`cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`);
         }
       })
       .with([{ variant: 'TyFun' }, { variant: 'TyFun' }], ([s, t]) => {
@@ -76,6 +61,8 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
           }
 
           eqs.push([s.ret, t.ret]);
+        } else {
+          errors.push(`cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`);
         }
       })
       .otherwise(([s, t]) => {

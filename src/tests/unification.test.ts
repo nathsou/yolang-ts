@@ -19,7 +19,7 @@ describe('unification', () => {
 
   it('should unify a type variable with anything', () => {
     const tyVar = MonoTy.TyVar({ kind: 'Var', id: 0 });
-    const tyConst = MonoTy.TyConst('Yolo', []);
+    const tyConst = MonoTy.TyConst('Yolo');
 
     const errs = unify(tyVar, tyConst);
 
@@ -34,7 +34,7 @@ describe('unification', () => {
 
   it('should not take argument order into account', () => {
     const tyVar = MonoTy.TyVar({ kind: 'Var', id: 0 });
-    const tyConst = MonoTy.TyConst('Yolo', []);
+    const tyConst = MonoTy.TyConst('Yolo');
 
     const errs = unify(tyConst, tyVar);
 
@@ -50,10 +50,10 @@ describe('unification', () => {
   it('should unify type constants correctly', () => {
     const tv1 = MonoTy.TyVar({ kind: 'Var', id: 0 });
     const tv2 = MonoTy.TyVar({ kind: 'Var', id: 1 });
-    const tc1 = MonoTy.TyConst('Yolo', []);
-    const tc2 = MonoTy.TyConst('Hola', []);
-    const pair1 = MonoTy.TyConst('Pair', [tv1, tc1]);
-    const pair2 = MonoTy.TyConst('Pair', [tc2, tv2]);
+    const tc1 = MonoTy.TyConst('Yolo');
+    const tc2 = MonoTy.TyConst('Hola');
+    const pair1 = MonoTy.TyConst('Pair', tv1, tc1);
+    const pair2 = MonoTy.TyConst('Pair', tc2, tv2);
 
     const errs = unify(pair1, pair2);
 
@@ -72,10 +72,10 @@ describe('unification', () => {
 
   it.skip('should fail to unify ununifyiable types', () => {
     const tv1 = MonoTy.TyVar({ kind: 'Var', id: 0 });
-    const tc1 = MonoTy.TyConst('Yolo', []);
-    const tc2 = MonoTy.TyConst('Hola', []);
-    const pair1 = MonoTy.TyConst('Pair', [tv1, tc1]);
-    const pair2 = MonoTy.TyConst('Pair', [tc2, tv1]);
+    const tc1 = MonoTy.TyConst('Yolo');
+    const tc2 = MonoTy.TyConst('Hola');
+    const pair1 = MonoTy.TyConst('Pair', tv1, tc1);
+    const pair2 = MonoTy.TyConst('Pair', tc2, tv1);
 
     const errs = unify(pair1, pair2);
 
@@ -85,8 +85,8 @@ describe('unification', () => {
   it('should unify function types correctly', () => {
     const tv1 = MonoTy.TyVar({ kind: 'Var', id: 0 });
     const tv2 = MonoTy.TyVar({ kind: 'Var', id: 1 });
-    const tc1 = MonoTy.TyConst('Yolo', []);
-    const tc2 = MonoTy.TyConst('Hola', []);
+    const tc1 = MonoTy.TyConst('Yolo');
+    const tc2 = MonoTy.TyConst('Hola');
     const funTy1 = MonoTy.TyFun([tv1, tc1], tc2);
     const funTy2 = MonoTy.TyFun([tc2, tv2], tv1);
 

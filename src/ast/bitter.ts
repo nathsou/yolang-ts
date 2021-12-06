@@ -1,8 +1,8 @@
 import { DataType, match as matchVariant } from "itsamatch";
-import { MonoTy } from "../infer/types";
+import { MonoTy, PolyTy } from "../infer/types";
 import { Const } from "../parse/token";
 import { Maybe } from "../utils/maybe";
-import { Expr as SweetExpr, Stmt as SweetStmt, Decl as SweetDecl, BinaryOperator, UnaryOperator, CompoundAssignmentOperator } from "./sweet";
+import { BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
 
 // Bitter expressions are *unsugared* representations
 // of the structure of yolang source code
@@ -43,10 +43,14 @@ const NameEnv = {
   },
 };
 
-export type Expr = DataType<{
-  Const: { value: Const, ty: MonoTy },
-  Variable: { name: Name },
-  Call: { name: Name, args: Expr[] },
+type WithSweetRef<T> = {
+  [K in keyof T]: T[K] & { sweet: SweetExpr }
+};
+
+export type Expr = DataType<WithSweetRef<{
+  Const: { value: Const },
+  Variable: { name: Name, ty: MonoTy },
+  Call: { lhs: Expr, args: Expr[], ty: MonoTy },
   BinaryOp: { lhs: Expr, op: BinaryOperator, rhs: Expr, ty: MonoTy },
   UnaryOp: { op: UnaryOperator, expr: Expr, ty: MonoTy },
   Error: { message: string, ty: MonoTy },
@@ -54,39 +58,40 @@ export type Expr = DataType<{
   Block: { statements: Stmt[], ty: MonoTy },
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr>, ty: MonoTy },
   Assignment: { lhs: Expr, rhs: Expr, ty: MonoTy },
-}>;
+}>>;
 
-const typed = <T extends {}>(obj: T): T & { ty: MonoTy } => ({
+const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet: SweetExpr } => ({
   ...obj,
+  sweet,
   ty: MonoTy.fresh(),
 });
 
 export const Expr = {
-  Const: (c: Const): Expr => typed({ variant: 'Const', value: c }),
-  Variable: (name: Name): Expr => typed({ variant: 'Variable', name }),
-  Call: (name: Name, args: Expr[]): Expr => typed({ variant: 'Call', name, args }),
-  BinaryOp: (lhs: Expr, op: BinaryOperator, rhs: Expr): Expr => typed({ variant: 'BinaryOp', lhs, op, rhs }),
-  UnaryOp: (op: UnaryOperator, expr: Expr): Expr => typed({ variant: 'UnaryOp', op, expr }),
-  Error: (message: string): Expr => typed({ variant: 'Error', message }),
-  Closure: (args: { name: Name, mutable: boolean }[], body: Expr): Expr => typed({ variant: 'Closure', args, body }),
-  Block: (statements: Stmt[]): Expr => typed({ variant: 'Block', statements }),
-  IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>): Expr => typed({ variant: 'IfThenElse', condition, then, else_ }),
-  Assignment: (lhs: Expr, rhs: Expr): Expr => typed({ variant: 'Assignment', lhs, rhs }),
+  Const: (c: Const, sweet: SweetExpr): Expr => typed({ variant: 'Const', value: c }, sweet),
+  Variable: (name: Name, sweet: SweetExpr): Expr => typed({ variant: 'Variable', name }, sweet),
+  Call: (lhs: Expr, args: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Call', lhs, args }, sweet),
+  BinaryOp: (lhs: Expr, op: BinaryOperator, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'BinaryOp', lhs, op, rhs }, sweet),
+  UnaryOp: (op: UnaryOperator, expr: Expr, sweet: SweetExpr): Expr => typed({ variant: 'UnaryOp', op, expr }, sweet),
+  Error: (message: string, sweet: SweetExpr): Expr => typed({ variant: 'Error', message }, sweet),
+  Closure: (args: { name: Name, mutable: boolean }[], body: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Closure', args, body }, sweet),
+  Block: (statements: Stmt[], sweet: SweetExpr): Expr => typed({ variant: 'Block', statements }, sweet),
+  IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>, sweet: SweetExpr): Expr => typed({ variant: 'IfThenElse', condition, then, else_ }, sweet),
+  Assignment: (lhs: Expr, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Assignment', lhs, rhs }, sweet),
   fromSweet: (sweet: SweetExpr, nameEnv: NameEnv): Expr => {
     return matchVariant(sweet, {
-      Const: ({ value }) => Expr.Const(value),
-      Variable: ({ name }) => Expr.Variable(NameEnv.resolve(nameEnv, name)),
-      Call: ({ name, args }) => Expr.Call(NameEnv.resolve(nameEnv, name), args.map(arg => Expr.fromSweet(arg, nameEnv))),
-      BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(Expr.fromSweet(lhs, nameEnv), op, Expr.fromSweet(rhs, nameEnv)),
-      UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, Expr.fromSweet(expr, nameEnv)),
-      Error: ({ message }) => Expr.Error(message),
-      Closure: ({ args, body }) => Expr.Closure(args.map(({ name, mutable }) => ({ name: NameEnv.resolve(nameEnv, name), mutable })), Expr.fromSweet(body, nameEnv)),
+      Const: ({ value }) => Expr.Const(value, sweet),
+      Variable: ({ name }) => Expr.Variable(NameEnv.resolve(nameEnv, name), sweet),
+      Call: ({ lhs, args }) => Expr.Call(Expr.fromSweet(lhs, nameEnv), args.map(arg => Expr.fromSweet(arg, nameEnv)), sweet),
+      BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(Expr.fromSweet(lhs, nameEnv), op, Expr.fromSweet(rhs, nameEnv), sweet),
+      UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, Expr.fromSweet(expr, nameEnv), sweet),
+      Error: ({ message }) => Expr.Error(message, sweet),
+      Closure: ({ args, body }) => Expr.Closure(args.map(({ name, mutable }) => ({ name: NameEnv.resolve(nameEnv, name), mutable })), Expr.fromSweet(body, nameEnv), sweet),
       Block: ({ statements }) => {
         const newNameEnv = NameEnv.clone(nameEnv);
-        return Expr.Block(statements.map(s => Stmt.fromSweet(s, newNameEnv)));
+        return Expr.Block(statements.map(s => Stmt.fromSweet(s, newNameEnv)), sweet);
       },
-      IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(Expr.fromSweet(condition, nameEnv), Expr.fromSweet(then, nameEnv), else_.map(e => Expr.fromSweet(e, nameEnv))),
-      Assignment: ({ lhs, rhs }) => Expr.Assignment(Expr.fromSweet(lhs, nameEnv), Expr.fromSweet(rhs, nameEnv)),
+      IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(Expr.fromSweet(condition, nameEnv), Expr.fromSweet(then, nameEnv), else_.map(e => Expr.fromSweet(e, nameEnv)), sweet),
+      Assignment: ({ lhs, rhs }) => Expr.Assignment(Expr.fromSweet(lhs, nameEnv), Expr.fromSweet(rhs, nameEnv), sweet),
       CompoundAssignment: ({ lhs, op, rhs }): Expr => {
         const opMap: Record<CompoundAssignmentOperator, BinaryOperator> = {
           '+=': '+',
@@ -103,12 +108,34 @@ export const Expr = {
           Expr.BinaryOp(
             bitterLhs,
             opMap[op],
-            Expr.fromSweet(rhs, nameEnv)
-          )
+            Expr.fromSweet(rhs, nameEnv),
+            sweet
+          ),
+          sweet
         );
       },
     });
   },
+  ty: (expr: Expr): MonoTy => {
+    const ty = matchVariant(expr, {
+      Const: ({ value: c }) => matchVariant(c, {
+        u32: MonoTy.u32,
+        bool: MonoTy.bool,
+      }),
+      Variable: ({ ty }) => ty,
+      Call: ({ ty }) => ty,
+      UnaryOp: ({ ty }) => ty,
+      BinaryOp: ({ ty }) => ty,
+      Error: MonoTy.unit,
+      Closure: ({ ty }) => ty,
+      Block: ({ ty }) => ty,
+      IfThenElse: ({ ty }) => ty,
+      Assignment: ({ ty }) => ty,
+    });
+
+    return MonoTy.simplifyLinks(ty);
+  },
+  showSweet: (expr: Expr): string => SweetExpr.show(expr.sweet),
 };
 
 export type Stmt = DataType<{
@@ -135,21 +162,48 @@ export const Stmt = {
 };
 
 export type Decl = DataType<{
-  Function: { name: Name, args: { name: Name, mutable: boolean }[], body: Expr },
+  Function: {
+    name: Name,
+    args: { name: Name, mutable: boolean }[],
+    body: Expr,
+    funTy: PolyTy,
+  },
   Error: { message: string },
 }>;
 
 export const Decl = {
-  Function: (name: Name, args: { name: Name, mutable: boolean }[], body: Expr): Decl => ({ variant: 'Function', name, args, body }),
+  Function: (name: Name, args: { name: Name, mutable: boolean }[], body: Expr): Decl => ({ variant: 'Function', name, args, body, funTy: PolyTy.fresh() }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
-  fromSweet: (sweet: SweetDecl, nameEnv: NameEnv): Decl =>
+  fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, delcareFunctionNames = true): Decl =>
     matchVariant(sweet, {
       Function: ({ name, args, body }) =>
         Decl.Function(
-          NameEnv.declare(nameEnv, name),
+          delcareFunctionNames ? NameEnv.declare(nameEnv, name) : NameEnv.resolve(nameEnv, name),
           args.map(({ name: arg, mutable }) => ({ name: NameEnv.declare(nameEnv, arg), mutable })),
           Expr.fromSweet(body, nameEnv)
         ),
       Error: ({ message }) => Decl.Error(message),
     }),
+};
+
+export type Prog = Decl[];
+
+export const Prog = {
+  fromSweet: (prog: SweetProg): Prog => {
+    const nameEnv = NameEnv.make();
+
+    // declare all function names beforehand
+    // so that they can be used anywhere in the program
+    for (const decl of prog) {
+      if (decl.variant === 'Function') {
+        NameEnv.declare(nameEnv, decl.name);
+      }
+    }
+
+    return prog.map(decl => Decl.fromSweet(
+      decl,
+      nameEnv,
+      false // do not redeclare function names
+    ));
+  },
 };

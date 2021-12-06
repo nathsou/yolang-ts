@@ -13,7 +13,7 @@ export type CompoundAssignmentOperator = '+=' | '-=' | '*=' | '/=' | '%=';
 export type Expr = DataType<{
   Const: { value: Const },
   Variable: { name: string },
-  Call: { name: string, args: Expr[] },
+  Call: { lhs: Expr, args: Expr[] },
   BinaryOp: { lhs: Expr, op: BinaryOperator, rhs: Expr },
   UnaryOp: { op: UnaryOperator, expr: Expr },
   Error: { message: string },
@@ -27,7 +27,7 @@ export type Expr = DataType<{
 export const Expr = {
   Const: (c: Const): Expr => ({ variant: 'Const', value: c }),
   Variable: (name: string): Expr => ({ variant: 'Variable', name }),
-  Call: (name: string, args: Expr[]): Expr => ({ variant: 'Call', name, args }),
+  Call: (lhs: Expr, args: Expr[]): Expr => ({ variant: 'Call', lhs, args }),
   BinaryOp: (lhs: Expr, op: BinaryOperator, rhs: Expr): Expr => ({ variant: 'BinaryOp', lhs, op, rhs }),
   UnaryOp: (op: UnaryOperator, expr: Expr): Expr => ({ variant: 'UnaryOp', op, expr }),
   Error: (message: string): Expr => ({ variant: 'Error', message }),
@@ -39,7 +39,7 @@ export const Expr = {
   show: (expr: Expr): string => matchVariant(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
-    Call: ({ name, args }) => `${name}(${joinWith(args, Expr.show, ', ')})`,
+    Call: ({ lhs, args }) => `${Expr.show(lhs)}(${joinWith(args, Expr.show, ', ')})`,
     UnaryOp: ({ op, expr }) => `${op}${Expr.show(expr)}`,
     BinaryOp: ({ lhs, op, rhs }) => `(${Expr.show(lhs)} ${op} ${Expr.show(rhs)})`,
     Error: ({ message }) => `<Error: ${message}>`,
@@ -81,3 +81,5 @@ export const Decl = {
     Error: ({ message }) => `<Error: ${message}>`,
   }),
 };
+
+export type Prog = Decl[];
