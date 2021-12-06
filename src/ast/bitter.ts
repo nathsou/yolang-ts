@@ -99,6 +99,8 @@ export const Expr = {
           '*=': '*',
           '/=': '/',
           '%=': '%',
+          '&&=': '&&',
+          '||=': '||',
         };
 
         // syntactic sugar for: lhs = lhs op rhs
@@ -133,7 +135,7 @@ export const Expr = {
       Assignment: ({ ty }) => ty,
     });
 
-    return MonoTy.simplifyLinks(ty);
+    return ty;
   },
   showSweet: (expr: Expr): string => SweetExpr.show(expr.sweet),
 };

@@ -21,6 +21,9 @@ export const Env = {
 
     return none;
   },
+  has: (env: Env, name: string): boolean => {
+    return name in env;
+  },
   freeTypeVars: (env: Env): Set<TyVarId> => {
     const freeTypeVars = new Set<TyVarId>();
 

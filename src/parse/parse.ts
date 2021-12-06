@@ -105,6 +105,11 @@ const relationalOp = alt(
   map(symbol('>='), () => '>=' as const),
 );
 
+const logicalOp = alt(
+  map(symbol('&&'), () => '&&' as const),
+  map(symbol('||'), () => '||' as const),
+);
+
 const equalityOp = alt(
   map(symbol('=='), () => '==' as const),
   map(symbol('!='), () => '!=' as const),
@@ -117,6 +122,8 @@ const assignmentOp = alt(
   map(symbol('*='), () => '*=' as const),
   map(symbol('/='), () => '/=' as const),
   map(symbol('%='), () => '%=' as const),
+  map(symbol('&&='), () => '&&=' as const),
+  map(symbol('||='), () => '&&=' as const),
 );
 
 const variable = map(ident, Expr.Variable);
@@ -181,10 +188,20 @@ const relational = chainLeft(
   )
 );
 
-const equality = chainLeft(
+const logical = chainLeft(
   relational,
+  logicalOp,
+  expect(relational, 'Expected expression after logical operator'),
+  (a, op, b) => b.mapWithDefault(
+    b => Expr.BinaryOp(a, op, b),
+    Expr.Error(`Expected expression after '${op}' operator`)
+  )
+);
+
+const equality = chainLeft(
+  logical,
   equalityOp,
-  expect(relational, 'Expected expression after equality operator'),
+  expect(logical, 'Expected expression after equality operator'),
   (a, op, b) => b.mapWithDefault(
     b => Expr.BinaryOp(a, op, b),
     Expr.Error(`Expected expression after '${op}' operator`)

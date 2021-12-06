@@ -10,7 +10,6 @@ const occurs = (x: TyVarId, t: MonoTy): boolean => {
       if (value.kind === 'Var') {
         return value.id === x;
       } else {
-        MonoTy.simplifyLinks(t);
         return occurs(x, value.ref);
       }
     },
@@ -34,11 +33,11 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
           errors.push(`occurs check failed: ${MonoTy.show(s)}, ${MonoTy.show(t)}`);
         } else {
           /// @ts-ignore
-          s.value = { kind: 'Link', ref: t };
+          s.value = { kind: 'Link', ref: MonoTy.deref(t) };
         }
       })
       .with([{ variant: 'TyVar', value: { kind: 'Link' } }, __], ([s, t]) => {
-        eqs.push([s.value.ref, t]);
+        eqs.push([MonoTy.deref(s.value.ref), t]);
       })
       // Orient
       .with([__, { variant: 'TyVar' }], ([s, t]) => {

@@ -26,3 +26,31 @@ export const firstOkBy = <T, E, U>(elems: T[], f: (elem: T) => Result<U, E>, err
 export const joinWith = <T>(elems: T[], f: (elem: T) => string, sep: string): string => {
   return elems.map(f).join(sep);
 };
+
+export const gen = <T>(n: number, f: (n: number) => T): T[] => {
+  const result: T[] = [];
+
+  for (let i = 0; i < n; i++) {
+    result.push(f(i));
+  }
+
+  return result;
+};
+
+export const zip = <A, B>(as: A[], bs: B[]): [A, B][] => {
+  const zipped: [A, B][] = [];
+  const len = Math.min(as.length, bs.length);
+
+  for (let i = 0; i < len; i++) {
+    zipped.push([as[i], bs[i]]);
+  }
+
+  return zipped;
+};
+
+export function* indexed<T>(elems: Iterable<T>): IterableIterator<[T, number]> {
+  let i = 0;
+  for (const elem of elems) {
+    yield [elem, i++];
+  }
+}

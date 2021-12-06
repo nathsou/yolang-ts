@@ -12,18 +12,29 @@ const unaryOpSignature: Record<UnaryOperator, PolyTy> = {
   '!': MonoTy.toPoly(MonoTy.TyFun([MonoTy.bool()], MonoTy.bool())),
 };
 
+const u32OpSig = MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.u32()));
+const u32BoolOpSig = MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.bool()));
+const comparisonOpSig = PolyTy.make(
+  [0],
+  MonoTy.TyFun([MonoTy.TyVar({ kind: 'Var', id: 0 }), MonoTy.TyVar({ kind: 'Var', id: 0 })], MonoTy.bool())
+);
+
+const logicalOpSig = MonoTy.toPoly(MonoTy.TyFun([MonoTy.bool(), MonoTy.bool()], MonoTy.bool()));
+
 const binaryOpSignature: Record<BinaryOperator, PolyTy> = {
-  '+': MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.u32())),
-  '-': MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.u32())),
-  '*': MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.u32())),
-  '/': MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.u32())),
-  '%': MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.u32())),
-  '==': MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.bool())),
-  '!=': MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.bool())),
-  '<': MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.bool())),
-  '>': MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.bool())),
-  '<=': MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.bool())),
-  '>=': MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.bool())),
+  '+': u32OpSig,
+  '-': u32OpSig,
+  '*': u32OpSig,
+  '/': u32OpSig,
+  '%': u32OpSig,
+  '==': comparisonOpSig,
+  '!=': comparisonOpSig,
+  '<': u32BoolOpSig,
+  '>': u32BoolOpSig,
+  '<=': u32BoolOpSig,
+  '>=': u32BoolOpSig,
+  '&&': logicalOpSig,
+  '||': logicalOpSig,
 };
 
 export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingError[] => {

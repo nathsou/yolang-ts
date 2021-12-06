@@ -22,7 +22,13 @@ const showTyIndex = (n: TyVarId): string => {
 };
 
 export const MonoTy = {
-  TyVar: (tv: TyVar): MonoTy => ({ variant: 'TyVar', value: tv }),
+  TyVar: (tv: TyVar): MonoTy => {
+    if (tv.kind === 'Link') {
+      return { variant: 'TyVar', value: { kind: 'Link', ref: MonoTy.deref(tv.ref) } };
+    }
+
+    return { variant: 'TyVar', value: tv };
+  },
   TyConst: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'TyConst', name, args }),
   TyFun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'TyFun', args, ret }),
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
@@ -156,22 +162,6 @@ export const MonoTy = {
         }
       )
       .otherwise(() => false),
-  simplifyLinks: (ty: MonoTy): MonoTy => {
-    // reduce type variable link chains:
-    // Link -> Link -> Link -> ty becomes Link -> ty
-    return matchVariant(ty, {
-      TyVar: ({ value }) => {
-        if (value.kind === 'Link') {
-          const leaf = MonoTy.deref(value.ref);
-          value.ref = leaf;
-          return leaf;
-        } else {
-          return ty;
-        }
-      },
-      _: ty => ty,
-    });
-  },
 };
 
 export type PolyTy = [TyVarId[], MonoTy];
@@ -199,5 +189,5 @@ export const PolyTy = {
 
     const quantifiedVars = joinWith(quantified, showTyIndex, ', ');
     return `forall ${quantifiedVars}. ${MonoTy.show(monoTy)}`;
-  }
+  },
 };

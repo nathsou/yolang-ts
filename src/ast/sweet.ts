@@ -7,8 +7,8 @@ import { Maybe } from '../utils/maybe';
 // of the structure of yolang source code.
 
 export type UnaryOperator = '-' | '!';
-export type BinaryOperator = '+' | '-' | '*' | '/' | '%' | '==' | '!=' | '<' | '>' | '<=' | '>=';
-export type CompoundAssignmentOperator = '+=' | '-=' | '*=' | '/=' | '%=';
+export type BinaryOperator = '+' | '-' | '*' | '/' | '%' | '==' | '!=' | '<' | '>' | '<=' | '>=' | '&&' | '||';
+export type CompoundAssignmentOperator = '+=' | '-=' | '*=' | '/=' | '%=' | '&&=' | '||=';
 
 export type Expr = DataType<{
   Const: { value: Const },
