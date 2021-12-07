@@ -54,3 +54,17 @@ export function* indexed<T>(elems: Iterable<T>): IterableIterator<[T, number]> {
     yield [elem, i++];
   }
 }
+
+export const takeWhile = <T>(elems: Iterable<T>, pred: (elem: T) => boolean): T[] => {
+  const result: T[] = [];
+
+  for (const elem of elems) {
+    if (!pred(elem)) {
+      break;
+    }
+
+    result.push(elem);
+  }
+
+  return result;
+};

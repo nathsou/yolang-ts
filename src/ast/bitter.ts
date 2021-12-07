@@ -1,4 +1,4 @@
-import { DataType, match as matchVariant } from "itsamatch";
+import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { MonoTy, PolyTy } from "../infer/types";
 import { Const } from "../parse/token";
 import { Maybe } from "../utils/maybe";
@@ -60,6 +60,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   Block: { statements: Stmt[] },
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
   Assignment: { lhs: Expr, rhs: Expr },
+  ModuleAccess: { path: string[], member: string },
 }>>;
 
 const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet: SweetExpr } => ({
@@ -88,6 +89,7 @@ export const Expr = {
   Block: (statements: Stmt[], sweet: SweetExpr): Expr => typed({ variant: 'Block', statements }, sweet),
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>, sweet: SweetExpr): Expr => typed({ variant: 'IfThenElse', condition, then, else_ }, sweet),
   Assignment: (lhs: Expr, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Assignment', lhs, rhs }, sweet),
+  ModuleAccess: (path: string[], member: string, sweet: SweetExpr): Expr => typed({ variant: 'ModuleAccess', path, member }, sweet),
   fromSweet: (sweet: SweetExpr, nameEnv: NameEnv): Expr =>
     matchVariant(sweet, {
       Const: ({ value }) => Expr.Const(value, sweet),
@@ -127,6 +129,7 @@ export const Expr = {
           sweet
         );
       },
+      ModuleAccess: ({ path, member }) => Expr.ModuleAccess(path, member, sweet),
     }),
   showSweet: (expr: Expr): string => SweetExpr.show(expr.sweet),
 };
@@ -161,20 +164,61 @@ export type Decl = DataType<{
     body: Expr,
     funTy: PolyTy,
   },
+  Module: {
+    name: string,
+    decls: Decl[],
+    members: Record<string, Decl>,
+  },
   Error: { message: string },
 }>;
 
 export const Decl = {
   Function: (name: Name, args: { name: Name, mutable: boolean }[], body: Expr): Decl => ({ variant: 'Function', name, args, body, funTy: PolyTy.fresh() }),
+  Module: (name: string, decls: Decl[]): Decl => {
+    const mod: VariantOf<Decl, 'Module'> = {
+      variant: 'Module',
+      name,
+      decls,
+      members: {},
+    };
+
+    for (const decl of decls) {
+      matchVariant(decl, {
+        Function: func => {
+          mod.members[func.name.original] = func;
+        },
+        Module: subMod => {
+          mod.members[subMod.name] = subMod;
+        },
+        Error: () => { },
+      });
+    }
+
+    return mod;
+  },
   Error: (message: string): Decl => ({ variant: 'Error', message }),
-  fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, delcareFunctionNames = true): Decl =>
+  fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean): Decl =>
     matchVariant(sweet, {
       Function: ({ name, args, body }) =>
         Decl.Function(
-          delcareFunctionNames ? NameEnv.declare(nameEnv, name, false) : NameEnv.resolve(nameEnv, name),
+          declareFuncNames ? NameEnv.declare(nameEnv, name, false) : NameEnv.resolve(nameEnv, name),
           args.map(({ name: arg, mutable }) => ({ name: NameEnv.declare(nameEnv, arg, mutable), mutable })),
           Expr.fromSweet(body, nameEnv)
         ),
+      Module: ({ name, decls }) => {
+        const modEnv = NameEnv.clone(nameEnv);
+
+        for (const decl of decls) {
+          if (decl.variant === 'Function') {
+            NameEnv.declare(modEnv, decl.name, false);
+          }
+        }
+
+        return Decl.Module(
+          name,
+          decls.map(decl => Decl.fromSweet(decl, modEnv, false))
+        );
+      },
       Error: ({ message }) => Decl.Error(message),
     }),
 };

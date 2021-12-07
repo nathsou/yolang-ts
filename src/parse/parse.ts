@@ -1,11 +1,12 @@
 import { match as matchVariant } from 'itsamatch';
 import { match, select } from 'ts-pattern';
-import { Decl, Expr, Stmt } from '../ast/sweet';
+import { Decl, Expr, Prog, Stmt } from '../ast/sweet';
 import { none, some } from '../utils/maybe';
 import { snd } from '../utils/misc';
 import { error, ok } from '../utils/result';
+import { takeWhile } from '../utils/array';
 import { Slice } from '../utils/slice';
-import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, many, map, mapParserResult, optional, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, seq, symbol, uninitialized } from './combinators';
+import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, leftAssoc, many, map, mapParserResult, optional, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
 import { Const, Token } from './token';
 
 const expr = uninitialized<Expr>();
@@ -46,6 +47,11 @@ const unit = map(seq(symbol('('), symbol(')')), () => Expr.Const(Const.unit()));
 
 const ident = satisfyBy<string>(token => matchVariant(token, {
   Identifier: ({ name }) => some(name),
+  _: () => none
+}));
+
+const upperIdent = satisfyBy<string>(token => matchVariant(token, {
+  Identifier: ({ name }) => name[0].toUpperCase() === name[0] ? some(name) : none,
   _: () => none
 }));
 
@@ -143,12 +149,45 @@ const primary = alt(
   // unexpected
 );
 
+// TODO: cleanup and support struct access
+const attributeAccess = map(
+  map(
+    seq(
+      ident,
+      symbol('.'),
+      expectOrDefault(sepBy(symbol('.'))(ident), `Expected identifier after '.'`, []),
+    ),
+    ([name, _, members]) => [name, ...members],
+  ),
+  path => {
+    const modulePath = takeWhile(path, p => p[0].toUpperCase() === p[0]);
+
+    if (modulePath.length === 0) {
+      throw new Error(`Expected module path`);
+    }
+
+    const members = path.slice(modulePath.length);
+
+    if (members.length !== 1) {
+      throw new Error(`Expected single member`);
+    }
+
+    return Expr.ModuleAccess(modulePath, members[0]);
+  }
+);
+
+// e.g Main.Yolo.yo
+const moduleAccess = alt(
+  attributeAccess,
+  primary
+);
+
 const app = alt(
   map(
-    seq(primary, parens(optional(commas(expr)))),
+    seq(moduleAccess, parens(optional(commas(expr)))),
     ([lhs, args]) => Expr.Call(lhs, args.orDefault([])),
   ),
-  primary
+  moduleAccess
 );
 
 const factor = app;
@@ -296,22 +335,25 @@ const funcDecl = map(
   ([_, name, args, body]) => Decl.Function(name, args.orDefault([]), body)
 );
 
-initParser(decl, funcDecl);
+const moduleDecl = alt(
+  map(
+    seq(
+      keyword('module'),
+      expectOrDefault(upperIdent, `Expected an uppercase identifier after 'module' keyword`, '<?>'),
+      curlyBrackets(many(decl)),
+    ),
+    ([_, name, decls]) => Decl.Module(name, decls)
+  ),
+  funcDecl
+);
 
-export const parseExpr = (tokens: Slice<Token>): [Expr, ParserError[]] => {
-  const [res, _, errs] = consumeAll(expr).ref(tokens);
+initParser(decl, moduleDecl);
 
-  return res.match({
-    Ok: expr => [expr, errs],
-    Error: err => [Expr.Error(err.message), [...errs, err]],
-  });
-};
-
-export const parseProg = (tokens: Slice<Token>): [Decl[], ParserError[]] => {
-  const [res, _, errs] = consumeAll(many(decl)).ref(tokens);
+export const parse = (tokens: Slice<Token>): [Prog, ParserError[]] => {
+  const [res, _, errs] = consumeAll(many(moduleDecl)).ref(tokens);
 
   return res.match({
     Ok: decls => [decls, errs],
-    Error: err => [[Decl.Error(err.message)], [...errs, err]],
+    Error: err => [[], [...errs, err]],
   });
 };

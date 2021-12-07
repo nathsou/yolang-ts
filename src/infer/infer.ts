@@ -2,6 +2,7 @@ import { match as matchVariant, VariantOf } from 'itsamatch';
 import { Decl, Expr, Prog, Stmt } from '../ast/bitter';
 import { BinaryOperator, UnaryOperator } from '../ast/sweet';
 import { zip } from '../utils/array';
+import { Maybe, none, some } from '../utils/maybe';
 import { proj } from '../utils/misc';
 import { Env } from './env';
 import { MonoTy, PolyTy } from './types';
@@ -39,11 +40,47 @@ const binaryOpSignature: Record<BinaryOperator, PolyTy> = {
   '||': logicalOpSig,
 };
 
-export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingError[] => {
+
+type TypeContext = {
+  env: Env,
+  modules: Record<string, VariantOf<Decl, 'Module'>>,
+};
+
+const TypeContext = {
+  make: () => ({ env: Env.make(), modules: {} }),
+  clone: (ctx: TypeContext) => ({ env: Env.clone(ctx.env), modules: { ...ctx.modules } }),
+  declareModule: (ctx: TypeContext, mod: VariantOf<Decl, 'Module'>): void => {
+    ctx.modules[mod.name] = mod;
+  },
+  // TODO: cleanup
+  resolveModule: (ctx: TypeContext, path: string[]): Maybe<VariantOf<Decl, 'Module'>> => {
+    let members: Record<string, Decl> = ctx.modules;
+    let mod: VariantOf<Decl, 'Module'> | undefined;
+
+    for (const name of path) {
+      const decl = members[name];
+      if (decl !== undefined && decl.variant === 'Module') {
+        mod = decl;
+        members = mod.members;
+      } else {
+        return none;
+      }
+    }
+
+    return mod ? some(mod) : none;
+  },
+};
+
+export const inferExpr = (
+  expr: Expr,
+  ctx: TypeContext,
+  errors: TypingError[]
+): TypingError[] => {
   const unify = (s: MonoTy, t: MonoTy): void => {
     errors.push(...unif(s, t).map(err => err + ' in ' + Expr.showSweet(expr)));
   };
 
+  const { env } = ctx;
   const tau = expr.ty;
 
   matchVariant(expr, {
@@ -60,22 +97,22 @@ export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingEr
       });
     },
     UnaryOp: ({ op, expr }) => {
-      inferExpr(expr, env, errors);
+      inferExpr(expr, ctx, errors);
       const opTy1 = PolyTy.instantiate(unaryOpSignature[op]);
       const opTy2 = MonoTy.TyFun([expr.ty], tau);
       unify(opTy1, opTy2);
     },
     BinaryOp: ({ lhs, op, rhs }) => {
-      inferExpr(lhs, env, errors);
-      inferExpr(rhs, env, errors);
+      inferExpr(lhs, ctx, errors);
+      inferExpr(rhs, ctx, errors);
       const opTy1 = PolyTy.instantiate(binaryOpSignature[op]);
       const opTy2 = MonoTy.TyFun([lhs.ty, rhs.ty], tau);
       unify(opTy1, opTy2);
     },
     Call: ({ lhs, args }) => {
-      inferExpr(lhs, env, errors);
+      inferExpr(lhs, ctx, errors);
       args.forEach(arg => {
-        inferExpr(arg, env, errors);
+        inferExpr(arg, ctx, errors);
       });
       const expectedFunTy = lhs.ty;
       const actualFunTy = MonoTy.TyFun(args.map(proj('ty')), tau);
@@ -83,9 +120,9 @@ export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingEr
       unify(expectedFunTy, actualFunTy);
     },
     Block: ({ statements }) => {
-      const newEnv = { ...env };
+      const newCtx = TypeContext.clone(ctx);
       for (const stmt of statements) {
-        inferStmt(stmt, newEnv, errors);
+        inferStmt(stmt, newCtx, errors);
       }
 
       const last = statements[statements.length - 1];
@@ -97,10 +134,10 @@ export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingEr
       unify(tau, lastTy);
     },
     IfThenElse: ({ condition, then, else_ }) => {
-      inferExpr(condition, env, errors);
-      inferExpr(then, env, errors);
+      inferExpr(condition, ctx, errors);
+      inferExpr(then, ctx, errors);
       else_.match({
-        Some: e => inferExpr(e, env, errors),
+        Some: e => inferExpr(e, ctx, errors),
         None: () => { },
       });
 
@@ -112,8 +149,8 @@ export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingEr
       unify(elseTy, tau);
     },
     Assignment: ({ lhs, rhs }) => {
-      inferExpr(lhs, env, errors);
-      inferExpr(rhs, env, errors);
+      inferExpr(lhs, ctx, errors);
+      inferExpr(rhs, ctx, errors);
       const lhsTy = lhs.ty;
       const rhsTy = rhs.ty;
       unify(lhsTy, rhsTy);
@@ -135,11 +172,34 @@ export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingEr
         Env.addMono(env, arg.name, ty);
       }
 
-      inferExpr(body, env, errors);
+      inferExpr(body, ctx, errors);
       const retTy = body.ty;
       const funTy = MonoTy.TyFun(argTys, retTy);
       unify(tau, funTy);
     },
+    ModuleAccess: ({ path, member }) => {
+      TypeContext.resolveModule(ctx, path).match({
+        Some: mod => {
+          if (member in mod.members) {
+            const m = mod.members[member];
+            matchVariant(m, {
+              Function: ({ funTy }) => {
+                const instTy = PolyTy.instantiate(funTy);
+                unify(instTy, tau);
+              },
+              _: () => {
+                errors.push(`member '${path.join('.')}.${member}' is not a function`);
+              },
+            });
+          } else {
+            errors.push(`'${member}' in not a member of module '${path.join('.')}'`);
+          }
+        },
+        None: () => {
+          errors.push(`module '${path.join('.')}' is not in scope`);
+        },
+      });
+    },
     Error: ({ message }) => {
       errors.push(message);
     },
@@ -148,17 +208,17 @@ export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingEr
   return errors;
 };
 
-export const inferStmt = (stmt: Stmt, env: Env, errors: TypingError[]): TypingError[] => {
+export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: TypingError[]): TypingError[] => {
   matchVariant(stmt, {
     Let: ({ name, expr }) => {
-      Env.addMono(env, name.original, name.ty);
-      inferExpr(expr, env, errors);
+      Env.addMono(ctx.env, name.original, name.ty);
+      inferExpr(expr, ctx, errors);
       const varTy = name.ty;
-      const genTy = MonoTy.generalize(env, varTy);
-      Env.addPoly(env, name.original, genTy);
+      const genTy = MonoTy.generalize(ctx.env, varTy);
+      Env.addPoly(ctx.env, name.original, genTy);
     },
     Expr: ({ expr }) => {
-      inferExpr(expr, env, errors);
+      inferExpr(expr, ctx, errors);
     },
     Error: ({ message }) => {
       errors.push(message);
@@ -168,16 +228,17 @@ export const inferStmt = (stmt: Stmt, env: Env, errors: TypingError[]): TypingEr
   return errors;
 };
 
-export const inferDecl = (decl: Decl, env: Env, errors: TypingError[]): TypingError[] => {
+export const inferDecl = (decl: Decl, ctx: TypeContext, errors: TypingError[]): TypingError[] => {
   matchVariant(decl, {
-    Function: ({ name, args, body }) => {
-      const bodyEnv = Env.clone(env);
+    Function: func => {
+      const { name, args, body } = func;
+      const bodyCtx = TypeContext.clone(ctx);
 
       args.forEach(arg => {
-        Env.addMono(bodyEnv, arg.name.original, arg.name.ty);
+        Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
       });
 
-      inferExpr(body, bodyEnv, errors);
+      inferExpr(body, bodyCtx, errors);
 
       const funTy = MonoTy.TyFun(
         args.map(({ name: arg }) => arg.ty),
@@ -186,9 +247,31 @@ export const inferDecl = (decl: Decl, env: Env, errors: TypingError[]): TypingEr
 
       errors.push(...unif(funTy, name.ty));
 
-      const genFunTy = MonoTy.generalize(env, funTy);
-      (decl as VariantOf<Decl, 'Function'>).funTy = genFunTy;
-      Env.addPoly(env, name.original, genFunTy);
+      const genFunTy = MonoTy.generalize(ctx.env, funTy);
+      func.funTy = genFunTy;
+      Env.addPoly(ctx.env, name.original, genFunTy);
+    },
+    Module: mod => {
+      TypeContext.declareModule(ctx, mod);
+      const modCtx = TypeContext.clone(ctx);
+
+      // declare all the functions and modules so
+      // that they can be used before being defined
+      for (const decl of mod.decls) {
+        matchVariant(decl, {
+          Function: ({ name, funTy }) => {
+            Env.addPoly(modCtx.env, name.original, funTy);
+          },
+          Module: subMod => {
+            inferDecl(subMod, modCtx, errors);
+          },
+          _: () => { },
+        });
+      }
+
+      for (const decl of mod.decls) {
+        inferDecl(decl, modCtx, errors);
+      }
     },
     Error: ({ message }) => {
       errors.push(message);
@@ -200,22 +283,10 @@ export const inferDecl = (decl: Decl, env: Env, errors: TypingError[]): TypingEr
 
 export const infer = (prog: Prog): TypingError[] => {
   const errors: TypingError[] = [];
-  const env: Env = Env.make();
+  const topModule = Decl.Module('top', prog);
+  const ctx = TypeContext.make();
 
-  // declare all the functions so
-  // that they can be called before being defined
-
-  for (const decl of prog) {
-    if (decl.variant === 'Function') {
-      Env.addMono(env, decl.name.original, decl.name.ty);
-    }
-  }
-
-  for (const decl of prog) {
-    inferDecl(decl, env, errors);
-  }
-
-  console.log(Env.show(env));
+  inferDecl(topModule, ctx, errors);
 
   return errors;
 };

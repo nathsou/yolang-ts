@@ -22,6 +22,7 @@ export type Expr = DataType<{
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
   Assignment: { lhs: Expr, rhs: Expr },
   CompoundAssignment: { lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr },
+  ModuleAccess: { path: string[], member: string },
 }>;
 
 export const Expr = {
@@ -36,6 +37,7 @@ export const Expr = {
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>): Expr => ({ variant: 'IfThenElse', condition, then, else_ }),
   Assignment: (lhs: Expr, rhs: Expr): Expr => ({ variant: 'Assignment', lhs, rhs }),
   CompoundAssignment: (lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr): Expr => ({ variant: 'CompoundAssignment', lhs, op, rhs }),
+  ModuleAccess: (path: string[], member: string): Expr => ({ variant: 'ModuleAccess', path, member }),
   show: (expr: Expr): string => matchVariant(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
@@ -48,6 +50,7 @@ export const Expr = {
     IfThenElse: ({ condition, then, else_ }) => `if ${Expr.show(condition)} ${Expr.show(then)}${else_.map(e => ` else ${Expr.show(e)}`).orDefault('')}`,
     Assignment: ({ lhs, rhs }) => `${Expr.show(lhs)} = ${Expr.show(rhs)}`,
     CompoundAssignment: ({ lhs, op, rhs }) => `${Expr.show(lhs)} ${op} ${Expr.show(rhs)}`,
+    ModuleAccess: ({ path, member }) => `${path.join('.')}.${member}`,
   }),
 };
 
@@ -70,14 +73,17 @@ export const Stmt = {
 
 export type Decl = DataType<{
   Function: { name: string, args: { name: string, mutable: boolean }[], body: Expr },
+  Module: { name: string, decls: Decl[] },
   Error: { message: string },
 }>;
 
 export const Decl = {
   Function: (name: string, args: { name: string, mutable: boolean }[], body: Expr): Decl => ({ variant: 'Function', name, args, body }),
+  Module: (name: string, decls: Decl[]): Decl => ({ variant: 'Module', name, decls }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   show: (decl: Decl): string => matchVariant(decl, {
     Function: ({ name, args, body }) => `fn ${name}(${joinWith(args, ({ name, mutable }) => `${mutable ? 'mut ' : ''}${name}`, ', ')}) ${Expr.show(body)}`,
+    Module: ({ name, decls }) => `module ${name} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     Error: ({ message }) => `<Error: ${message}>`,
   }),
 };

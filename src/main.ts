@@ -1,56 +1,83 @@
-import { Prog } from "./ast/bitter";
+import { Decl, Prog } from "./ast/bitter";
 import { infer } from "./infer/infer";
 import { formatError } from "./parse/combinators";
 import { lex } from "./parse/lex";
-import { parseProg } from "./parse/parse";
+import { parse } from "./parse/parse";
 import { Slice } from "./utils/slice";
+import { match as matchVariant } from "itsamatch";
+import { PolyTy } from "./infer/types";
 
 // pipeline:
 // <string> -> parse -> <sweet> -> desugar & resolve modules -> <bitter> -> infer ->
 // monomorphize -> inject reference counting -> emit code
 
-const parse = (source: string): Prog => {
+const run = (source: string): Prog => {
   const tokens = lex(source);
-  const [decls, errs] = parseProg(Slice.from(tokens));
+  const [decls, parsingErrors] = parse(Slice.from(tokens));
 
-  if (errs.length > 0) {
-    errs.forEach(err => console.error(formatError(err, tokens)));
+  if (parsingErrors.length > 0) {
+    parsingErrors.forEach(err => console.error(formatError(err, tokens)));
     console.log('');
   }
 
-  return Prog.fromSweet(decls);
+  const prog = Prog.fromSweet(decls);
+  const typingErrors = infer(prog);
+
+  if (typingErrors.length > 0) {
+    console.log(typingErrors);
+  }
+
+  return prog;
 };
 
-const prog = parse(`
-  fn id(x) { x }
+const prog = run(`
+  module Yo {
+    fn yo() {
+      1
+    }
 
-  fn abs(x) {
-    if x < 0 { -x } else { x }
+    fn lo() {
+      Lo.hey()
+    }
+
+    module Lo {
+      fn hey() {
+        true
+      }
+    }
+  }
+  
+  fn run() {
+    Main.main()
   }
 
-  fn fact(n) {
-    if n == 0 { 1 } else { n * fact(n - 1) }
-  }
+  module Main {
+    fn id(x) { x }
 
-  fn odd(n) {
-    if n == 0 { false } else { even(n - 1) }
-  }
-
-  fn even(n) {
-    if n == 0 { true } else { odd(n - 1) }
-  }
-
-  fn add(a, b) { a + b }
-
-  fn main() {
-    id(abs(-7))
-    id(even(fact(11)))
-    mut a = 7
-    a += 2;
-    ()
+    fn main() {
+      id(Yo.yo())
+      id(Yo.Lo.hey())
+    }
   }
 `);
 
-const errs = infer(prog);
+const showFunTypes = (decls: Decl[]): string[] => {
+  const types: string[] = [];
 
-console.log(errs);
+  for (const decl of decls) {
+    matchVariant(decl, {
+      Function: ({ name, funTy }) => {
+        types.push(name.original + ': ' + PolyTy.show(funTy));
+      },
+      Module: mod => {
+        const fns = showFunTypes(mod.decls);
+        types.push(...fns.map(t => mod.name + '.' + t));
+      },
+      _: () => { },
+    });
+  }
+
+  return types;
+};
+
+console.log(showFunTypes(prog).join('\n'));
