@@ -61,11 +61,11 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
 
           eqs.push([s.ret, t.ret]);
         } else {
-          errors.push(`cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`);
+          errors.push(`wrong number of arguments`);
         }
       })
       .otherwise(([s, t]) => {
-        errors.push(`unhandled case in unify: (${MonoTy.show(s)}, ${MonoTy.show(t)})`);
+        errors.push(`cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`);
       });
   }
 

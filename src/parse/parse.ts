@@ -42,6 +42,8 @@ const bool = satisfyBy<Expr>(token =>
     .otherwise(() => none)
 );
 
+const unit = map(seq(symbol('('), symbol(')')), () => Expr.Const(Const.unit()));
+
 const ident = satisfyBy<string>(token => matchVariant(token, {
   Identifier: ({ name }) => some(name),
   _: () => none
@@ -123,7 +125,7 @@ const assignmentOp = alt(
   map(symbol('/='), () => '/=' as const),
   map(symbol('%='), () => '%=' as const),
   map(symbol('&&='), () => '&&=' as const),
-  map(symbol('||='), () => '&&=' as const),
+  map(symbol('||='), () => '||=' as const),
 );
 
 const variable = map(ident, Expr.Variable);
@@ -133,6 +135,7 @@ const block: Parser<Expr> = map(curlyBrackets(many(stmt)), Expr.Block);
 const primary = alt(
   integer,
   bool,
+  unit,
   variable,
   parens(expectOrDefault(expr, `Expected expression after '('`, Expr.Error)),
   block,

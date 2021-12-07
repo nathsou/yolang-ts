@@ -45,21 +45,21 @@ const NameEnv = {
   },
 };
 
-type WithSweetRef<T> = {
-  [K in keyof T]: T[K] & { sweet: SweetExpr }
+type WithSweetRefAndType<T> = {
+  [K in keyof T]: T[K] & { sweet: SweetExpr, ty: MonoTy }
 };
 
-export type Expr = DataType<WithSweetRef<{
+export type Expr = DataType<WithSweetRefAndType<{
   Const: { value: Const },
-  Variable: { name: Name, ty: MonoTy },
-  Call: { lhs: Expr, args: Expr[], ty: MonoTy },
-  BinaryOp: { lhs: Expr, op: BinaryOperator, rhs: Expr, ty: MonoTy },
-  UnaryOp: { op: UnaryOperator, expr: Expr, ty: MonoTy },
-  Error: { message: string, ty: MonoTy },
-  Closure: { args: { name: string, mutable: boolean }[], body: Expr, ty: MonoTy },
-  Block: { statements: Stmt[], ty: MonoTy },
-  IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr>, ty: MonoTy },
-  Assignment: { lhs: Expr, rhs: Expr, ty: MonoTy },
+  Variable: { name: Name },
+  Call: { lhs: Expr, args: Expr[] },
+  BinaryOp: { lhs: Expr, op: BinaryOperator, rhs: Expr },
+  UnaryOp: { op: UnaryOperator, expr: Expr },
+  Error: { message: string },
+  Closure: { args: { name: string, mutable: boolean }[], body: Expr },
+  Block: { statements: Stmt[] },
+  IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
+  Assignment: { lhs: Expr, rhs: Expr },
 }>>;
 
 const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet: SweetExpr } => ({
@@ -69,18 +69,27 @@ const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet:
 });
 
 export const Expr = {
-  Const: (c: Const, sweet: SweetExpr): Expr => typed({ variant: 'Const', value: c }, sweet),
+  Const: (c: Const, sweet: SweetExpr): Expr => ({
+    variant: 'Const',
+    value: c,
+    sweet,
+    ty: matchVariant(c, {
+      u32: MonoTy.u32,
+      bool: MonoTy.bool,
+      unit: MonoTy.unit,
+    }),
+  }),
   Variable: (name: Name, sweet: SweetExpr): Expr => typed({ variant: 'Variable', name }, sweet),
   Call: (lhs: Expr, args: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Call', lhs, args }, sweet),
   BinaryOp: (lhs: Expr, op: BinaryOperator, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'BinaryOp', lhs, op, rhs }, sweet),
   UnaryOp: (op: UnaryOperator, expr: Expr, sweet: SweetExpr): Expr => typed({ variant: 'UnaryOp', op, expr }, sweet),
-  Error: (message: string, sweet: SweetExpr): Expr => typed({ variant: 'Error', message }, sweet),
+  Error: (message: string, sweet: SweetExpr): Expr => ({ variant: 'Error', message, sweet, ty: MonoTy.unit() }),
   Closure: (args: { name: string, mutable: boolean }[], body: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Closure', args, body }, sweet),
   Block: (statements: Stmt[], sweet: SweetExpr): Expr => typed({ variant: 'Block', statements }, sweet),
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>, sweet: SweetExpr): Expr => typed({ variant: 'IfThenElse', condition, then, else_ }, sweet),
   Assignment: (lhs: Expr, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Assignment', lhs, rhs }, sweet),
-  fromSweet: (sweet: SweetExpr, nameEnv: NameEnv): Expr => {
-    return matchVariant(sweet, {
+  fromSweet: (sweet: SweetExpr, nameEnv: NameEnv): Expr =>
+    matchVariant(sweet, {
       Const: ({ value }) => Expr.Const(value, sweet),
       Variable: ({ name }) => Expr.Variable(NameEnv.resolve(nameEnv, name), sweet),
       Call: ({ lhs, args }) => Expr.Call(Expr.fromSweet(lhs, nameEnv), args.map(arg => Expr.fromSweet(arg, nameEnv)), sweet),
@@ -118,27 +127,7 @@ export const Expr = {
           sweet
         );
       },
-    });
-  },
-  ty: (expr: Expr): MonoTy => {
-    const ty = matchVariant(expr, {
-      Const: ({ value: c }) => matchVariant(c, {
-        u32: MonoTy.u32,
-        bool: MonoTy.bool,
-      }),
-      Variable: ({ ty }) => ty,
-      Call: ({ ty }) => ty,
-      UnaryOp: ({ ty }) => ty,
-      BinaryOp: ({ ty }) => ty,
-      Error: MonoTy.unit,
-      Closure: ({ ty }) => ty,
-      Block: ({ ty }) => ty,
-      IfThenElse: ({ ty }) => ty,
-      Assignment: ({ ty }) => ty,
-    });
-
-    return ty;
-  },
+    }),
   showSweet: (expr: Expr): string => SweetExpr.show(expr.sweet),
 };
 

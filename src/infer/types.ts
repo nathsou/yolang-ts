@@ -34,7 +34,7 @@ export const MonoTy = {
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
   u32: () => MonoTy.TyConst('u32'),
   bool: () => MonoTy.TyConst('bool'),
-  unit: () => MonoTy.TyConst('unit'),
+  unit: () => MonoTy.TyConst('()'),
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
     matchVariant(ty, {
       TyVar: ({ value }) => {

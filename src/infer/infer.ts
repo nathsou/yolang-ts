@@ -2,6 +2,7 @@ import { match as matchVariant, VariantOf } from 'itsamatch';
 import { Decl, Expr, Prog, Stmt } from '../ast/bitter';
 import { BinaryOperator, UnaryOperator } from '../ast/sweet';
 import { zip } from '../utils/array';
+import { proj } from '../utils/misc';
 import { Env } from './env';
 import { MonoTy, PolyTy } from './types';
 import { unify as unif } from './unification';
@@ -43,7 +44,7 @@ export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingEr
     errors.push(...unif(s, t).map(err => err + ' in ' + Expr.showSweet(expr)));
   };
 
-  const tau = Expr.ty(expr);
+  const tau = expr.ty;
 
   matchVariant(expr, {
     Const: () => { },
@@ -61,14 +62,14 @@ export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingEr
     UnaryOp: ({ op, expr }) => {
       inferExpr(expr, env, errors);
       const opTy1 = PolyTy.instantiate(unaryOpSignature[op]);
-      const opTy2 = MonoTy.TyFun([Expr.ty(expr)], tau);
+      const opTy2 = MonoTy.TyFun([expr.ty], tau);
       unify(opTy1, opTy2);
     },
     BinaryOp: ({ lhs, op, rhs }) => {
       inferExpr(lhs, env, errors);
       inferExpr(rhs, env, errors);
       const opTy1 = PolyTy.instantiate(binaryOpSignature[op]);
-      const opTy2 = MonoTy.TyFun([Expr.ty(lhs), Expr.ty(rhs)], tau);
+      const opTy2 = MonoTy.TyFun([lhs.ty, rhs.ty], tau);
       unify(opTy1, opTy2);
     },
     Call: ({ lhs, args }) => {
@@ -76,8 +77,8 @@ export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingEr
       args.forEach(arg => {
         inferExpr(arg, env, errors);
       });
-      const expectedFunTy = Expr.ty(lhs);
-      const actualFunTy = MonoTy.TyFun(args.map(Expr.ty), tau);
+      const expectedFunTy = lhs.ty;
+      const actualFunTy = MonoTy.TyFun(args.map(proj('ty')), tau);
 
       unify(expectedFunTy, actualFunTy);
     },
@@ -90,7 +91,7 @@ export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingEr
       const last = statements[statements.length - 1];
       const lastTy = last ?
         (last.variant === 'Expr' ?
-          Expr.ty(last.expr) : MonoTy.unit()
+          last.expr.ty : MonoTy.unit()
         ) : MonoTy.unit();
 
       unify(tau, lastTy);
@@ -103,18 +104,18 @@ export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingEr
         None: () => { },
       });
 
-      const condTy = Expr.ty(condition);
+      const condTy = condition.ty;
       unify(condTy, MonoTy.bool());
-      const thenTy = Expr.ty(then);
-      const elseTy = else_.mapWithDefault(Expr.ty, MonoTy.unit());
+      const thenTy = then.ty;
+      const elseTy = else_.mapWithDefault(proj('ty'), MonoTy.unit());
       unify(thenTy, tau);
       unify(elseTy, tau);
     },
     Assignment: ({ lhs, rhs }) => {
       inferExpr(lhs, env, errors);
       inferExpr(rhs, env, errors);
-      const lhsTy = Expr.ty(lhs);
-      const rhsTy = Expr.ty(rhs);
+      const lhsTy = lhs.ty;
+      const rhsTy = rhs.ty;
       unify(lhsTy, rhsTy);
       unify(tau, MonoTy.unit());
 
@@ -135,7 +136,7 @@ export const inferExpr = (expr: Expr, env: Env, errors: TypingError[]): TypingEr
       }
 
       inferExpr(body, env, errors);
-      const retTy = Expr.ty(body);
+      const retTy = body.ty;
       const funTy = MonoTy.TyFun(argTys, retTy);
       unify(tau, funTy);
     },
@@ -180,7 +181,7 @@ export const inferDecl = (decl: Decl, env: Env, errors: TypingError[]): TypingEr
 
       const funTy = MonoTy.TyFun(
         args.map(({ name: arg }) => arg.ty),
-        Expr.ty(body)
+        body.ty
       );
 
       errors.push(...unif(funTy, name.ty));

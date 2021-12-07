@@ -5,6 +5,10 @@ import { lex } from "./parse/lex";
 import { parseProg } from "./parse/parse";
 import { Slice } from "./utils/slice";
 
+// pipeline:
+// <string> -> parse -> <sweet> -> desugar & resolve modules -> <bitter> -> infer ->
+// monomorphize -> inject reference counting -> emit code
+
 const parse = (source: string): Prog => {
   const tokens = lex(source);
   const [decls, errs] = parseProg(Slice.from(tokens));
@@ -17,7 +21,7 @@ const parse = (source: string): Prog => {
   return Prog.fromSweet(decls);
 };
 
-const decls = parse(`
+const prog = parse(`
   fn id(x) { x }
 
   fn abs(x) {
@@ -36,14 +40,17 @@ const decls = parse(`
     if n == 0 { true } else { odd(n - 1) }
   }
 
+  fn add(a, b) { a + b }
+
   fn main() {
     id(abs(-7))
     id(even(fact(11)))
     mut a = 7
-    a += 2
+    a += 2;
+    ()
   }
 `);
 
-const errs = infer(decls);
+const errs = infer(prog);
 
 console.log(errs);

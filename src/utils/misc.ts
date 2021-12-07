@@ -20,3 +20,8 @@ export const cond = <T>(
 ): T => {
   return condition ? branches.then() : branches.else();
 };
+
+// projection
+export const proj = <T, K extends keyof T>(key: K): (data: T) => T[K] => {
+  return (data: T) => data[key];
+};

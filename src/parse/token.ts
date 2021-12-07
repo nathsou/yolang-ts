@@ -1,5 +1,5 @@
 import { DataType, genConstructors, VariantOf, match as matchVariant } from "itsamatch";
-import { match } from 'ts-pattern';
+import { match, __ } from 'ts-pattern';
 
 export type Token = DataType<{
   Symbol: { value: Symbol },
@@ -73,18 +73,26 @@ export const Keyword = {
 export type Const = DataType<{
   u32: { value: number },
   bool: { value: boolean },
+  unit: {},
 }>;
 
-const { u32, bool } = genConstructors<Const>()('u32', 'bool');
+const { u32, bool, unit } = genConstructors<Const>()('u32', 'bool', 'unit');
 
 export const Const = {
   u32: (value: number) => u32({ value }),
   bool: (value: boolean) => bool({ value }),
+  unit: () => unit({}),
   show: (c: Const) => matchVariant(c, {
     u32: ({ value }) => `${value}`,
     bool: ({ value }) => `${value}`,
+    unit: () => '()',
   }),
-  eq: (a: Const, b: Const) => a.variant === b.variant && a.value === b.value,
+  eq: (a: Const, b: Const) =>
+    match<[Const, Const]>([a, b])
+      .with([{ variant: 'u32' }, { variant: 'u32' }], ([a, b]) => a.value === b.value)
+      .with([{ variant: 'bool' }, { variant: 'bool' }], ([a, b]) => a.value === b.value)
+      .with([{ variant: 'unit' }, { variant: 'unit' }], () => true)
+      .otherwise(() => false),
 };
 
 const spaces = {
