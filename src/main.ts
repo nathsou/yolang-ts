@@ -46,9 +46,39 @@ const prog = run(`
       }
     }
   }
+
+  module Math {
+    fn abs(x) {
+      if x < 0 { -x } else { x }
+    }
+
+    fn add(a, b) {
+      a + b
+    }
+
+    fn max(a, b) {
+      if a > b { a } else { b }
+    }
+
+    fn min(a, b) {
+      if a < b { a } else { b }
+    }
+
+    fn clamp(x, low, upp) {
+      min(max(x, low), upp)
+    }
+
+    fn odd(n) {
+      if n == 0 { false } else { even(n - 1) }
+    }
+
+    fn even(n) {
+      if n == 0 { true } else { odd(n - 1) }
+    }
+  }
   
   fn run() {
-    Main.main()
+    (1, true, 2, 3, true, false)
   }
 
   module Main {
@@ -57,6 +87,7 @@ const prog = run(`
     fn main() {
       id(Yo.yo())
       id(Yo.Lo.hey())
+      Math.clamp(218, 0, 127)
     }
   }
 `);

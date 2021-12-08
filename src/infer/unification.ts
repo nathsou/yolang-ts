@@ -61,7 +61,16 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
 
           eqs.push([s.ret, t.ret]);
         } else {
-          errors.push(`wrong number of arguments`);
+          const msg = (() => {
+            const len = s.args.length;
+            if (len === 0) {
+              return `expected no arguments, received ${t.args.length}`;
+            }
+
+            return `expected ${len} argument${len === 1 ? '' : 's'}, received ${t.args.length}`;
+          })();
+
+          errors.push(msg);
         }
       })
       .otherwise(([s, t]) => {

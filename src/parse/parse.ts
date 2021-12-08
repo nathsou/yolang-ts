@@ -6,7 +6,7 @@ import { snd } from '../utils/misc';
 import { error, ok } from '../utils/result';
 import { takeWhile } from '../utils/array';
 import { Slice } from '../utils/slice';
-import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, leftAssoc, many, map, mapParserResult, optional, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
+import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, leftAssoc, many, map, mapParserResult, oneOrMore, optional, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
 import { Const, Token } from './token';
 
 const expr = uninitialized<Expr>();
@@ -138,18 +138,37 @@ const variable = map(ident, Expr.Variable);
 
 const block: Parser<Expr> = map(curlyBrackets(many(stmt)), Expr.Block);
 
+const tupleOrParenthesizedExpr = map(
+  parens(
+    seq(
+      expectOrDefault(expr, `Expected expression after '('`, Expr.Error),
+      optional(
+        seq(
+          symbol(','),
+          expectOrDefault(commas(expr), `Expected expression in tuple after ','`, []),
+        )
+      )
+    )
+  ),
+  ([h, tl]) => tl.match({
+    Some: ([_, tl]) => tl.length > 0 ? Expr.Tuple([h, ...tl]) : h,
+    None: () => h,
+  })
+);
+
 const primary = alt(
   integer,
   bool,
   unit,
   variable,
-  parens(expectOrDefault(expr, `Expected expression after '('`, Expr.Error)),
+  tupleOrParenthesizedExpr,
   block,
   invalid,
   // unexpected
 );
 
 // TODO: cleanup and support struct access
+// think about how to handle static struct functions (Expr.StaticAccess?)
 const attributeAccess = map(
   map(
     seq(

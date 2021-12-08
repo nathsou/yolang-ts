@@ -61,6 +61,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
   Assignment: { lhs: Expr, rhs: Expr },
   ModuleAccess: { path: string[], member: string },
+  Tuple: { elements: Expr[] },
 }>>;
 
 const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet: SweetExpr } => ({
@@ -90,6 +91,7 @@ export const Expr = {
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>, sweet: SweetExpr): Expr => typed({ variant: 'IfThenElse', condition, then, else_ }, sweet),
   Assignment: (lhs: Expr, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Assignment', lhs, rhs }, sweet),
   ModuleAccess: (path: string[], member: string, sweet: SweetExpr): Expr => typed({ variant: 'ModuleAccess', path, member }, sweet),
+  Tuple: (elements: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Tuple', elements }, sweet),
   fromSweet: (sweet: SweetExpr, nameEnv: NameEnv): Expr =>
     matchVariant(sweet, {
       Const: ({ value }) => Expr.Const(value, sweet),
@@ -130,6 +132,7 @@ export const Expr = {
         );
       },
       ModuleAccess: ({ path, member }) => Expr.ModuleAccess(path, member, sweet),
+      Tuple: ({ elements }) => Expr.Tuple(elements.map(e => Expr.fromSweet(e, nameEnv)), sweet),
     }),
   showSweet: (expr: Expr): string => SweetExpr.show(expr.sweet),
 };

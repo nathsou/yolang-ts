@@ -2,7 +2,7 @@ import { DataType, match as matchVariant } from "itsamatch";
 import { match } from "ts-pattern";
 import { Context } from "../ast/context";
 import { joinWith } from "../utils/array";
-import { cond } from "../utils/misc";
+import { cond, matchString } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 
@@ -35,6 +35,7 @@ export const MonoTy = {
   u32: () => MonoTy.TyConst('u32'),
   bool: () => MonoTy.TyConst('bool'),
   unit: () => MonoTy.TyConst('()'),
+  tuple: (tys: MonoTy[]) => MonoTy.TyConst('tuple', ...tys),
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
     matchVariant(ty, {
       TyVar: ({ value }) => {
@@ -118,7 +119,10 @@ export const MonoTy = {
     },
     TyConst: ({ name, args }) => cond(args.length === 0, {
       then: () => name,
-      else: () => `${name}(${joinWith(args, MonoTy.show, ', ')})`,
+      else: () => matchString(name, {
+        'tuple': () => `(${joinWith(args, MonoTy.show, ', ')})`,
+        _: () => `(${name} ${joinWith(args, MonoTy.show, ', ')})`,
+      }),
     }),
     TyFun: ({ args, ret }) => cond(args.length === 1, {
       then: () => `${MonoTy.show(args[0])} -> ${MonoTy.show(ret)}`,

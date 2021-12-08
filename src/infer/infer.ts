@@ -192,13 +192,21 @@ export const inferExpr = (
               },
             });
           } else {
-            errors.push(`'${member}' in not a member of module '${path.join('.')}'`);
+            errors.push(`'${member}' is not a member of module '${path.join('.')}'`);
           }
         },
         None: () => {
           errors.push(`module '${path.join('.')}' is not in scope`);
         },
       });
+    },
+    Tuple: ({ elements }) => {
+      elements.forEach(e => {
+        inferExpr(e, ctx, errors);
+      });
+
+      const elemTys = elements.map(proj('ty'));
+      unify(tau, MonoTy.tuple(elemTys));
     },
     Error: ({ message }) => {
       errors.push(message);

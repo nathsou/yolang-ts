@@ -23,6 +23,7 @@ export type Expr = DataType<{
   Assignment: { lhs: Expr, rhs: Expr },
   CompoundAssignment: { lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr },
   ModuleAccess: { path: string[], member: string },
+  Tuple: { elements: Expr[] },
 }>;
 
 export const Expr = {
@@ -38,6 +39,7 @@ export const Expr = {
   Assignment: (lhs: Expr, rhs: Expr): Expr => ({ variant: 'Assignment', lhs, rhs }),
   CompoundAssignment: (lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr): Expr => ({ variant: 'CompoundAssignment', lhs, op, rhs }),
   ModuleAccess: (path: string[], member: string): Expr => ({ variant: 'ModuleAccess', path, member }),
+  Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
   show: (expr: Expr): string => matchVariant(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
@@ -51,6 +53,7 @@ export const Expr = {
     Assignment: ({ lhs, rhs }) => `${Expr.show(lhs)} = ${Expr.show(rhs)}`,
     CompoundAssignment: ({ lhs, op, rhs }) => `${Expr.show(lhs)} ${op} ${Expr.show(rhs)}`,
     ModuleAccess: ({ path, member }) => `${path.join('.')}.${member}`,
+    Tuple: ({ elements }) => `(${joinWith(elements, Expr.show, ', ')})`,
   }),
 };
 
