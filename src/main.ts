@@ -16,11 +16,18 @@ const run = (source: string): Prog => {
   const [decls, parsingErrors] = parse(Slice.from(tokens));
 
   if (parsingErrors.length > 0) {
-    parsingErrors.forEach(err => console.error(formatError(err, tokens)));
+    parsingErrors.forEach(err => {
+      console.error(formatError(err, tokens));
+    });
     console.log('');
   }
 
-  const prog = Prog.fromSweet(decls);
+  const [prog, bitterErrors] = Prog.fromSweet(decls);
+
+  if (bitterErrors.length > 0) {
+    console.log(bitterErrors);
+  }
+
   const typingErrors = infer(prog);
 
   if (typingErrors.length > 0) {
@@ -55,10 +62,8 @@ const prog = run(`
     }
   }
 
-  fn tup(x) {
-    match x {
-      (a, b, c) => a + b > 0 || c,
-    }
+  fn tup((a, b, c)) {
+    a + b > 0 || c
   }
 `);
 

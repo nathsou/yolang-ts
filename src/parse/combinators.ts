@@ -259,7 +259,7 @@ export const expectOrDefault = <T>(
   defaultValue: T | ((message: string) => T),
   recovery?: ParserError['recovery']
 ): Parser<T> => {
-  const defaultVal = typeof defaultValue === 'function' ? (defaultValue as any)(message) : defaultValue;
+  const defaultVal: T = typeof defaultValue === 'function' ? (defaultValue as any)(message) : defaultValue;
 
   return map(
     expect(p, message, recovery),

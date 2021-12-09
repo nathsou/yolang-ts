@@ -1,8 +1,8 @@
 import { match as matchVariant } from 'itsamatch';
 import { match, select } from 'ts-pattern';
-import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
+import { Argument, Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
 import { takeWhile } from '../utils/array';
-import { none, some } from '../utils/maybe';
+import { Maybe, none, some } from '../utils/maybe';
 import { snd } from '../utils/misc';
 import { error, ok } from '../utils/result';
 import { Slice } from '../utils/slice';
@@ -382,15 +382,15 @@ initParser(
   )
 );
 
-const argument = alt(
+const argument = alt<Argument>(
   map(
     seq(
       keyword('mut'),
-      expectOrDefault(ident, `Expected identifier after 'mut' keyword`, '<?>'),
+      expectOrDefault(pattern, `Expected a pattern after 'mut' keyword`, Pattern.Error),
     ),
-    ([_, name]) => ({ name, mutable: true })
+    ([_, pattern]) => ({ pattern, mutable: true })
   ),
-  map(ident, name => ({ name, mutable: false }))
+  map(pattern, pattern => ({ pattern, mutable: false }))
 );
 
 // DECLARATIONS

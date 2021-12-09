@@ -2,7 +2,7 @@ import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { MonoTy, PolyTy } from "../infer/types";
 import { Const } from "../parse/token";
 import { Maybe } from "../utils/maybe";
-import { BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Prog as SweetProg, Stmt as SweetStmt, Pattern as SweetPattern, UnaryOperator } from "./sweet";
+import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
 
 // Bitter expressions are *unsugared* representations
 // of the structure of yolang source code
@@ -86,6 +86,8 @@ export const Pattern = {
   }),
 };
 
+type Argument = { name: Name, mutable: boolean };
+
 export type Expr = DataType<WithSweetRefAndType<{
   Const: { value: Const },
   Variable: { name: Name },
@@ -93,7 +95,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   BinaryOp: { lhs: Expr, op: BinaryOperator, rhs: Expr },
   UnaryOp: { op: UnaryOperator, expr: Expr },
   Error: { message: string },
-  Closure: { args: { name: string, mutable: boolean }[], body: Expr },
+  Closure: { args: Argument[], body: Expr },
   Block: { statements: Stmt[] },
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
   Assignment: { lhs: Expr, rhs: Expr },
@@ -115,28 +117,37 @@ export const Expr = {
   BinaryOp: (lhs: Expr, op: BinaryOperator, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'BinaryOp', lhs, op, rhs }, sweet),
   UnaryOp: (op: UnaryOperator, expr: Expr, sweet: SweetExpr): Expr => typed({ variant: 'UnaryOp', op, expr }, sweet),
   Error: (message: string, sweet: SweetExpr): Expr => ({ variant: 'Error', message, sweet, ty: MonoTy.unit() }),
-  Closure: (args: { name: string, mutable: boolean }[], body: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Closure', args, body }, sweet),
+  Closure: (args: Argument[], body: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Closure', args, body }, sweet),
   Block: (statements: Stmt[], sweet: SweetExpr): Expr => typed({ variant: 'Block', statements }, sweet),
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>, sweet: SweetExpr): Expr => typed({ variant: 'IfThenElse', condition, then, else_ }, sweet),
   Assignment: (lhs: Expr, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Assignment', lhs, rhs }, sweet),
   ModuleAccess: (path: string[], member: string, sweet: SweetExpr): Expr => typed({ variant: 'ModuleAccess', path, member }, sweet),
   Tuple: (elements: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Tuple', elements }, sweet),
   Match: (expr: Expr, cases: { pattern: Pattern, body: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Match', expr, cases }, sweet),
-  fromSweet: (sweet: SweetExpr, nameEnv: NameEnv): Expr =>
-    matchVariant(sweet, {
+  fromSweet: (sweet: SweetExpr, nameEnv: NameEnv, errors: BitterConversionError[]): Expr => {
+    const go = (expr: SweetExpr, env = nameEnv) => Expr.fromSweet(expr, env, errors);
+
+    return matchVariant(sweet, {
       Const: ({ value }) => Expr.Const(value, sweet),
       Variable: ({ name }) => Expr.Variable(NameEnv.resolve(nameEnv, name), sweet),
-      Call: ({ lhs, args }) => Expr.Call(Expr.fromSweet(lhs, nameEnv), args.map(arg => Expr.fromSweet(arg, nameEnv)), sweet),
-      BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(Expr.fromSweet(lhs, nameEnv), op, Expr.fromSweet(rhs, nameEnv), sweet),
-      UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, Expr.fromSweet(expr, nameEnv), sweet),
+      Call: ({ lhs, args }) => Expr.Call(go(lhs), args.map(arg => go(arg)), sweet),
+      BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(go(lhs), op, go(rhs), sweet),
+      UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, go(expr), sweet),
       Error: ({ message }) => Expr.Error(message, sweet),
-      Closure: ({ args, body }) => Expr.Closure(args, Expr.fromSweet(body, nameEnv), sweet),
+      Closure: ({ args, body }) => {
+        const withoutPatterns = removeFuncArgsPatternMatching(args, body, nameEnv, errors);
+        return Expr.Closure(
+          withoutPatterns.args,
+          withoutPatterns.body,
+          sweet
+        );
+      },
       Block: ({ statements }) => {
         const newNameEnv = NameEnv.clone(nameEnv);
-        return Expr.Block(statements.map(s => Stmt.fromSweet(s, newNameEnv)), sweet);
+        return Expr.Block(statements.map(s => Stmt.fromSweet(s, newNameEnv, errors)), sweet);
       },
-      IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(Expr.fromSweet(condition, nameEnv), Expr.fromSweet(then, nameEnv), else_.map(e => Expr.fromSweet(e, nameEnv)), sweet),
-      Assignment: ({ lhs, rhs }) => Expr.Assignment(Expr.fromSweet(lhs, nameEnv), Expr.fromSweet(rhs, nameEnv), sweet),
+      IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(go), sweet),
+      Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs), sweet),
       CompoundAssignment: ({ lhs, op, rhs }): Expr => {
         const opMap: Record<CompoundAssignmentOperator, BinaryOperator> = {
           '+=': '+',
@@ -149,22 +160,23 @@ export const Expr = {
         };
 
         // syntactic sugar for: lhs = lhs op rhs
-        const bitterLhs = Expr.fromSweet(lhs, nameEnv);
+        const bitterLhs = go(lhs);
         return Expr.Assignment(
           bitterLhs,
           Expr.BinaryOp(
             bitterLhs,
             opMap[op],
-            Expr.fromSweet(rhs, nameEnv),
+            go(rhs),
             sweet
           ),
           sweet
         );
       },
       ModuleAccess: ({ path, member }) => Expr.ModuleAccess(path, member, sweet),
-      Tuple: ({ elements }) => Expr.Tuple(elements.map(e => Expr.fromSweet(e, nameEnv)), sweet),
-      Match: ({ expr, cases }) => Expr.Match(Expr.fromSweet(expr, nameEnv), cases.map(c => ({ pattern: Pattern.fromSweet(c.pattern, nameEnv), body: Expr.fromSweet(c.body, nameEnv) })), sweet),
-    }),
+      Tuple: ({ elements }) => Expr.Tuple(elements.map(e => go(e)), sweet),
+      Match: ({ expr, cases }) => Expr.Match(go(expr), cases.map(c => ({ pattern: Pattern.fromSweet(c.pattern, nameEnv), body: go(c.body) })), sweet),
+    });
+  },
   showSweet: (expr: Expr): string => SweetExpr.show(expr.sweet),
 };
 
@@ -178,14 +190,14 @@ export const Stmt = {
   Let: (name: Name, expr: Expr, mutable: boolean): Stmt => ({ variant: 'Let', name, expr, mutable }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
-  fromSweet: (sweet: SweetStmt, nameEnv: NameEnv): Stmt => {
+  fromSweet: (sweet: SweetStmt, nameEnv: NameEnv, errors: BitterConversionError[]): Stmt => {
     return matchVariant(sweet, {
       Let: ({ name, expr, mutable }) => Stmt.Let(
         NameEnv.declare(nameEnv, name, mutable),
-        Expr.fromSweet(expr, nameEnv),
+        Expr.fromSweet(expr, nameEnv, errors),
         mutable
       ),
-      Expr: ({ expr }) => Stmt.Expr(Expr.fromSweet(expr, nameEnv)),
+      Expr: ({ expr }) => Stmt.Expr(Expr.fromSweet(expr, nameEnv, errors)),
       Error: ({ message }) => Stmt.Error(message),
     });
   },
@@ -231,14 +243,17 @@ export const Decl = {
     return mod;
   },
   Error: (message: string): Decl => ({ variant: 'Error', message }),
-  fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean): Decl =>
+  fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: BitterConversionError[]): Decl =>
     matchVariant(sweet, {
-      Function: ({ name, args, body }) =>
-        Decl.Function(
+      Function: ({ name, args, body }) => {
+        const withoutPatterns = removeFuncArgsPatternMatching(args, body, nameEnv, errors);
+
+        return Decl.Function(
           declareFuncNames ? NameEnv.declare(nameEnv, name, false) : NameEnv.resolve(nameEnv, name),
-          args.map(({ name: arg, mutable }) => ({ name: NameEnv.declare(nameEnv, arg, mutable), mutable })),
-          Expr.fromSweet(body, nameEnv)
-        ),
+          withoutPatterns.args,
+          withoutPatterns.body
+        );
+      },
       Module: ({ name, decls }) => {
         const modEnv = NameEnv.clone(nameEnv);
 
@@ -250,7 +265,7 @@ export const Decl = {
 
         return Decl.Module(
           name,
-          decls.map(decl => Decl.fromSweet(decl, modEnv, false))
+          decls.map(decl => Decl.fromSweet(decl, modEnv, false, errors))
         );
       },
       Error: ({ message }) => Decl.Error(message),
@@ -259,8 +274,10 @@ export const Decl = {
 
 export type Prog = Decl[];
 
+type BitterConversionError = string;
+
 export const Prog = {
-  fromSweet: (prog: SweetProg): Prog => {
+  fromSweet: (prog: SweetProg): [prog: Prog, errors: BitterConversionError[]] => {
     const nameEnv = NameEnv.make();
 
     // declare all function names beforehand
@@ -271,10 +288,61 @@ export const Prog = {
       }
     }
 
-    return prog.map(decl => Decl.fromSweet(
+    const errors: BitterConversionError[] = [];
+
+    const bitterProg = prog.map(decl => Decl.fromSweet(
       decl,
       nameEnv,
-      false // do not redeclare function names
+      false, // do not redeclare function names
+      errors
     ));
+
+    return [bitterProg, errors];
   },
+};
+
+export const removeFuncArgsPatternMatching = (
+  args: SweetArgument[],
+  body: SweetExpr,
+  nameEnv: NameEnv,
+  errors: string[],
+): { args: Argument[], body: Expr } => {
+  const firstRefuttableArg = args.find(({ pattern }) => !SweetPattern.isIrrefutable(pattern));
+  if (firstRefuttableArg !== undefined) {
+    errors.push(`patterns in function arguments must be irrefutable, but ${SweetPattern.show(firstRefuttableArg.pattern)} is not`);
+  }
+
+  // we don't have to do anything if all the patterns are variables or _
+  if (args.every(arg => arg.pattern.variant === 'Variable' || arg.pattern.variant === 'Any')) {
+    return {
+      args: args.map(({ pattern, mutable }, index) => ({
+        name: NameEnv.declare(nameEnv, pattern.variant === 'Variable' ? pattern.name : `_${index}`, mutable),
+        mutable
+      })),
+      body: Expr.fromSweet(body, nameEnv, errors),
+    };
+  }
+
+  // transform (p1, p2, ...) -> body into (arg1, arg2, ...) -> match { (p1, p2, ...) => body }
+  // where arg1, arg2, ... are variables
+  const bodyEnv = NameEnv.make();
+  const varNames = args.map(({ mutable }, index) => NameEnv.declare(bodyEnv, `arg${index}`, mutable));
+  const matchedExpr = args.length === 0 ?
+    SweetExpr.Variable(varNames[0].original) :
+    SweetExpr.Tuple(varNames.map(name => SweetExpr.Variable(name.original)));
+
+  const pattern = args.length === 0 ?
+    args[0].pattern :
+    SweetPattern.Tuple(args.map(({ pattern }) => pattern));
+
+  const newBody = Expr.fromSweet(
+    SweetExpr.Match(matchedExpr, [{ pattern, body }]),
+    bodyEnv,
+    errors
+  );
+
+  return {
+    args: varNames.map(arg => ({ name: arg, mutable: arg.mutable })),
+    body: newBody,
+  };
 };

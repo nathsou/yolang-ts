@@ -1,7 +1,6 @@
 import { match as matchVariant, VariantOf } from 'itsamatch';
-import { Decl, Expr, Prog, Stmt, Pattern } from '../ast/bitter';
+import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
 import { BinaryOperator, UnaryOperator } from '../ast/sweet';
-import { Const } from '../parse/token';
 import { zip } from '../utils/array';
 import { Maybe, none, some } from '../utils/maybe';
 import { proj } from '../utils/misc';
@@ -40,7 +39,6 @@ const binaryOpSignature: Record<BinaryOperator, PolyTy> = {
   '&&': logicalOpSig,
   '||': logicalOpSig,
 };
-
 
 type TypeContext = {
   env: Env,
@@ -167,10 +165,10 @@ export const inferExpr = (
       }
     },
     Closure: ({ args, body }) => {
-      const argTys = args.map(arg => MonoTy.fresh());
+      const argTys = args.map(MonoTy.fresh);
 
       for (const [arg, ty] of zip(args, argTys)) {
-        Env.addMono(env, arg.name, ty);
+        Env.addMono(env, arg.name.original, ty);
       }
 
       inferExpr(body, ctx, errors);
