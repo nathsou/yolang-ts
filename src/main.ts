@@ -31,63 +31,33 @@ const run = (source: string): Prog => {
 };
 
 const prog = run(`
-  module Yo {
-    fn yo() {
-      1
+  module Logic {
+    fn and(a, b) {
+      match (a, b) {
+        (true, true) => true,
+        _ => false,
+      }
     }
-
-    fn lo() {
-      Lo.hey()
-    }
-
-    module Lo {
-      fn hey() {
-        true
+  
+    fn or(a, b) {
+      match (a, b) {
+        (true, _) => true,
+        (_, true) => true,
+        _ => false,
       }
     }
   }
 
-  module Math {
-    fn abs(x) {
-      if x < 0 { -x } else { x }
-    }
-
-    fn add(a, b) {
-      a + b
-    }
-
-    fn max(a, b) {
-      if a > b { a } else { b }
-    }
-
-    fn min(a, b) {
-      if a < b { a } else { b }
-    }
-
-    fn clamp(x, low, upp) {
-      min(max(x, low), upp)
-    }
-
-    fn odd(n) {
-      if n == 0 { false } else { even(n - 1) }
-    }
-
-    fn even(n) {
-      if n == 0 { true } else { odd(n - 1) }
+  fn factSquared(n) {
+    match n * n {
+      0 => 1,
+      n => n * factSquared(n - 1),
     }
   }
-  
-  fn run() {
-    (1, true, 2, 3, true, false)
-  }
 
-  module Main {
-    fn id(x) { x }
-
-    fn main() {
-      id(Yo.yo())
-      id(Yo.Lo.hey())
-      Math.clamp(218, 0, 127)
+  fn tup(x) {
+    match x {
+      (a, b, c) => a + b > 0 || c,
     }
   }
 `);

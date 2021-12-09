@@ -81,7 +81,9 @@ export const MonoTy = {
   },
   deref: (ty: MonoTy): MonoTy => {
     if (ty.variant === 'TyVar' && ty.value.kind === 'Link') {
-      return MonoTy.deref(ty.value.ref);
+      const ret = MonoTy.deref(ty.value.ref);
+      ty.value.ref = ret;
+      return ret;
     }
 
     return ty;
@@ -125,7 +127,10 @@ export const MonoTy = {
       }),
     }),
     TyFun: ({ args, ret }) => cond(args.length === 1, {
-      then: () => `${MonoTy.show(args[0])} -> ${MonoTy.show(ret)}`,
+      then: () =>
+        match(MonoTy.deref(args[0]))
+          .with({ variant: 'TyConst', name: 'tuple' }, () => `(${MonoTy.show(args[0])}) -> ${MonoTy.show(ret)}`)
+          .otherwise(a => `${MonoTy.show(a)} -> ${MonoTy.show(ret)}`),
       else: () => `(${joinWith(args, MonoTy.show, ', ')}) -> ${MonoTy.show(ret)}`,
     }),
   }),
@@ -139,11 +144,8 @@ export const MonoTy = {
         ([{ value: s }, { value: t }]) => s.id === t.id
       )
       .with(
-        [
-          { variant: 'TyVar', value: { kind: 'Link' } },
-          { variant: 'TyVar', value: { kind: 'Link' } },
-        ],
-        ([{ value: s }, { value: t }]) => MonoTy.eq(s.ref, t.ref)
+        [{ variant: 'TyVar' }, { variant: 'TyVar' }],
+        () => MonoTy.eq(MonoTy.deref(s), MonoTy.deref(t)),
       )
       .with(
         [{ variant: 'TyConst' }, { variant: 'TyConst' }],

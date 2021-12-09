@@ -1,5 +1,6 @@
 import { DataType, genConstructors, VariantOf, match as matchVariant } from "itsamatch";
 import { match, __ } from 'ts-pattern';
+import { MonoTy } from "../infer/types";
 
 export type Token = DataType<{
   Symbol: { value: Symbol },
@@ -46,9 +47,10 @@ export const withPos = (token: Token, pos: Position): TokenWithPos => ({
 });
 
 const symbols = [
-  '->', '==', '!=', '&&=', '||=', '&&', '||', '+=', '-=', '*=', '/=', '%=',
+  '->', '=>', '==', '!=', '&&=', '||=', '&&', '||', '+=', '-=', '*=', '/=', '%=',
   '+', '-', '*', '/', '%', '<=', '>=', '<', '>', '(', ')', ',',
   ';', '=', '{', '}', '[', ']', ':', '!', '.', '&', '|', '\'', '"',
+  '_',
 ] as const;
 
 export type Symbol = (typeof symbols)[number];
@@ -61,7 +63,7 @@ export const Symbol = {
 const keywords = [
   'let', 'mut', 'in', 'if', 'else', 'fn', 'while',
   'return', 'as', 'unsafe', 'struct', 'impl', 'extern',
-  'module',
+  'module', 'match',
 ] as const;
 
 export type Keyword = (typeof keywords)[number];
@@ -94,6 +96,11 @@ export const Const = {
       .with([{ variant: 'bool' }, { variant: 'bool' }], ([a, b]) => a.value === b.value)
       .with([{ variant: 'unit' }, { variant: 'unit' }], () => true)
       .otherwise(() => false),
+  type: (c: Const) => matchVariant(c, {
+    u32: MonoTy.u32,
+    bool: MonoTy.bool,
+    unit: MonoTy.unit,
+  }),
 };
 
 const spaces = {

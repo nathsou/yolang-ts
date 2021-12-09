@@ -1,21 +1,22 @@
 import { match as matchVariant } from 'itsamatch';
 import { match, select } from 'ts-pattern';
-import { Decl, Expr, Prog, Stmt } from '../ast/sweet';
+import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
+import { takeWhile } from '../utils/array';
 import { none, some } from '../utils/maybe';
 import { snd } from '../utils/misc';
 import { error, ok } from '../utils/result';
-import { takeWhile } from '../utils/array';
 import { Slice } from '../utils/slice';
-import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, leftAssoc, many, map, mapParserResult, oneOrMore, optional, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
+import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, many, map, mapParserResult, optional, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
 import { Const, Token } from './token';
 
 const expr = uninitialized<Expr>();
 const stmt = uninitialized<Stmt>();
 const decl = uninitialized<Decl>();
+const pattern = uninitialized<Pattern>();
 
 // EXPRESSIONS
 
-const integer = satisfyBy<Expr>(token =>
+const integer = satisfyBy<Const>(token =>
   match(token)
     .with({
       variant: 'Const',
@@ -24,12 +25,12 @@ const integer = satisfyBy<Expr>(token =>
         value: select()
       }
     },
-      n => some(Expr.Const(Const.u32(n)))
+      n => some(Const.u32(n))
     )
     .otherwise(() => none)
 );
 
-const bool = satisfyBy<Expr>(token =>
+const bool = satisfyBy<Const>(token =>
   match(token)
     .with({
       variant: 'Const',
@@ -38,12 +39,17 @@ const bool = satisfyBy<Expr>(token =>
         value: select()
       }
     },
-      b => some(Expr.Const(Const.bool(b)))
+      b => some(Const.bool(b))
     )
     .otherwise(() => none)
 );
 
-const unit = map(seq(symbol('('), symbol(')')), () => Expr.Const(Const.unit()));
+const unit: Parser<Const> = map(
+  seq(symbol('('), symbol(')')),
+  () => Const.unit()
+);
+
+const constVal: Parser<Const> = alt(integer, bool, unit);
 
 const ident = satisfyBy<string>(token => matchVariant(token, {
   Identifier: ({ name }) => some(name),
@@ -156,10 +162,10 @@ const tupleOrParenthesizedExpr = map(
   })
 );
 
+const constExpr = map(constVal, Expr.Const);
+
 const primary = alt(
-  integer,
-  bool,
-  unit,
+  constExpr,
   variable,
   tupleOrParenthesizedExpr,
   block,
@@ -303,7 +309,52 @@ const assignment = alt(
   ifThenElse
 );
 
-initParser(expr, assignment);
+const anyPat = map(symbol('_'), Pattern.Any);
+const constPat = map(constVal, Pattern.Const);
+const varPat = map(ident, Pattern.Variable);
+const tupleOrParenthesizedPat = map(
+  parens(
+    seq(
+      expectOrDefault(pattern, `Expected pattern after '('`, Pattern.Error),
+      optional(
+        seq(
+          symbol(','),
+          expectOrDefault(commas(pattern), `Expected pattern in tuple after ','`, []),
+        )
+      )
+    )
+  ),
+  ([h, tl]) => tl.match({
+    Some: ([_, tl]) => tl.length > 0 ? Pattern.Tuple([h, ...tl]) : h,
+    None: () => h,
+  })
+);
+
+initParser(pattern, alt(anyPat, constPat, varPat, tupleOrParenthesizedPat));
+
+const matchCase: Parser<{ pattern: Pattern, body: Expr }> = map(
+  seq(
+    pattern,
+    symbol('=>'),
+    expectOrDefault(expr, `Expected an expression after '=>'`, Expr.Block([])),
+    expectOrDefault(symbol(','), `Expected ',' after pattern body`, Token.symbol(';')),
+  ),
+  ([pattern, _, body]) => ({ pattern, body })
+);
+
+const matchExpr = alt(
+  map(
+    seq(
+      keyword('match'),
+      expectOrDefault(expr, `Expected expression after 'match'`, Expr.Error),
+      curlyBrackets(many(matchCase)),
+    ),
+    ([_, expr, cases]) => Expr.Match(expr, cases)
+  ),
+  assignment
+);
+
+initParser(expr, matchExpr);
 
 // STATEMENTS
 

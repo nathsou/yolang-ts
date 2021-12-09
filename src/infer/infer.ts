@@ -1,6 +1,7 @@
 import { match as matchVariant, VariantOf } from 'itsamatch';
-import { Decl, Expr, Prog, Stmt } from '../ast/bitter';
+import { Decl, Expr, Prog, Stmt, Pattern } from '../ast/bitter';
 import { BinaryOperator, UnaryOperator } from '../ast/sweet';
+import { Const } from '../parse/token';
 import { zip } from '../utils/array';
 import { Maybe, none, some } from '../utils/maybe';
 import { proj } from '../utils/misc';
@@ -208,10 +209,49 @@ export const inferExpr = (
       const elemTys = elements.map(proj('ty'));
       unify(tau, MonoTy.tuple(elemTys));
     },
+    Match: ({ expr, cases }) => {
+      // match e { p1 => e1, p2 => e2, ... }
+      const retTy = MonoTy.fresh();
+      const argTy = expr.ty;
+
+      inferExpr(expr, ctx, errors);
+
+      if (cases.length === 0) {
+        unify(retTy, MonoTy.unit());
+      } else {
+        for (const { pattern, body } of cases) {
+          unify(argTy, Pattern.type(pattern));
+
+          const bodyCtx = TypeContext.clone(ctx);
+
+          for (const v of Pattern.vars(pattern)) {
+            Env.addMono(bodyCtx.env, v.original, v.ty);
+          }
+
+          inferExpr(body, bodyCtx, errors);
+
+          unify(retTy, body.ty);
+        }
+      }
+
+      unify(tau, retTy);
+    },
     Error: ({ message }) => {
       errors.push(message);
     },
   });
+
+  return errors;
+};
+
+export const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors: TypingError[]): TypingError[] => {
+  const unify = (s: MonoTy, t: MonoTy): void => {
+    errors.push(...unif(s, t).map(err => err + ' in ' + Expr.showSweet(expr)));
+  };
+
+  const tau = expr.ty;
+
+  unify(Pattern.type(pat), tau);
 
   return errors;
 };

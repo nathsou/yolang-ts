@@ -2,7 +2,7 @@ import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { MonoTy, PolyTy } from "../infer/types";
 import { Const } from "../parse/token";
 import { Maybe } from "../utils/maybe";
-import { BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
+import { BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Prog as SweetProg, Stmt as SweetStmt, Pattern as SweetPattern, UnaryOperator } from "./sweet";
 
 // Bitter expressions are *unsugared* representations
 // of the structure of yolang source code
@@ -49,6 +49,43 @@ type WithSweetRefAndType<T> = {
   [K in keyof T]: T[K] & { sweet: SweetExpr, ty: MonoTy }
 };
 
+export type Pattern = DataType<{
+  Const: { value: Const },
+  Variable: { name: Name },
+  Tuple: { elements: Pattern[] },
+  Any: {},
+  Error: { message: string },
+}>;
+
+export const Pattern = {
+  Const: (value: Const): Pattern => ({ variant: 'Const', value }),
+  Variable: (name: Name): Pattern => ({ variant: 'Variable', name }),
+  Tuple: (elements: Pattern[]): Pattern => ({ variant: 'Tuple', elements }),
+  Any: (): Pattern => ({ variant: 'Any' }),
+  Error: (message: string): Pattern => ({ variant: 'Error', message }),
+  fromSweet: (sweet: SweetPattern, nameEnv: NameEnv): Pattern => matchVariant(sweet, {
+    Const: ({ value }): Pattern => Pattern.Const(value),
+    Variable: ({ name }): Pattern => Pattern.Variable(NameEnv.declare(nameEnv, name, false)),
+    Tuple: ({ elements }): Pattern => Pattern.Tuple(elements.map(e => Pattern.fromSweet(e, nameEnv))),
+    Any: (): Pattern => Pattern.Any(),
+    Error: ({ message }): Pattern => Pattern.Error(message),
+  }),
+  type: (pattern: Pattern): MonoTy => matchVariant(pattern, {
+    Const: ({ value }) => Const.type(value),
+    Variable: ({ name }) => name.ty,
+    Tuple: ({ elements }) => MonoTy.tuple(elements.map(Pattern.type)),
+    Any: (): MonoTy => MonoTy.fresh(),
+    Error: (): MonoTy => MonoTy.fresh(),
+  }),
+  vars: (pattern: Pattern): Name[] => matchVariant(pattern, {
+    Const: () => [],
+    Variable: ({ name }) => [name],
+    Tuple: ({ elements }) => elements.flatMap(Pattern.vars),
+    Any: (): Name[] => [],
+    Error: (): Name[] => [],
+  }),
+};
+
 export type Expr = DataType<WithSweetRefAndType<{
   Const: { value: Const },
   Variable: { name: Name },
@@ -62,6 +99,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   Assignment: { lhs: Expr, rhs: Expr },
   ModuleAccess: { path: string[], member: string },
   Tuple: { elements: Expr[] },
+  Match: { expr: Expr, cases: { pattern: Pattern, body: Expr }[] },
 }>>;
 
 const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet: SweetExpr } => ({
@@ -71,16 +109,7 @@ const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet:
 });
 
 export const Expr = {
-  Const: (c: Const, sweet: SweetExpr): Expr => ({
-    variant: 'Const',
-    value: c,
-    sweet,
-    ty: matchVariant(c, {
-      u32: MonoTy.u32,
-      bool: MonoTy.bool,
-      unit: MonoTy.unit,
-    }),
-  }),
+  Const: (c: Const, sweet: SweetExpr): Expr => ({ variant: 'Const', value: c, sweet, ty: Const.type(c) }),
   Variable: (name: Name, sweet: SweetExpr): Expr => typed({ variant: 'Variable', name }, sweet),
   Call: (lhs: Expr, args: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Call', lhs, args }, sweet),
   BinaryOp: (lhs: Expr, op: BinaryOperator, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'BinaryOp', lhs, op, rhs }, sweet),
@@ -92,6 +121,7 @@ export const Expr = {
   Assignment: (lhs: Expr, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Assignment', lhs, rhs }, sweet),
   ModuleAccess: (path: string[], member: string, sweet: SweetExpr): Expr => typed({ variant: 'ModuleAccess', path, member }, sweet),
   Tuple: (elements: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Tuple', elements }, sweet),
+  Match: (expr: Expr, cases: { pattern: Pattern, body: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Match', expr, cases }, sweet),
   fromSweet: (sweet: SweetExpr, nameEnv: NameEnv): Expr =>
     matchVariant(sweet, {
       Const: ({ value }) => Expr.Const(value, sweet),
@@ -133,6 +163,7 @@ export const Expr = {
       },
       ModuleAccess: ({ path, member }) => Expr.ModuleAccess(path, member, sweet),
       Tuple: ({ elements }) => Expr.Tuple(elements.map(e => Expr.fromSweet(e, nameEnv)), sweet),
+      Match: ({ expr, cases }) => Expr.Match(Expr.fromSweet(expr, nameEnv), cases.map(c => ({ pattern: Pattern.fromSweet(c.pattern, nameEnv), body: Expr.fromSweet(c.body, nameEnv) })), sweet),
     }),
   showSweet: (expr: Expr): string => SweetExpr.show(expr.sweet),
 };

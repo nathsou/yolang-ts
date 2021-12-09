@@ -24,6 +24,7 @@ export type Expr = DataType<{
   CompoundAssignment: { lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr },
   ModuleAccess: { path: string[], member: string },
   Tuple: { elements: Expr[] },
+  Match: { expr: Expr, cases: { pattern: Pattern, body: Expr }[] },
 }>;
 
 export const Expr = {
@@ -40,6 +41,7 @@ export const Expr = {
   CompoundAssignment: (lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr): Expr => ({ variant: 'CompoundAssignment', lhs, op, rhs }),
   ModuleAccess: (path: string[], member: string): Expr => ({ variant: 'ModuleAccess', path, member }),
   Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
+  Match: (expr: Expr, cases: { pattern: Pattern, body: Expr }[]): Expr => ({ variant: 'Match', expr, cases }),
   show: (expr: Expr): string => matchVariant(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
@@ -54,6 +56,30 @@ export const Expr = {
     CompoundAssignment: ({ lhs, op, rhs }) => `${Expr.show(lhs)} ${op} ${Expr.show(rhs)}`,
     ModuleAccess: ({ path, member }) => `${path.join('.')}.${member}`,
     Tuple: ({ elements }) => `(${joinWith(elements, Expr.show, ', ')})`,
+    Match: ({ expr, cases }) => `match ${Expr.show(expr)} {\n${joinWith(cases, ({ pattern, body }) => `  ${Pattern.show(pattern)} => ${Expr.show(body)}\n`, '\n')}\n}`,
+  }),
+};
+
+export type Pattern = DataType<{
+  Const: { value: Const },
+  Variable: { name: string },
+  Tuple: { elements: Pattern[] },
+  Any: {},
+  Error: { message: string },
+}>;
+
+export const Pattern = {
+  Const: (value: Const): Pattern => ({ variant: 'Const', value }),
+  Variable: (name: string): Pattern => ({ variant: 'Variable', name }),
+  Tuple: (elements: Pattern[]): Pattern => ({ variant: 'Tuple', elements }),
+  Any: (): Pattern => ({ variant: 'Any' }),
+  Error: (message: string): Pattern => ({ variant: 'Error', message }),
+  show: (pattern: Pattern): string => matchVariant(pattern, {
+    Const: ({ value }) => `${Const.show(value)}`,
+    Variable: ({ name }) => `${name}`,
+    Tuple: ({ elements }) => `(${elements.map(Pattern.show).join(', ')})`,
+    Any: () => '_',
+    Error: ({ message }) => `<Error: ${message}>`,
   }),
 };
 

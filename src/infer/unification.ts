@@ -20,6 +20,9 @@ const occurs = (x: TyVarId, t: MonoTy): boolean => {
 
 const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
   const errors: UnificationError[] = [];
+  const pushEqs = (...newEqs: [MonoTy, MonoTy][]): void => {
+    eqs.push(...newEqs.map(([s, t]) => [MonoTy.deref(s), MonoTy.deref(t)] as [MonoTy, MonoTy]));
+  };
 
   while (eqs.length > 0) {
     const [s, t] = eqs.pop()!;
@@ -38,16 +41,17 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
       })
       .with([{ variant: 'TyVar', value: { kind: 'Link' } }, __], ([s, t]) => {
         eqs.push([MonoTy.deref(s.value.ref), t]);
+        pushEqs([s, t]);
       })
       // Orient
       .with([__, { variant: 'TyVar' }], ([s, t]) => {
-        eqs.push([t, s]);
+        pushEqs([t, s]);
       })
       // Decompose
       .with([{ variant: 'TyConst' }, { variant: 'TyConst' }], ([s, t]) => {
         if (s.name === t.name && s.args.length === t.args.length) {
           for (let i = 0; i < s.args.length; i++) {
-            eqs.push([s.args[i], t.args[i]]);
+            pushEqs([s.args[i], t.args[i]]);
           }
         } else {
           errors.push(`cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`);
@@ -56,10 +60,10 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
       .with([{ variant: 'TyFun' }, { variant: 'TyFun' }], ([s, t]) => {
         if (s.args.length === t.args.length) {
           for (let i = 0; i < s.args.length; i++) {
-            eqs.push([s.args[i], t.args[i]]);
+            pushEqs([s.args[i], t.args[i]]);
           }
 
-          eqs.push([s.ret, t.ret]);
+          pushEqs([s.ret, t.ret]);
         } else {
           const msg = (() => {
             const len = s.args.length;
@@ -82,5 +86,5 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
 };
 
 export const unify = (s: MonoTy, t: MonoTy): UnificationError[] => {
-  return unifyMany([[s, t]]);
+  return unifyMany([[MonoTy.deref(s), MonoTy.deref(t)]]);
 };
