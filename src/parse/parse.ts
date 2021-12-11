@@ -6,13 +6,28 @@ import { Maybe, none, some } from '../utils/maybe';
 import { snd } from '../utils/misc';
 import { error, ok } from '../utils/result';
 import { Slice } from '../utils/slice';
-import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, many, map, mapParserResult, optional, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
+import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, leftAssoc, many, map, mapParserResult, optional, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
 import { Const, Token } from './token';
 
 const expr = uninitialized<Expr>();
 const stmt = uninitialized<Stmt>();
 const decl = uninitialized<Decl>();
 const pattern = uninitialized<Pattern>();
+
+// MISC
+
+const argument = alt<Argument>(
+  map(
+    seq(
+      keyword('mut'),
+      expectOrDefault(pattern, `Expected a pattern after 'mut' keyword`, Pattern.Error),
+    ),
+    ([_, pattern]) => ({ pattern, mutable: true })
+  ),
+  map(pattern, pattern => ({ pattern, mutable: false }))
+);
+
+const argumentList = map(parens(optional(commas(argument))), args => args.orDefault([]));
 
 // EXPRESSIONS
 
@@ -207,12 +222,10 @@ const moduleAccess = alt(
   primary
 );
 
-const app = alt(
-  map(
-    seq(moduleAccess, parens(optional(commas(expr)))),
-    ([lhs, args]) => Expr.Call(lhs, args.orDefault([])),
-  ),
-  moduleAccess
+const app = leftAssoc(
+  moduleAccess,
+  parens(map(optional(commas(expr)), args => args.orDefault([]))),
+  (lhs, rhs) => Expr.Call(lhs, rhs)
 );
 
 const factor = app;
@@ -309,6 +322,41 @@ const assignment = alt(
   ifThenElse
 );
 
+const matchCase: Parser<{ pattern: Pattern, body: Expr }> = map(
+  seq(
+    pattern,
+    symbol('=>'),
+    expectOrDefault(expr, `Expected an expression after '=>'`, Expr.Block([])),
+    expectOrDefault(symbol(','), `Expected ',' after pattern body`, Token.symbol(',')),
+  ),
+  ([pattern, _, body]) => ({ pattern, body })
+);
+
+const matchExpr = alt(
+  map(
+    seq(
+      keyword('match'),
+      expectOrDefault(expr, `Expected expression after 'match'`, Expr.Error),
+      curlyBrackets(many(matchCase)),
+    ),
+    ([_, expr, cases]) => Expr.Match(expr, cases)
+  ),
+  assignment
+);
+
+const closure = map(
+  seq(
+    alt(argumentList, map(pattern, p => [{ pattern: p, mutable: false }])),
+    symbol('->'),
+    expectOrDefault(expr, `Expected expression after '->'`, Expr.Error),
+  ),
+  ([args, _, body]) => Expr.Closure(args, body)
+);
+
+initParser(expr, alt(closure, matchExpr));
+
+// PATTERNS
+
 const anyPat = map(symbol('_'), Pattern.Any);
 const constPat = map(constVal, Pattern.Const);
 const varPat = map(ident, Pattern.Variable);
@@ -331,30 +379,6 @@ const tupleOrParenthesizedPat = map(
 );
 
 initParser(pattern, alt(anyPat, constPat, varPat, tupleOrParenthesizedPat));
-
-const matchCase: Parser<{ pattern: Pattern, body: Expr }> = map(
-  seq(
-    pattern,
-    symbol('=>'),
-    expectOrDefault(expr, `Expected an expression after '=>'`, Expr.Block([])),
-    expectOrDefault(symbol(','), `Expected ',' after pattern body`, Token.symbol(';')),
-  ),
-  ([pattern, _, body]) => ({ pattern, body })
-);
-
-const matchExpr = alt(
-  map(
-    seq(
-      keyword('match'),
-      expectOrDefault(expr, `Expected expression after 'match'`, Expr.Error),
-      curlyBrackets(many(matchCase)),
-    ),
-    ([_, expr, cases]) => Expr.Match(expr, cases)
-  ),
-  assignment
-);
-
-initParser(expr, matchExpr);
 
 // STATEMENTS
 
@@ -382,27 +406,16 @@ initParser(
   )
 );
 
-const argument = alt<Argument>(
-  map(
-    seq(
-      keyword('mut'),
-      expectOrDefault(pattern, `Expected a pattern after 'mut' keyword`, Pattern.Error),
-    ),
-    ([_, pattern]) => ({ pattern, mutable: true })
-  ),
-  map(pattern, pattern => ({ pattern, mutable: false }))
-);
-
 // DECLARATIONS
 
 const funcDecl = map(
   seq(
     keyword('fn'),
     expectOrDefault(ident, `Expected identifier after 'fn' keyword`, '<?>'),
-    expectOrDefault(parens(optional(commas(argument))), 'Expected arguments after function name', none),
+    expectOrDefault(argumentList, 'Expected arguments after function name', []),
     expectOrDefault(block, 'Expected block after function arguments', Expr.Error),
   ),
-  ([_, name, args, body]) => Decl.Function(name, args.orDefault([]), body)
+  ([_, name, args, body]) => Decl.Function(name, args, body)
 );
 
 const moduleDecl = alt(

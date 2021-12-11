@@ -1,7 +1,7 @@
 import { DataType, match as matchVariant } from "itsamatch";
 import { match } from "ts-pattern";
 import { Context } from "../ast/context";
-import { joinWith } from "../utils/array";
+import { gen, joinWith, zip } from "../utils/array";
 import { cond, matchString } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
@@ -54,8 +54,6 @@ export const MonoTy = {
         return fvs;
       },
       TyFun: ({ args, ret }) => {
-        const fvs = new Set<TyVarId>();
-
         args.forEach(arg => {
           MonoTy.freeTypeVars(arg, fvs);
         });
@@ -195,5 +193,17 @@ export const PolyTy = {
 
     const quantifiedVars = joinWith(quantified, showTyIndex, ', ');
     return `forall ${quantifiedVars}. ${MonoTy.show(monoTy)}`;
+  },
+  canonicalize: (poly: PolyTy): PolyTy => {
+    const [vars, mono] = poly;
+    const subts = new Map<TyVarId, MonoTy>();
+
+    const newVars = gen(vars.length, i => i);
+
+    for (const [v1, v2] of zip(vars, newVars)) {
+      subts.set(v1, MonoTy.TyVar({ kind: 'Var', id: v2 }));
+    }
+
+    return [newVars, MonoTy.substitute(mono, subts)];
   },
 };

@@ -32,3 +32,5 @@ export const matchString = <T>(
 ): T => {
   return cases[str in cases ? str : '_']();
 };
+
+export const parenthesized = (str: string, showParens = true): string => showParens ? `(${str})` : str;

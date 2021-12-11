@@ -1,4 +1,5 @@
 import { Decl, Prog } from "./ast/bitter";
+import { Prog as SweetProg } from "./ast/sweet";
 import { infer } from "./infer/infer";
 import { formatError } from "./parse/combinators";
 import { lex } from "./parse/lex";
@@ -22,6 +23,8 @@ const run = (source: string): Prog => {
     console.log('');
   }
 
+  console.log(SweetProg.show(decls) + '\n');
+
   const [prog, bitterErrors] = Prog.fromSweet(decls);
 
   if (bitterErrors.length > 0) {
@@ -38,32 +41,10 @@ const run = (source: string): Prog => {
 };
 
 const prog = run(`
-  module Logic {
-    fn and(a, b) {
-      match (a, b) {
-        (true, true) => true,
-        _ => false,
-      }
-    }
-  
-    fn or(a, b) {
-      match (a, b) {
-        (true, _) => true,
-        (_, true) => true,
-        _ => false,
-      }
-    }
-  }
-
-  fn factSquared(n) {
-    match n * n {
-      0 => 1,
-      n => n * factSquared(n - 1),
-    }
-  }
-
-  fn tup((a, b, c)) {
-    a + b > 0 || c
+  fn main() {
+    let fst = ((a, b)) -> a;
+    let snd = ((a, b)) -> b;
+    (fst, snd)
   }
 `);
 
@@ -73,7 +54,7 @@ const showFunTypes = (decls: Decl[]): string[] => {
   for (const decl of decls) {
     matchVariant(decl, {
       Function: ({ name, funTy }) => {
-        types.push(name.original + ': ' + PolyTy.show(funTy));
+        types.push(name.original + ': ' + PolyTy.show(PolyTy.canonicalize(funTy)));
       },
       Module: mod => {
         const fns = showFunTypes(mod.decls);

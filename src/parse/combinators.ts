@@ -5,6 +5,8 @@ import { Slice } from "../utils/slice";
 import { RecoveryStrategy } from "./recovery";
 import { Keyword, Symbol, Token, TokenWithPos } from "./token";
 
+// Syntax Error Recovery in Parsing Expression Grammars - https://arxiv.org/abs/1806.11150
+
 export type ParserError = {
   message: string,
   pos: number,
@@ -265,6 +267,16 @@ export const expectOrDefault = <T>(
     expect(p, message, recovery),
     maybe => maybe.orDefault(defaultVal)
   );
+};
+
+export const lookahead = (check: (tokens: Slice<Token>) => boolean): Parser<null> => {
+  return ref(tokens => {
+    if (check(tokens)) {
+      return [ok(null), tokens, []];
+    } else {
+      return [error({ message: fail, pos: tokens.start }), tokens, []];
+    }
+  });
 };
 
 export const consumeAll = <T>(p: Parser<T>): Parser<T> => {

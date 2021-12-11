@@ -2,6 +2,7 @@ import { DataType, match as matchVariant } from 'itsamatch';
 import { Const } from '../parse/token';
 import { joinWith } from '../utils/array';
 import { Maybe } from '../utils/maybe';
+import { parenthesized } from '../utils/misc';
 
 // Sweet expressions are *sugared* representations
 // of the structure of yolang source code.
@@ -51,7 +52,7 @@ export const Expr = {
     UnaryOp: ({ op, expr }) => `${op}${Expr.show(expr)}`,
     BinaryOp: ({ lhs, op, rhs }) => `(${Expr.show(lhs)} ${op} ${Expr.show(rhs)})`,
     Error: ({ message }) => `<Error: ${message}>`,
-    Closure: ({ args, body }) => `(${joinWith(args, ({ pattern, mutable }) => `${mutable ? 'mut ' : ''}${Pattern.show(pattern)}`, ', ')}) -> ${Expr.show(body)}`,
+    Closure: ({ args, body }) => `${parenthesized(joinWith(args, ({ pattern, mutable }) => `${mutable ? 'mut ' : ''}${Pattern.show(pattern)}`, ', '), args.length !== 1 || (args.length > 0 && args[0].pattern.variant === 'Tuple'))} -> ${Expr.show(body)}`,
     Block: ({ statements }) => `{\n${joinWith(statements, s => '  ' + Stmt.show(s), '\n')}\n}`,
     IfThenElse: ({ condition, then, else_ }) => `if ${Expr.show(condition)} ${Expr.show(then)}${else_.map(e => ` else ${Expr.show(e)}`).orDefault('')}`,
     Assignment: ({ lhs, rhs }) => `${Expr.show(lhs)} = ${Expr.show(rhs)}`,
@@ -127,3 +128,7 @@ export const Decl = {
 };
 
 export type Prog = Decl[];
+
+export const Prog = {
+  show: (prog: Prog): string => joinWith(prog, Decl.show, '\n'),
+};

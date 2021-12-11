@@ -165,15 +165,19 @@ export const inferExpr = (
       }
     },
     Closure: ({ args, body }) => {
-      const argTys = args.map(MonoTy.fresh);
+      const bodyCtx = TypeContext.clone(ctx);
 
-      for (const [arg, ty] of zip(args, argTys)) {
-        Env.addMono(env, arg.name.original, ty);
-      }
+      args.forEach(arg => {
+        Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
+      });
 
-      inferExpr(body, ctx, errors);
-      const retTy = body.ty;
-      const funTy = MonoTy.TyFun(argTys, retTy);
+      inferExpr(body, bodyCtx, errors);
+
+      const funTy = MonoTy.TyFun(
+        args.map(({ name: arg }) => arg.ty),
+        body.ty
+      );
+
       unify(tau, funTy);
     },
     ModuleAccess: ({ path, member }) => {
@@ -257,10 +261,8 @@ export const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors:
 export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: TypingError[]): TypingError[] => {
   matchVariant(stmt, {
     Let: ({ name, expr }) => {
-      Env.addMono(ctx.env, name.original, name.ty);
       inferExpr(expr, ctx, errors);
-      const varTy = name.ty;
-      const genTy = MonoTy.generalize(ctx.env, varTy);
+      const genTy = MonoTy.generalize(ctx.env, expr.ty);
       Env.addPoly(ctx.env, name.original, genTy);
     },
     Expr: ({ expr }) => {
