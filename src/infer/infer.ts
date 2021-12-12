@@ -321,6 +321,9 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: TypingError[]): 
         inferDecl(decl, modCtx, errors);
       }
     },
+    Struct: struct => {
+
+    },
     Error: ({ message }) => {
       errors.push(message);
     },

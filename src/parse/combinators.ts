@@ -7,6 +7,10 @@ import { Keyword, Symbol, Token, TokenWithPos } from "./token";
 
 // Syntax Error Recovery in Parsing Expression Grammars - https://arxiv.org/abs/1806.11150
 
+export type Parser<T> = Ref<(tokens: Slice<Token>) => ParserResult<T>>;
+
+export type ParserResult<T> = [res: Result<T, ParserError>, remaining: Slice<Token>, errors: ParserError[]];
+
 export type ParserError = {
   message: string,
   pos: number,
@@ -26,13 +30,9 @@ export const formatError = (error: ParserError, tokens: TokenWithPos[]): string 
   return `${error.message} at ${pos.line}:${pos.column}`;
 };
 
-export type ParserResult<T> = [res: Result<T, ParserError>, remaining: Slice<Token>, errors: ParserError[]];
-
 const fail: ParserError['message'] = '<fail>';
 
 const farthest = <T>(a: Slice<T>, b: Slice<T>) => a.start > b.start ? a : b;
-
-export type Parser<T> = Ref<(tokens: Slice<Token>) => ParserResult<T>>;
 
 export const satisfy = (pred: (t: Token) => boolean): Parser<Token> => {
   return ref(tokens => {
@@ -185,6 +185,10 @@ export const optional = <T>(p: Parser<T>): Parser<Maybe<T>> => {
   });
 };
 
+export const optionalOrDefault = <T>(p: Parser<T>, def: T): Parser<T> => {
+  return map(optional(p), m => m.orDefault(def));
+};
+
 export const leftAssoc = <L, R>(
   left: Parser<L>,
   right: Parser<R>,
@@ -255,6 +259,29 @@ export const expect = <T>(
   });
 };
 
+export const expectIf = <T>(
+  p: Parser<T>,
+  predicate: (data: T) => boolean,
+  message: ParserError['message'],
+  recovery?: ParserError['recovery'],
+): Parser<Maybe<T>> => {
+  return ref(tokens => {
+    const [t, rem, errs] = p.ref(tokens);
+    return t.match({
+      Ok: t => [ok(some(t)), rem, errs],
+      Error: e => {
+        const [_, rem2, errs2] = recover({
+          message,
+          pos: e.pos,
+          recovery: recovery ?? e.recovery
+        }).ref(tokens);
+
+        return [ok(none), rem2, errs2];
+      },
+    });
+  });
+};
+
 export const expectOrDefault = <T>(
   p: Parser<T>,
   message: ParserError['message'],
@@ -267,6 +294,22 @@ export const expectOrDefault = <T>(
     expect(p, message, recovery),
     maybe => maybe.orDefault(defaultVal)
   );
+};
+
+export const conditionalError = <T>(parser: Parser<T>, pred: (data: T) => boolean, message: ParserError['message']): Parser<T> => {
+  return ref(tokens => {
+    const [t, rem, errs] = parser.ref(tokens);
+    return t.match({
+      Ok: t => {
+        if (!pred(t)) {
+          return [error({ message, pos: tokens.start }), rem, [...errs, { message, pos: tokens.start }]];
+        } else {
+          return [ok(t), rem, errs];
+        }
+      },
+      Error: e => [error(e), rem, errs],
+    });
+  });
 };
 
 export const lookahead = (check: (tokens: Slice<Token>) => boolean): Parser<null> => {
@@ -322,3 +365,4 @@ export const nestedBy = (left: Symbol, right: Symbol) => <T>(p: Parser<T>): Pars
 export const parens = nestedBy('(', ')');
 export const squareBrackets = nestedBy('[', ']');
 export const curlyBrackets = nestedBy('{', '}');
+export const angleBrackets = nestedBy('<', '>');

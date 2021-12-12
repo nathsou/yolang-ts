@@ -62,8 +62,8 @@ export const Symbol = {
 
 const keywords = [
   'let', 'mut', 'in', 'if', 'else', 'fn', 'while',
-  'return', 'as', 'unsafe', 'struct', 'impl', 'extern',
-  'module', 'match',
+  'return', 'as', 'unsafe', 'impl', 'extern',
+  'module', 'match', 'type',
 ] as const;
 
 export type Keyword = (typeof keywords)[number];

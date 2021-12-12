@@ -2,7 +2,7 @@ import { DataType, match as matchVariant } from "itsamatch";
 import { match } from "ts-pattern";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
-import { cond, matchString } from "../utils/misc";
+import { cond, matchString, panic } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 
@@ -16,7 +16,7 @@ export type MonoTy = DataType<{
   TyFun: { args: MonoTy[], ret: MonoTy },
 }>;
 
-const showTyIndex = (n: TyVarId): string => {
+export const showTyVarId = (n: TyVarId): string => {
   const l = String.fromCharCode(97 + n % 26);
   return n >= 23 ? `${l}${Math.floor(n / 26)}` : l;
 };
@@ -112,7 +112,7 @@ export const MonoTy = {
   show: (ty: MonoTy): string => matchVariant(ty, {
     TyVar: ({ value }) => {
       if (value.kind === 'Var') {
-        return showTyIndex(value.id);
+        return showTyVarId(value.id);
       } else {
         return MonoTy.show(value.ref);
       }
@@ -191,7 +191,7 @@ export const PolyTy = {
       return MonoTy.show(monoTy);
     }
 
-    const quantifiedVars = joinWith(quantified, showTyIndex, ', ');
+    const quantifiedVars = joinWith(quantified, showTyVarId, ', ');
     return `forall ${quantifiedVars}. ${MonoTy.show(monoTy)}`;
   },
   canonicalize: (poly: PolyTy): PolyTy => {
@@ -205,5 +205,80 @@ export const PolyTy = {
     }
 
     return [newVars, MonoTy.substitute(mono, subts)];
+  },
+};
+
+export type ParameterizedTy = DataType<{
+  TyVar: { id: TyVarId },
+  TyParam: { name: string },
+  TyConst: { name: string, args: ParameterizedTy[] },
+  TyFun: { args: ParameterizedTy[], ret: ParameterizedTy },
+}>;
+
+export const ParameterizedTy = {
+  TyVar: (id: TyVarId): ParameterizedTy => ({ variant: 'TyVar', id }),
+  TyParam: (name: string): ParameterizedTy => ({ variant: 'TyParam', name }),
+  TyConst: (name: string, ...args: ParameterizedTy[]): ParameterizedTy => ({ variant: 'TyConst', name, args }),
+  TyFun: (args: ParameterizedTy[], ret: ParameterizedTy): ParameterizedTy => ({ variant: 'TyFun', args, ret }),
+  freeTyParams: (ty: ParameterizedTy): string[] => {
+    return matchVariant(ty, {
+      TyVar: () => [],
+      TyParam: ({ name }) => [name],
+      TyConst: ({ args }) => args.flatMap(ParameterizedTy.freeTyParams),
+      TyFun: ({ args, ret }) => [...args.flatMap(ParameterizedTy.freeTyParams), ...ParameterizedTy.freeTyParams(ret)],
+    });
+  },
+  substituteTyParams: (ty: ParameterizedTy, subst: Map<string, MonoTy>): MonoTy => {
+    return matchVariant(ty, {
+      TyVar: ({ id }) => MonoTy.TyVar({ kind: 'Var', id }),
+      TyParam: ({ name }) => {
+        if (!subst.has(name)) {
+          panic(`Type parameter '${name}' not found in substitution`);
+        }
+
+        return subst.get(name)!;
+      },
+      TyConst: ({ name, args }) => MonoTy.TyConst(name, ...args.map(a => ParameterizedTy.substituteTyParams(a, subst))),
+      TyFun: ({ args, ret }) => MonoTy.TyFun(
+        args.map(a => ParameterizedTy.substituteTyParams(a, subst)),
+        ParameterizedTy.substituteTyParams(ret, subst)
+      ),
+    });
+  },
+  toPoly: (ty: ParameterizedTy, params: string[]): PolyTy => {
+    const tyParams = ParameterizedTy.freeTyParams(ty);
+    const subst = new Map<string, MonoTy>();
+    const tyVars: TyVarId[] = [];
+
+    for (const t of params) {
+      const v = Context.freshTyVarIndex();
+      subst.set(t, MonoTy.TyVar({ kind: 'Var', id: v }));
+      tyVars.push(v);
+    }
+
+    return PolyTy.make(tyVars, ParameterizedTy.substituteTyParams(ty, subst));
+  },
+  toMono: (ty: ParameterizedTy, params: Map<string, TyVarId>): MonoTy => {
+    const subst = new Map<string, MonoTy>();
+
+    for (const [name, id] of params.entries()) {
+      subst.set(name, MonoTy.TyVar({ kind: 'Var', id: id }));
+    }
+
+    return ParameterizedTy.substituteTyParams(ty, subst);
+  },
+  isUnparameterized: (ty: ParameterizedTy): boolean => {
+    return matchVariant(ty, {
+      TyVar: () => true,
+      TyParam: () => false,
+      TyConst: ({ args }) => args.every(ParameterizedTy.isUnparameterized),
+      TyFun: ({ args, ret }) => args.every(ParameterizedTy.isUnparameterized) && ParameterizedTy.isUnparameterized(ret),
+    });
+  },
+  show: (ty: ParameterizedTy): string => {
+    return matchVariant(ty, {
+      TyParam: ({ name }) => name,
+      _: () => MonoTy.show(ty as MonoTy),
+    });
   },
 };

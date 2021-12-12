@@ -1,5 +1,5 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
-import { MonoTy, PolyTy } from "../infer/types";
+import { MonoTy, ParameterizedTy, PolyTy, TyVarId } from "../infer/types";
 import { Const } from "../parse/token";
 import { Maybe } from "../utils/maybe";
 import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
@@ -203,6 +203,8 @@ export const Stmt = {
   },
 };
 
+type Field = { name: string, ty: ParameterizedTy };
+
 export type Decl = DataType<{
   Function: {
     name: Name,
@@ -214,6 +216,11 @@ export type Decl = DataType<{
     name: string,
     decls: Decl[],
     members: Record<string, Decl>,
+  },
+  Struct: {
+    name: string,
+    typeParams: string[],
+    fields: Field[],
   },
   Error: { message: string },
 }>;
@@ -236,12 +243,16 @@ export const Decl = {
         Module: subMod => {
           mod.members[subMod.name] = subMod;
         },
+        Struct: struct => {
+          mod.members[struct.name] = struct;
+        },
         Error: () => { },
       });
     }
 
     return mod;
   },
+  Struct: (name: string, typeParams: string[], fields: Field[]): Decl => ({ variant: 'Struct', typeParams, name, fields }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: BitterConversionError[]): Decl =>
     matchVariant(sweet, {
@@ -268,6 +279,7 @@ export const Decl = {
           decls.map(decl => Decl.fromSweet(decl, modEnv, false, errors))
         );
       },
+      Struct: ({ name, typeParams, fields }) => Decl.Struct(name, typeParams, fields),
       Error: ({ message }) => Decl.Error(message),
     }),
 };

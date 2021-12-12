@@ -1,12 +1,12 @@
+import { match as matchVariant } from "itsamatch";
 import { Decl, Prog } from "./ast/bitter";
 import { Prog as SweetProg } from "./ast/sweet";
 import { infer } from "./infer/infer";
+import { MonoTy, ParameterizedTy, PolyTy } from "./infer/types";
 import { formatError } from "./parse/combinators";
 import { lex } from "./parse/lex";
 import { parse } from "./parse/parse";
 import { Slice } from "./utils/slice";
-import { match as matchVariant } from "itsamatch";
-import { PolyTy } from "./infer/types";
 
 // pipeline:
 // <string> -> parse -> <sweet> -> desugar & resolve modules -> <bitter> -> infer ->
@@ -23,7 +23,7 @@ const run = (source: string): Prog => {
     console.log('');
   }
 
-  console.log(SweetProg.show(decls) + '\n');
+  // console.log(SweetProg.show(decls) + '\n');
 
   const [prog, bitterErrors] = Prog.fromSweet(decls);
 
@@ -41,10 +41,13 @@ const run = (source: string): Prog => {
 };
 
 const prog = run(`
+  type Yo<T> = {
+    yo: T,
+    lo: u32
+  }
+
   fn main() {
-    let fst = ((a, b)) -> a;
-    let snd = ((a, b)) -> b;
-    (fst, snd)
+    (f, g) -> x -> g(f(x))
   }
 `);
 
@@ -59,6 +62,12 @@ const showFunTypes = (decls: Decl[]): string[] => {
       Module: mod => {
         const fns = showFunTypes(mod.decls);
         types.push(...fns.map(t => mod.name + '.' + t));
+      },
+      Struct: ({ name, fields, typeParams }) => {
+        types.push(
+          'type ' + name + '<' + typeParams.join(', ') + '>' +
+          ' = {\n' + fields.map(f => '  ' + f.name + ': ' + ParameterizedTy.show(f.ty)).join(',\n') + '\n}'
+        );
       },
       _: () => { },
     });
