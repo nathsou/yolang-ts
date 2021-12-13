@@ -1,22 +1,19 @@
 import { match as matchVariant } from 'itsamatch';
 import { match, select } from 'ts-pattern';
-import { Context } from '../ast/context';
 import { Argument, Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
-import { MonoTy, ParameterizedTy, PolyTy, TyVarId } from '../infer/types';
+import { MonoTy, ParameterizedTy, PolyTy, TypeParamsContext } from '../infer/types';
 import { takeWhile } from '../utils/array';
 import { none, some } from '../utils/maybe';
-import { snd } from '../utils/misc';
+import { ref, snd } from '../utils/misc';
 import { error, ok } from '../utils/result';
 import { Slice } from '../utils/slice';
-import { alt, angleBrackets, chainLeft, commas, conditionalError, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, leftAssoc, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
+import { alt, angleBrackets, chainLeft, commas, conditionalError, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, lazy, leftAssoc, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
 import { Const, Token } from './token';
 
 const expr = uninitialized<Expr>();
 const stmt = uninitialized<Stmt>();
 const decl = uninitialized<Decl>();
 const pattern = uninitialized<Pattern>();
-const monoTy = uninitialized<MonoTy>();
-const polyTy = uninitialized<PolyTy>();
 
 // MISC
 
@@ -81,52 +78,90 @@ const argument = alt<Argument>(
 const argumentList = map(parens(optional(commas(argument))), args => args.orDefault([]));
 
 // TYPES
+const monoTy = ref<(ctx: TypeParamsContext) => Parser<MonoTy>>(uninitialized);
 
-const parametrizedTy = uninitialized<ParameterizedTy>();
+const parameterizedTy = (ctx: TypeParamsContext): Parser<ParameterizedTy> => {
+  const parameterizedMonoTy = uninitialized<ParameterizedTy>();
+  const parenthesizedTy = map(parens(parameterizedMonoTy), ty => ty);
+  const unitTy = map(seq(symbol('('), symbol(')')), () => ParameterizedTy.TyConst('()'));
+  const boolTy = map(ident2('bool'), () => ParameterizedTy.TyConst('bool'));
+  const u32Ty = map(ident2('u32'), () => ParameterizedTy.TyConst('u32'));
+  const constTy = alt(unitTy, boolTy, u32Ty);
+  const namedTy = map(
+    seq(
+      upperIdent,
+      optionalOrDefault(angleBrackets(many(parameterizedMonoTy)), []),
+    ),
+    ([name, args]) => {
+      if (args.length === 0) {
+        if (TypeParamsContext.has(ctx, name)) {
+          return ParameterizedTy.TyParam(name);
+        } else {
+          return ParameterizedTy.TyConst(name);
+        }
+      } else {
+        return ParameterizedTy.TyConst(name, ...args);
+      }
+    }
+  );
 
-const parenthesizedTy: Parser<ParameterizedTy> = map(parens(parametrizedTy), ty => ty);
-const paramTy: Parser<ParameterizedTy> = map(upperIdent, ParameterizedTy.TyParam);
-const unitTy: Parser<ParameterizedTy> = map(seq(symbol('('), symbol(')')), () => ParameterizedTy.TyConst('()'));
-const boolTy: Parser<ParameterizedTy> = map(ident2('bool'), () => ParameterizedTy.TyConst('bool'));
-const u32Ty: Parser<ParameterizedTy> = map(ident2('u32'), () => ParameterizedTy.TyConst('u32'));
-const constTy = alt(unitTy, boolTy, u32Ty);
+  const tupleTy = map(
+    parens(seq(
+      parameterizedMonoTy,
+      symbol(','),
+      expectOrDefault(commas(parameterizedMonoTy), `Expected type in tuple type after ','`, []),
+    )),
+    ([h, _, tl]) => ParameterizedTy.TyConst('tuple', h, ...tl)
+  );
 
-const tupleTy: Parser<ParameterizedTy> = map(
-  parens(seq(
-    parametrizedTy,
-    symbol(','),
-    expectOrDefault(commas(parametrizedTy), `Expected type in tuple type after ','`, []),
-  )),
-  ([h, _, tl]) => ParameterizedTy.TyConst('tuple', h, ...tl)
-);
+  const allExceptFunTy = alt(
+    constTy,
+    tupleTy,
+    namedTy,
+    parenthesizedTy,
+  );
 
-const funTy: Parser<ParameterizedTy> = map(seq(
-  alt(
-    parens(commas(parametrizedTy)),
-    map(parametrizedTy, ty => [ty])
+  const funTy = map(seq(
+    alt(
+      parens(commas(parameterizedMonoTy)),
+      map(allExceptFunTy, ty => [ty])
+    ),
+    symbol('->'),
+    parameterizedMonoTy,
   ),
-  symbol('->'),
-  parametrizedTy,
-),
-  ([args, _, ret]) => ParameterizedTy.TyFun(args, ret)
-);
+    ([args, _, ret]) => ParameterizedTy.TyFun(args, ret)
+  );
 
-const parameterizedMonoTy: Parser<ParameterizedTy> = alt(paramTy, constTy, funTy, tupleTy, parenthesizedTy);
+  parameterizedMonoTy.ref = alt(
+    allExceptFunTy,
+    funTy,
+  ).ref;
 
-// convert <T, U, V>(x: T, y: U, z: V)  into forall a, b, c. (a, b, c)
+  return parameterizedMonoTy;
+};
 
-initParser(
-  monoTy,
-  map(
-    conditionalError(parameterizedMonoTy, ParameterizedTy.isUnparameterized, 'Expected unparameterized type'),
-    ty => ParameterizedTy.toPoly(ty, [])[1])
-);
+monoTy.ref = (ctx: TypeParamsContext) => {
+  return map(
+    conditionalError(parameterizedTy(ctx), ParameterizedTy.isUnparameterized, 'Expected unparameterized type'),
+    ty => ParameterizedTy.toPoly(ty, [])[1]
+  );
+};
 
 const typeParams = angleBrackets(commas(upperIdent));
 
-initParser(
-  polyTy,
-  map(seq(typeParams, parens(parameterizedMonoTy)), ([params, ty]) => ParameterizedTy.toPoly(ty, params))
+const polyTy = ref<(ctx: TypeParamsContext) => Parser<PolyTy>>(
+  (ctx: TypeParamsContext) =>
+    map(
+      seq(
+        typeParams,
+        parens(parameterizedTy(ctx))
+      ), ([params, ty]) => {
+        for (const param of params) {
+          TypeParamsContext.declare(ctx, param);
+        }
+
+        return ParameterizedTy.toPoly(ty, params);
+      })
 );
 
 // EXPRESSIONS
@@ -161,7 +196,7 @@ const bool = satisfyBy<Const>(token =>
 
 const unit: Parser<Const> = map(
   seq(symbol('('), symbol(')')),
-  () => Const.unit()
+  Const.unit
 );
 
 const constVal: Parser<Const> = alt(integer, bool, unit);
@@ -473,34 +508,44 @@ const funcDecl = map(
   ([_, name, args, body]) => Decl.Function(name, args, body)
 );
 
-const moduleDecl = map(
+const moduleDecl = lazy(() => map(
   seq(
     keyword('module'),
     expectOrDefault(upperIdent, `Expected an uppercase identifier after 'module' keyword`, '<?>'),
     curlyBrackets(many(decl)),
   ),
   ([_, name, decls]) => Decl.Module(name, decls)
-);
+));
 
-const structField = map(
-  seq(
-    expectOrDefault(ident, `Expected field name`, '<?>'),
-    expectOrDefault(symbol(':'), `Expected ':' after field name`, Token.symbol(':')),
-    expectOrDefault(parameterizedMonoTy, `Expected type after ':'`, ParameterizedTy.TyConst('()')),
-  ),
-  ([name, _, ty]) => ({ name, ty })
-);
+const structField = (ctx: TypeParamsContext) => {
+  return map(
+    seq(
+      expectOrDefault(ident, `Expected field name`, '<?>'),
+      expectOrDefault(symbol(':'), `Expected ':' after field name`, Token.symbol(':')),
+      expectOrDefault(lazy(() => parameterizedTy(ctx)), `Expected type after ':'`, ParameterizedTy.TyConst('()')),
+    ),
+    ([name, _, ty]) => ({ name, ty })
+  );
+};
 
-const typeDecl =
-  map(
+const typeDecl = lazy(() => {
+  const ctx = TypeParamsContext.make();
+
+  return map(
     seq(
       keyword('type'),
       expectOrDefault(upperIdent, `Expected identifier after 'type' keyword`, '<?>'),
-      optionalOrDefault(typeParams, []),
+      map(optionalOrDefault(typeParams, []), params => {
+        for (const p of params) {
+          TypeParamsContext.declare(ctx, p);
+        }
+
+        return params;
+      }),
       expectOrDefault(symbol('='), `Expected '=' after type name`, Token.symbol('=')),
       alt(
-        map(curlyBrackets(commas(structField)), fields => ({ type: 'struct' as const, fields })),
-      )
+        map(curlyBrackets(commas(lazy(() => structField(ctx)))), fields => ({ type: 'struct' as const, fields }))
+      ),
     ),
     ([_t, name, params, _eq, rhs]) => {
       switch (rhs.type) {
@@ -509,8 +554,9 @@ const typeDecl =
       }
     }
   );
+});
 
-initParser(decl, alt(typeDecl, moduleDecl, funcDecl));
+initParser(decl, alt(funcDecl, typeDecl, moduleDecl));
 
 export const parse = (tokens: Slice<Token>): [Prog, ParserError[]] => {
   const [res, _, errs] = consumeAll(many(decl)).ref(tokens);

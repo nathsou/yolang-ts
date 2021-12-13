@@ -1,8 +1,7 @@
 import { match as matchVariant } from "itsamatch";
 import { Decl, Prog } from "./ast/bitter";
-import { Prog as SweetProg } from "./ast/sweet";
 import { infer } from "./infer/infer";
-import { MonoTy, ParameterizedTy, PolyTy } from "./infer/types";
+import { ParameterizedTy, PolyTy } from "./infer/types";
 import { formatError } from "./parse/combinators";
 import { lex } from "./parse/lex";
 import { parse } from "./parse/parse";
@@ -43,7 +42,7 @@ const run = (source: string): Prog => {
 const prog = run(`
   type Yo<T> = {
     yo: T,
-    lo: u32
+    lo: U
   }
 
   fn main() {

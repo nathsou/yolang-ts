@@ -208,6 +208,20 @@ export const PolyTy = {
   },
 };
 
+export type TypeParamsContext = {
+  typeParams: string[],
+};
+
+export const TypeParamsContext = {
+  make: (): TypeParamsContext => ({ typeParams: [] }),
+  declare: (ctx: TypeParamsContext, name: string): void => {
+    ctx.typeParams.push(name);
+  },
+  has: (ctx: TypeParamsContext, name: string): boolean => {
+    return ctx.typeParams.some(p => p === name);
+  },
+};
+
 export type ParameterizedTy = DataType<{
   TyVar: { id: TyVarId },
   TyParam: { name: string },
@@ -277,7 +291,8 @@ export const ParameterizedTy = {
   },
   show: (ty: ParameterizedTy): string => {
     return matchVariant(ty, {
-      TyParam: ({ name }) => name,
+      TyParam: ({ name }) => `'${name}`,
+      TyVar: ({ id }) => showTyVarId(id),
       _: () => MonoTy.show(ty as MonoTy),
     });
   },

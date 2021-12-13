@@ -351,6 +351,13 @@ export const consumeAll = <T>(p: Parser<T>): Parser<T> => {
   });
 };
 
+export const lazy = <T>(f: () => Parser<T>): Parser<T> => {
+  return ref(tokens => {
+    const p = f();
+    return p.ref(tokens);
+  });
+};
+
 export const nestedBy = (left: Symbol, right: Symbol) => <T>(p: Parser<T>): Parser<T> => {
   return map(
     seq(

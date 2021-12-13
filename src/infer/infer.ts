@@ -1,7 +1,6 @@
 import { match as matchVariant, VariantOf } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
 import { BinaryOperator, UnaryOperator } from '../ast/sweet';
-import { zip } from '../utils/array';
 import { Maybe, none, some } from '../utils/maybe';
 import { proj } from '../utils/misc';
 import { Env } from './env';
@@ -43,13 +42,17 @@ const binaryOpSignature: Record<BinaryOperator, PolyTy> = {
 type TypeContext = {
   env: Env,
   modules: Record<string, VariantOf<Decl, 'Module'>>,
+  typeDecls: Record<string, VariantOf<Decl, 'Struct'>>,
 };
 
 const TypeContext = {
-  make: () => ({ env: Env.make(), modules: {} }),
-  clone: (ctx: TypeContext) => ({ env: Env.clone(ctx.env), modules: { ...ctx.modules } }),
+  make: (): TypeContext => ({ env: Env.make(), modules: {}, typeDecls: {} }),
+  clone: (ctx: TypeContext) => ({ env: Env.clone(ctx.env), modules: { ...ctx.modules }, typeDecls: { ...ctx.typeDecls } }),
   declareModule: (ctx: TypeContext, mod: VariantOf<Decl, 'Module'>): void => {
     ctx.modules[mod.name] = mod;
+  },
+  declareType: (ctx: TypeContext, ty: VariantOf<Decl, 'Struct'>): void => {
+    ctx.typeDecls[ty.name] = ty;
   },
   // TODO: cleanup
   resolveModule: (ctx: TypeContext, path: string[]): Maybe<VariantOf<Decl, 'Module'>> => {
@@ -322,7 +325,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: TypingError[]): 
       }
     },
     Struct: struct => {
-
+      TypeContext.declareType(ctx, struct);
     },
     Error: ({ message }) => {
       errors.push(message);
