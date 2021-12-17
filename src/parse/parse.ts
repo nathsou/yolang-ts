@@ -4,7 +4,7 @@ import { Argument, Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
 import { MonoTy, ParameterizedTy, PolyTy, TypeParamsContext } from '../infer/types';
 import { takeWhile } from '../utils/array';
 import { none, some } from '../utils/maybe';
-import { ref, snd } from '../utils/misc';
+import { isLowerCase, isUpperCase, ref, snd } from '../utils/misc';
 import { error, ok } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { alt, angleBrackets, chainLeft, commas, conditionalError, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, lazy, leftAssoc, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
@@ -18,14 +18,14 @@ const pattern = uninitialized<Pattern>();
 // MISC
 
 const ident = satisfyBy<string>(token => matchVariant(token, {
-  Identifier: ({ name }) => some(name),
+  Identifier: ({ name }) => isLowerCase(name[0]) ? some(name) : none,
   _: () => none
 }));
 
 const ident2 = (name: string) => satisfy(token => token.variant === 'Identifier' && token.name === name);
 
 const upperIdent = satisfyBy<string>(token => matchVariant(token, {
-  Identifier: ({ name }) => name[0].toUpperCase() === name[0] ? some(name) : none,
+  Identifier: ({ name }) => isUpperCase(name[0]) ? some(name) : none,
   _: () => none
 }));
 
@@ -278,37 +278,33 @@ const primary = alt(
   // unexpected
 );
 
-// TODO: cleanup and support struct access
-// think about how to handle static struct functions (Expr.StaticAccess?)
-const attributeAccess = map(
-  map(
-    seq(
-      ident,
-      symbol('.'),
-      expectOrDefault(sepBy(symbol('.'))(ident), `Expected identifier after '.'`, []),
-    ),
-    ([name, _, members]) => [name, ...members],
-  ),
-  path => {
-    const modulePath = takeWhile(path, p => p[0].toUpperCase() === p[0]);
-
-    if (modulePath.length === 0) {
-      throw new Error(`Expected module path`);
-    }
-
-    const members = path.slice(modulePath.length);
-
-    if (members.length !== 1) {
-      throw new Error(`Expected single member`);
-    }
-
-    return Expr.ModuleAccess(modulePath, members[0]);
-  }
-);
-
 // e.g Main.Yolo.yo
 const moduleAccess = alt(
-  attributeAccess,
+  map(
+    map(
+      seq(
+        upperIdent,
+        symbol('.'),
+        expectOrDefault(sepBy(symbol('.'))(ident), `Expected identifier after '.'`, []),
+      ),
+      ([name, _, members]) => [name, ...members],
+    ),
+    path => {
+      const modulePath = takeWhile(path, p => p[0].toUpperCase() === p[0]);
+
+      if (modulePath.length === 0) {
+        throw new Error(`Expected module path`);
+      }
+
+      const members = path.slice(modulePath.length);
+
+      if (members.length !== 1) {
+        throw new Error(`Expected single member`);
+      }
+
+      return Expr.ModuleAccess(modulePath, members[0]);
+    }
+  ),
   primary
 );
 
@@ -318,7 +314,14 @@ const app = leftAssoc(
   (lhs, rhs) => Expr.Call(lhs, rhs)
 );
 
-const factor = app;
+const fieldAccess = chainLeft(
+  app,
+  symbol('.'),
+  expectOrDefault(ident, `Expected identifier after '.'`, '<?>'),
+  (lhs, _, field) => Expr.FieldAccess(lhs, field)
+);
+
+const factor = fieldAccess;
 
 const unary = alt(
   map(seq(

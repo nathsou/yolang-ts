@@ -1,5 +1,6 @@
 import { match as matchVariant } from "itsamatch";
 import { Decl, Prog } from "./ast/bitter";
+import { Prog as SweetProg } from "./ast/sweet";
 import { infer } from "./infer/infer";
 import { ParameterizedTy, PolyTy } from "./infer/types";
 import { formatError } from "./parse/combinators";
@@ -40,9 +41,15 @@ const run = (source: string): Prog => {
 };
 
 const prog = run(`
-  type Yo<T> = {
-    yo: T,
-    lo: U
+  module Hoy {
+    type Yo<T> = {
+      yo: T,
+      lo: U
+    }
+
+    fn hey(r) {
+      r.a * r.b > 0 && r.c
+    }
   }
 
   fn main() {
@@ -50,21 +57,21 @@ const prog = run(`
   }
 `);
 
-const showFunTypes = (decls: Decl[]): string[] => {
+const showTypes = (decls: Decl[], path: string[]): string[] => {
   const types: string[] = [];
+  const pathName = path.length > 0 ? path.join('.') + '.' : '';
 
   for (const decl of decls) {
     matchVariant(decl, {
       Function: ({ name, funTy }) => {
-        types.push(name.original + ': ' + PolyTy.show(PolyTy.canonicalize(funTy)));
+        types.push(pathName + name.original + ': ' + PolyTy.show(PolyTy.canonicalize(funTy)));
       },
       Module: mod => {
-        const fns = showFunTypes(mod.decls);
-        types.push(...fns.map(t => mod.name + '.' + t));
+        types.push(...showTypes(mod.decls, [...path, mod.name]));
       },
       Struct: ({ name, fields, typeParams }) => {
         types.push(
-          'type ' + name + '<' + typeParams.join(', ') + '>' +
+          'type ' + pathName + name + '<' + typeParams.join(', ') + '>' +
           ' = {\n' + fields.map(f => '  ' + f.name + ': ' + ParameterizedTy.show(f.ty)).join(',\n') + '\n}'
         );
       },
@@ -75,4 +82,4 @@ const showFunTypes = (decls: Decl[]): string[] => {
   return types;
 };
 
-console.log(showFunTypes(prog).join('\n'));
+console.log(showTypes(prog, []).join('\n\n'));

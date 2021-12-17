@@ -1,3 +1,4 @@
+import { Row } from "../infer/records";
 import { MonoTy } from "../infer/types";
 import { unify } from "../infer/unification";
 
@@ -103,5 +104,51 @@ describe('unification', () => {
       kind: 'Link',
       ref: tc1,
     }));
+  });
+
+  it.only('should unify record types correctly', () => {
+    const tv1 = MonoTy.fresh();
+    const tv2 = MonoTy.fresh();
+    const row1 = Row.extend('x', MonoTy.u32(), tv1);
+    const row2 = Row.extend('y', MonoTy.u32(), tv2);
+    const rec1 = MonoTy.TyRecord(row1);
+    const rec2 = MonoTy.TyRecord(row2);
+
+    const errs = unify(rec1, rec2);
+
+    expect(errs).toHaveLength(0);
+
+    console.log('row1', MonoTy.show(MonoTy.TyRecord(row1)));
+    console.log('row2', MonoTy.show(MonoTy.TyRecord(row2)));
+
+    expect(tv1).toMatchObject({
+      value: {
+        kind: 'Link',
+        ref: {
+          variant: 'TyRecord',
+          row: {
+            type: 'extend',
+            field: 'y',
+            ty: MonoTy.u32(),
+            tail: expect.any(Object),
+          }
+        },
+      },
+    });
+
+    expect(tv2).toMatchObject({
+      value: {
+        kind: 'Link',
+        ref: {
+          variant: 'TyRecord',
+          row: {
+            type: 'extend',
+            field: 'x',
+            ty: MonoTy.u32(),
+            tail: expect.any(Object),
+          }
+        },
+      },
+    });
   });
 });

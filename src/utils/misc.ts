@@ -34,3 +34,11 @@ export const matchString = <T>(
 };
 
 export const parenthesized = (str: string, showParens = true): string => showParens ? `(${str})` : str;
+
+export const mapRecord = <T, U>(obj: Record<string, T>, f: (value: T) => U): Record<string, U> => {
+  return Object.fromEntries(Object.entries(obj).map(([key, value]) => [key, f(value)]));
+};
+
+export const isUpperCase = (str: string): boolean => str === str.toUpperCase();
+
+export const isLowerCase = (str: string): boolean => str === str.toLowerCase();

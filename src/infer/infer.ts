@@ -4,6 +4,7 @@ import { BinaryOperator, UnaryOperator } from '../ast/sweet';
 import { Maybe, none, some } from '../utils/maybe';
 import { proj } from '../utils/misc';
 import { Env } from './env';
+import { Row } from './records';
 import { MonoTy, PolyTy } from './types';
 import { unify as unif } from './unification';
 
@@ -240,6 +241,13 @@ export const inferExpr = (
       }
 
       unify(tau, retTy);
+    },
+    FieldAccess: ({ lhs, field }) => {
+      const rowTail = MonoTy.fresh();
+      const partialRecordTy = MonoTy.TyRecord(Row.extend(field, tau, rowTail));
+
+      inferExpr(lhs, ctx, errors);
+      unify(partialRecordTy, lhs.ty);
     },
     Error: ({ message }) => {
       errors.push(message);

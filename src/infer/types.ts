@@ -2,9 +2,10 @@ import { DataType, match as matchVariant } from "itsamatch";
 import { match } from "ts-pattern";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
-import { cond, matchString, panic } from "../utils/misc";
+import { cond, mapRecord, matchString, panic } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
+import { Row } from "./records";
 
 export type TyVarId = number;
 export type TyVar = { kind: 'Var', id: TyVarId } | { kind: 'Link', ref: MonoTy };
@@ -14,6 +15,7 @@ export type MonoTy = DataType<{
   TyVar: { value: TyVar },
   TyConst: { name: string, args: MonoTy[] },
   TyFun: { args: MonoTy[], ret: MonoTy },
+  TyRecord: { row: Row },
 }>;
 
 export const showTyVarId = (n: TyVarId): string => {
@@ -31,6 +33,7 @@ export const MonoTy = {
   },
   TyConst: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'TyConst', name, args }),
   TyFun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'TyFun', args, ret }),
+  TyRecord: (row: Row): MonoTy => ({ variant: 'TyRecord', row }),
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
   u32: () => MonoTy.TyConst('u32'),
   bool: () => MonoTy.TyConst('bool'),
@@ -61,7 +64,15 @@ export const MonoTy = {
         MonoTy.freeTypeVars(ret, fvs);
 
         return fvs;
-      }
+      },
+      TyRecord: ({ row }) => {
+        Row.fields(row).forEach(([_, ty]) => {
+          MonoTy.freeTypeVars(ty, fvs);
+        });
+
+        return fvs;
+      },
+      TyStruct: () => fvs,
     }),
   generalize: (env: Env, ty: MonoTy): PolyTy => {
     // can be optimized using (block instead of let) levels
@@ -107,6 +118,18 @@ export const MonoTy = {
         args.map(arg => MonoTy.substitute(arg, subst)),
         MonoTy.substitute(ret, subst)
       ),
+      TyRecord: ({ row }) => {
+        if (row.type === 'empty') {
+          return ty;
+        }
+
+        return MonoTy.TyRecord(
+          Row.extend(row.field,
+            MonoTy.substitute(row.ty, subst),
+            MonoTy.substitute(row.tail, subst)
+          )
+        );
+      },
     });
   },
   show: (ty: MonoTy): string => matchVariant(ty, {
@@ -131,6 +154,13 @@ export const MonoTy = {
           .otherwise(a => `${MonoTy.show(a)} -> ${MonoTy.show(ret)}`),
       else: () => `(${joinWith(args, MonoTy.show, ', ')}) -> ${MonoTy.show(ret)}`,
     }),
+    TyRecord: ({ row }) => {
+      if (row.type === 'empty') {
+        return '{}';
+      }
+
+      return `{ ${joinWith(Row.fields(row).sort(([a], [b]) => a.localeCompare(b)), ([k, v]) => `${k}: ${MonoTy.show(v)}`, ', ')} }`;
+    },
   }),
   eq: (s: MonoTy, t: MonoTy): boolean =>
     match<[MonoTy, MonoTy]>([s, t])
