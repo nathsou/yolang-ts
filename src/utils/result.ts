@@ -19,6 +19,10 @@ export class Result<T, E> {
     return new Result<T, E>({ type: 'error', data });
   }
 
+  static wrap<T, E>([data, errors]: [T, E[]]): Result<T, E[]> {
+    return errors.length === 0 ? Result.ok(data) : Result.error(errors);
+  }
+
   isOk(): boolean {
     return this.res.type === 'ok';
   }

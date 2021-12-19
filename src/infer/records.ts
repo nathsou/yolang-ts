@@ -33,7 +33,7 @@ export const Row = {
     }
 
     if (ty.variant == 'Var' && ty.value.kind === 'Link') {
-      return Row.fromMonoTy(ty.value.ref);
+      return Row.fromMonoTy(ty.value.to);
     }
 
     return none;

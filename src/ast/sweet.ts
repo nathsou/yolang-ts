@@ -119,19 +119,19 @@ type Field = { name: string, ty: ParameterizedTy };
 export type Decl = DataType<{
   Function: { name: string, args: Argument[], body: Expr },
   Module: { name: string, decls: Decl[] },
-  Struct: { name: string, typeParams: string[], fields: Field[] },
+  NamedRecord: { name: string, typeParams: string[], fields: Field[] },
   Error: { message: string },
 }>;
 
 export const Decl = {
   Function: (name: string, args: Argument[], body: Expr): Decl => ({ variant: 'Function', name, args, body }),
   Module: (name: string, decls: Decl[]): Decl => ({ variant: 'Module', name, decls }),
-  Struct: (name: string, typeParams: string[], fields: Field[]): Decl => ({ variant: 'Struct', name, typeParams, fields }),
+  NamedRecord: (name: string, typeParams: string[], fields: Field[]): Decl => ({ variant: 'NamedRecord', name, typeParams, fields }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   show: (decl: Decl): string => matchVariant(decl, {
     Function: ({ name, args, body }) => `fn ${name}(${joinWith(args, ({ pattern, mutable }) => `${mutable ? 'mut ' : ''}${Pattern.show(pattern)}`, ', ')}) ${Expr.show(body)}`,
     Module: ({ name, decls }) => `module ${name} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
-    Struct: ({ name, typeParams, fields }) => {
+    NamedRecord: ({ name, typeParams, fields }) => {
       const params = typeParams.length > 0 ? `<${typeParams.join(', ')}>` : '';
       return `type ${name}${params} = {\n${joinWith(fields, ({ name, ty }) => `  ${name}: ${ParameterizedTy.show(ty)}`, `,\n`)}\n}`;
     },

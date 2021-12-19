@@ -9,6 +9,9 @@ export const context: Context = {
 };
 
 export const Context = {
+  clear: (): void => {
+    context.typeVarIndex = 0;
+  },
   freshTyVarIndex: (): TyVarId => {
     context.typeVarIndex += 1;
     return context.typeVarIndex;

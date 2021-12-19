@@ -1,7 +1,7 @@
 import { match as matchVariant } from "itsamatch";
 import { match, __ } from "ts-pattern";
 import { Row } from "./records";
-import { MonoTy, TyVarId } from "./types";
+import { MonoTy, TyVar, TyVarId } from "./types";
 
 export type UnificationError = string;
 
@@ -11,13 +11,13 @@ const occurs = (x: TyVarId, t: MonoTy): boolean =>
       if (value.kind === 'Unbound') {
         return value.id === x;
       } else {
-        return occurs(x, value.ref);
+        return occurs(x, value.to);
       }
     },
     Const: t => t.args.some(a => occurs(x, a)),
     Fun: t => t.args.some(a => occurs(x, a)) || occurs(x, t.ret),
     Record: ({ row }) => Row.fields(row).some(([_, ty]) => occurs(x, ty)),
-    NamedRecord: ({ fields }) => Row.fields(fields).some(([_, ty]) => occurs(x, ty)),
+    NamedRecord: ({ row: fields }) => Row.fields(fields).some(([_, ty]) => occurs(x, ty)),
   });
 
 const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
@@ -37,12 +37,12 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
         if (occurs(s.value.id, t)) {
           errors.push(`occurs check failed: ${MonoTy.show(s)}, ${MonoTy.show(t)}`);
         } else {
+          const link: TyVar = { kind: 'Link', to: MonoTy.deref(t) };
           /// @ts-ignore
-          s.value = { kind: 'Link', ref: MonoTy.deref(t) };
+          s.value = link;
         }
       })
       .with([{ variant: 'Var', value: { kind: 'Link' } }, __], ([s, t]) => {
-        eqs.push([MonoTy.deref(s.value.ref), t]);
         pushEqs([s, t]);
       })
       // Orient
@@ -129,11 +129,11 @@ export const rewriteRow = (row2: MonoTy, field1: string, fieldTy1: MonoTy, error
     },
     Var: v => {
       if (v.value.kind === 'Link') {
-        return rewriteRow(v.value.ref, field1, fieldTy1, errors);
+        return rewriteRow(v.value.to, field1, fieldTy1, errors);
       } else {
         const row2Tail = MonoTy.fresh();
         const ty2 = MonoTy.Record(Row.extend(field1, fieldTy1, row2Tail));
-        v.value = { kind: 'Link', ref: ty2 };
+        v.value = { kind: 'Link', to: ty2 };
         return row2Tail;
       }
     },

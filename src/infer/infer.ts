@@ -43,7 +43,7 @@ const binaryOpSignature: Record<BinaryOperator, PolyTy> = {
 type TypeContext = {
   env: Env,
   modules: Record<string, VariantOf<Decl, 'Module'>>,
-  typeDecls: Record<string, VariantOf<Decl, 'Struct'>>,
+  typeDecls: Record<string, VariantOf<Decl, 'NamedRecord'>>,
 };
 
 const TypeContext = {
@@ -52,7 +52,7 @@ const TypeContext = {
   declareModule: (ctx: TypeContext, mod: VariantOf<Decl, 'Module'>): void => {
     ctx.modules[mod.name] = mod;
   },
-  declareType: (ctx: TypeContext, ty: VariantOf<Decl, 'Struct'>): void => {
+  declareType: (ctx: TypeContext, ty: VariantOf<Decl, 'NamedRecord'>): void => {
     ctx.typeDecls[ty.name] = ty;
   },
   // TODO: cleanup
@@ -334,7 +334,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: TypingError[]): 
         inferDecl(decl, modCtx, errors);
       }
     },
-    Struct: struct => {
+    NamedRecord: struct => {
       TypeContext.declareType(ctx, struct);
     },
     Error: ({ message }) => {

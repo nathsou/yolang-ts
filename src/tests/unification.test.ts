@@ -12,7 +12,7 @@ describe('unification', () => {
     expect(errs).toHaveLength(0);
     expect(tv1).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      ref: tv2,
+      to: tv2,
     }));
 
     expect(MonoTy.deref(tv1)).toMatchObject(MonoTy.deref(tv2));
@@ -27,7 +27,7 @@ describe('unification', () => {
     expect(errs).toHaveLength(0);
     expect(tyVar).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      ref: tyConst,
+      to: tyConst,
     }));
 
     expect(MonoTy.deref(tyVar)).toMatchObject(tyConst);
@@ -42,7 +42,7 @@ describe('unification', () => {
     expect(errs).toHaveLength(0);
     expect(tyVar).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      ref: tyConst,
+      to: tyConst,
     }));
 
     expect(MonoTy.deref(tyVar)).toMatchObject(tyConst);
@@ -62,12 +62,12 @@ describe('unification', () => {
 
     expect(tv1).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      ref: tc2,
+      to: tc2,
     }));
 
     expect(tv2).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      ref: tc1,
+      to: tc1,
     }));
   });
 
@@ -97,12 +97,12 @@ describe('unification', () => {
 
     expect(tv1).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      ref: tc2,
+      to: tc2,
     }));
 
     expect(tv2).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      ref: tc1,
+      to: tc1,
     }));
   });
 
@@ -121,7 +121,7 @@ describe('unification', () => {
     expect(tv1).toMatchObject({
       value: {
         kind: 'Link',
-        ref: {
+        to: {
           variant: 'Record',
           row: {
             type: 'extend',
@@ -136,7 +136,7 @@ describe('unification', () => {
     expect(tv2).toMatchObject({
       value: {
         kind: 'Link',
-        ref: {
+        to: {
           variant: 'Record',
           row: {
             type: 'extend',

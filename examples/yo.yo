@@ -1,14 +1,8 @@
-module Hoy {
-  type Yo<T> = {
-    yo: T,
-    lo: U
-  }
 
-  fn hey(r) {
-    r.hello || r.yo
-  }
+type Yo<T> = {
+  yo: T
 }
 
-fn main() {
-  (f, g) -> x -> g(f(x))
+fn hey(r) {
+  (1, 2, r.x, 4)
 }

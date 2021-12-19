@@ -8,7 +8,7 @@ import { Env } from "./env";
 import { Row } from "./records";
 
 export type TyVarId = number;
-export type TyVar = { kind: 'Unbound', id: TyVarId } | { kind: 'Link', ref: MonoTy };
+export type TyVar = { kind: 'Unbound', id: TyVarId } | { kind: 'Link', to: MonoTy };
 
 // Monomorphic types
 export type MonoTy = DataType<{
@@ -16,7 +16,7 @@ export type MonoTy = DataType<{
   Const: { name: string, args: MonoTy[] },
   Fun: { args: MonoTy[], ret: MonoTy },
   Record: { row: Row },
-  NamedRecord: { name: string, fields: Row },
+  NamedRecord: { name: string, row: Row },
 }>;
 
 export const showTyVarId = (n: TyVarId): string => {
@@ -27,7 +27,7 @@ export const showTyVarId = (n: TyVarId): string => {
 export const MonoTy = {
   Var: (tv: TyVar): MonoTy => {
     if (tv.kind === 'Link') {
-      return { variant: 'Var', value: { kind: 'Link', ref: MonoTy.deref(tv.ref) } };
+      return { variant: 'Var', value: { kind: 'Link', to: MonoTy.deref(tv.to) } };
     }
 
     return { variant: 'Var', value: tv };
@@ -35,7 +35,7 @@ export const MonoTy = {
   Const: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', name, args }),
   Fun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'Fun', args, ret }),
   Record: (row: Row): MonoTy => ({ variant: 'Record', row }),
-  NamedRecord: (name: string, fields: Readonly<Row>): MonoTy => ({ variant: 'NamedRecord', name, fields }),
+  NamedRecord: (name: string, fields: Readonly<Row>): MonoTy => ({ variant: 'NamedRecord', name, row: fields }),
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
   u32: () => MonoTy.Const('u32'),
   bool: () => MonoTy.Const('bool'),
@@ -47,7 +47,7 @@ export const MonoTy = {
         if (value.kind === 'Unbound') {
           fvs.add(value.id);
         } else {
-          MonoTy.freeTypeVars(value.ref, fvs);
+          MonoTy.freeTypeVars(value.to, fvs);
         }
         return fvs;
       },
@@ -74,7 +74,7 @@ export const MonoTy = {
 
         return fvs;
       },
-      NamedRecord: ({ fields }) => {
+      NamedRecord: ({ row: fields }) => {
         Row.fields(fields).forEach(([_, ty]) => {
           MonoTy.freeTypeVars(ty, fvs);
         });
@@ -98,8 +98,8 @@ export const MonoTy = {
   },
   deref: (ty: MonoTy): MonoTy => {
     if (ty.variant === 'Var' && ty.value.kind === 'Link') {
-      const ret = MonoTy.deref(ty.value.ref);
-      ty.value.ref = ret;
+      const ret = MonoTy.deref(ty.value.to);
+      ty.value.to = ret;
       return ret;
     }
 
@@ -126,7 +126,7 @@ export const MonoTy = {
             return ty;
           }
         } else {
-          return MonoTy.substitute(value.ref, subst);
+          return MonoTy.substitute(value.to, subst);
         }
       },
       Const: ({ name, args }) => MonoTy.Const(
@@ -140,7 +140,7 @@ export const MonoTy = {
       Record: ({ row }) => {
         return MonoTy.Record(substituteRow(row));
       },
-      NamedRecord: ({ name, fields }) => MonoTy.NamedRecord(
+      NamedRecord: ({ name, row: fields }) => MonoTy.NamedRecord(
         name,
         substituteRow(fields)
       ),
@@ -151,7 +151,7 @@ export const MonoTy = {
       if (value.kind === 'Unbound') {
         return showTyVarId(value.id);
       } else {
-        return MonoTy.show(value.ref);
+        return MonoTy.show(value.to);
       }
     },
     Const: ({ name, args }) => cond(args.length === 0, {
@@ -275,10 +275,10 @@ export type ParameterizedTy = DataType<{
 }>;
 
 export const ParameterizedTy = {
-  TyVar: (id: TyVarId): ParameterizedTy => ({ variant: 'Var', id }),
-  TyParam: (name: string): ParameterizedTy => ({ variant: 'Param', name }),
-  TyConst: (name: string, ...args: ParameterizedTy[]): ParameterizedTy => ({ variant: 'Const', name, args }),
-  TyFun: (args: ParameterizedTy[], ret: ParameterizedTy): ParameterizedTy => ({ variant: 'Fun', args, ret }),
+  Var: (id: TyVarId): ParameterizedTy => ({ variant: 'Var', id }),
+  Param: (name: string): ParameterizedTy => ({ variant: 'Param', name }),
+  Const: (name: string, ...args: ParameterizedTy[]): ParameterizedTy => ({ variant: 'Const', name, args }),
+  Fun: (args: ParameterizedTy[], ret: ParameterizedTy): ParameterizedTy => ({ variant: 'Fun', args, ret }),
   freeTyParams: (ty: ParameterizedTy): string[] => {
     return matchVariant(ty, {
       Var: () => [],

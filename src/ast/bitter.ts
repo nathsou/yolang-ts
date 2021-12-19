@@ -221,7 +221,7 @@ export type Decl = DataType<{
     decls: Decl[],
     members: Record<string, Decl>,
   },
-  Struct: {
+  NamedRecord: {
     name: string,
     typeParams: string[],
     fields: Field[],
@@ -247,8 +247,8 @@ export const Decl = {
         Module: subMod => {
           mod.members[subMod.name] = subMod;
         },
-        Struct: struct => {
-          mod.members[struct.name] = struct;
+        NamedRecord: rec => {
+          mod.members[rec.name] = rec;
         },
         Error: () => { },
       });
@@ -256,7 +256,7 @@ export const Decl = {
 
     return mod;
   },
-  Struct: (name: string, typeParams: string[], fields: Field[]): Decl => ({ variant: 'Struct', typeParams, name, fields }),
+  NamedRecord: (name: string, typeParams: string[], fields: Field[]): Decl => ({ variant: 'NamedRecord', typeParams, name, fields }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: BitterConversionError[]): Decl =>
     matchVariant(sweet, {
@@ -283,7 +283,7 @@ export const Decl = {
           decls.map(decl => Decl.fromSweet(decl, modEnv, false, errors))
         );
       },
-      Struct: ({ name, typeParams, fields }) => Decl.Struct(name, typeParams, fields),
+      NamedRecord: ({ name, typeParams, fields }) => Decl.NamedRecord(name, typeParams, fields),
       Error: ({ message }) => Decl.Error(message),
     }),
 };
