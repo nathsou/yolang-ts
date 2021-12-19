@@ -19,7 +19,7 @@ const u32OpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.u32(), MonoTy.u32()], MonoTy.u
 const u32BoolOpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.u32(), MonoTy.u32()], MonoTy.bool()));
 const comparisonOpSig = PolyTy.make(
   [0],
-  MonoTy.Fun([MonoTy.Var({ kind: 'Var', id: 0 }), MonoTy.Var({ kind: 'Var', id: 0 })], MonoTy.bool())
+  MonoTy.Fun([MonoTy.Var({ kind: 'Unbound', id: 0 }), MonoTy.Var({ kind: 'Unbound', id: 0 })], MonoTy.bool())
 );
 
 const logicalOpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.bool(), MonoTy.bool()], MonoTy.bool()));

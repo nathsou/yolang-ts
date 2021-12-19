@@ -8,7 +8,7 @@ export type UnificationError = string;
 const occurs = (x: TyVarId, t: MonoTy): boolean =>
   matchVariant(t, {
     Var: ({ value }) => {
-      if (value.kind === 'Var') {
+      if (value.kind === 'Unbound') {
         return value.id === x;
       } else {
         return occurs(x, value.ref);
@@ -33,7 +33,7 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
       // Delete
       .when(([s, t]) => MonoTy.eq(s, t), () => { })
       // Eliminate
-      .with([{ variant: 'Var', value: { kind: 'Var' } }, __], ([s, t]) => {
+      .with([{ variant: 'Var', value: { kind: 'Unbound' } }, __], ([s, t]) => {
         if (occurs(s.value.id, t)) {
           errors.push(`occurs check failed: ${MonoTy.show(s)}, ${MonoTy.show(t)}`);
         } else {
@@ -89,7 +89,7 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
         { variant: 'Record', row: { type: 'extend' } },
         { variant: 'Record', row: { type: 'extend' } }
       ], ([s, t]) => {
-        const isTailUnboundVar = s.row.tail.variant === 'Var' && s.row.tail.value.kind === 'Var';
+        const isTailUnboundVar = s.row.tail.variant === 'Var' && s.row.tail.value.kind === 'Unbound';
         const row2Tail = rewriteRow(t, s.row.field, s.row.ty, errors);
         if (isTailUnboundVar && s.row.tail.variant === 'Var' && s.row.tail.value.kind === 'Link') {
           errors.push('recursive row type');

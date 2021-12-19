@@ -8,7 +8,7 @@ import { Env } from "./env";
 import { Row } from "./records";
 
 export type TyVarId = number;
-export type TyVar = { kind: 'Var', id: TyVarId } | { kind: 'Link', ref: MonoTy };
+export type TyVar = { kind: 'Unbound', id: TyVarId } | { kind: 'Link', ref: MonoTy };
 
 // Monomorphic types
 export type MonoTy = DataType<{
@@ -44,7 +44,7 @@ export const MonoTy = {
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
     matchVariant(ty, {
       Var: ({ value }) => {
-        if (value.kind === 'Var') {
+        if (value.kind === 'Unbound') {
           fvs.add(value.id);
         } else {
           MonoTy.freeTypeVars(value.ref, fvs);
@@ -94,7 +94,7 @@ export const MonoTy = {
   },
   fresh: () => {
     const id = Context.freshTyVarIndex();
-    return MonoTy.Var({ kind: 'Var', id });
+    return MonoTy.Var({ kind: 'Unbound', id });
   },
   deref: (ty: MonoTy): MonoTy => {
     if (ty.variant === 'Var' && ty.value.kind === 'Link') {
@@ -119,7 +119,7 @@ export const MonoTy = {
 
     return matchVariant(ty, {
       Var: ({ value }) => {
-        if (value.kind === 'Var') {
+        if (value.kind === 'Unbound') {
           if (subst.has(value.id)) {
             return subst.get(value.id)!;
           } else {
@@ -148,7 +148,7 @@ export const MonoTy = {
   },
   show: (ty: MonoTy): string => matchVariant(ty, {
     Var: ({ value }) => {
-      if (value.kind === 'Var') {
+      if (value.kind === 'Unbound') {
         return showTyVarId(value.id);
       } else {
         return MonoTy.show(value.ref);
@@ -181,8 +181,8 @@ export const MonoTy = {
     match<[MonoTy, MonoTy]>([s, t])
       .with(
         [
-          { variant: 'Var', value: { kind: 'Var' } },
-          { variant: 'Var', value: { kind: 'Var' } },
+          { variant: 'Var', value: { kind: 'Unbound' } },
+          { variant: 'Var', value: { kind: 'Unbound' } },
         ],
         ([{ value: s }, { value: t }]) => s.id === t.id
       )
@@ -246,7 +246,7 @@ export const PolyTy = {
     const newVars = gen(vars.length, i => i);
 
     for (const [v1, v2] of zip(vars, newVars)) {
-      subts.set(v1, MonoTy.Var({ kind: 'Var', id: v2 }));
+      subts.set(v1, MonoTy.Var({ kind: 'Unbound', id: v2 }));
     }
 
     return [newVars, MonoTy.substitute(mono, subts)];
@@ -289,7 +289,7 @@ export const ParameterizedTy = {
   },
   substituteTyParams: (ty: ParameterizedTy, subst: Map<string, MonoTy>): MonoTy => {
     return matchVariant(ty, {
-      Var: ({ id }) => MonoTy.Var({ kind: 'Var', id }),
+      Var: ({ id }) => MonoTy.Var({ kind: 'Unbound', id }),
       Param: ({ name }) => {
         if (!subst.has(name)) {
           panic(`Type parameter '${name}' not found in substitution`);
@@ -311,7 +311,7 @@ export const ParameterizedTy = {
 
     for (const t of params) {
       const v = Context.freshTyVarIndex();
-      subst.set(t, MonoTy.Var({ kind: 'Var', id: v }));
+      subst.set(t, MonoTy.Var({ kind: 'Unbound', id: v }));
       tyVars.push(v);
     }
 
@@ -321,7 +321,7 @@ export const ParameterizedTy = {
     const subst = new Map<string, MonoTy>();
 
     for (const [name, id] of params.entries()) {
-      subst.set(name, MonoTy.Var({ kind: 'Var', id: id }));
+      subst.set(name, MonoTy.Var({ kind: 'Unbound', id: id }));
     }
 
     return ParameterizedTy.substituteTyParams(ty, subst);
