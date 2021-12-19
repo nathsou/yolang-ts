@@ -1,6 +1,27 @@
+import fc from "fast-check";
 import { Row } from "../infer/records";
+import { Subst } from "../infer/subst";
 import { MonoTy } from "../infer/types";
 import { unify } from "../infer/unification";
+import { forEach } from "../utils/misc";
+import { typ } from './arbitraties/type.arb';
+import * as prand from 'pure-rand';
+
+const randSubst = (ty: MonoTy, rand: fc.Random): Subst => {
+  const subst = Subst.make();
+  forEach(MonoTy.freeTypeVars(ty), v => {
+    const shouldChange = fc.boolean().generate(rand).value;
+
+    if (shouldChange) {
+      const t = typ().generate(rand).value;
+      if (!MonoTy.occurs(v, t)) {
+        subst.set(v, t);
+      }
+    }
+  });
+
+  return subst;
+};
 
 describe('unification', () => {
   it('should unify type variables correctly', () => {
@@ -71,7 +92,7 @@ describe('unification', () => {
     }));
   });
 
-  it.skip('should fail to unify ununifyiable types', () => {
+  it('should fail to unify ununifyiable types', () => {
     const tv1 = MonoTy.Var({ kind: 'Unbound', id: 0 });
     const tc1 = MonoTy.Const('Yolo');
     const tc2 = MonoTy.Const('Hola');
@@ -79,7 +100,6 @@ describe('unification', () => {
     const pair2 = MonoTy.Const('Pair', tc2, tv1);
 
     const errs = unify(pair1, pair2);
-
     expect(errs).toHaveLength(1);
   });
 
@@ -147,5 +167,17 @@ describe('unification', () => {
         },
       },
     });
+  });
+
+  it('should unify random types', () => {
+    const seed = Math.floor(Math.random() * 1000_0000);
+    const rand = new fc.Random(prand.xorshift128plus(seed));
+    fc.assert(fc.property(typ(5), ty => {
+      const subst = randSubst(ty, rand);
+      const ty2 = Subst.apply(subst, ty);
+      const errs = unify(ty, ty2);
+      expect(errs).toHaveLength(0);
+      expect(MonoTy.eq(ty, ty2)).toBeTruthy();
+    }));
   });
 });

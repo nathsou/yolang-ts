@@ -1,24 +1,9 @@
 import { match as matchVariant } from "itsamatch";
 import { match, __ } from "ts-pattern";
 import { Row } from "./records";
-import { MonoTy, TyVar, TyVarId } from "./types";
+import { MonoTy, TyVar } from "./types";
 
 export type UnificationError = string;
-
-const occurs = (x: TyVarId, t: MonoTy): boolean =>
-  matchVariant(t, {
-    Var: ({ value }) => {
-      if (value.kind === 'Unbound') {
-        return value.id === x;
-      } else {
-        return occurs(x, value.to);
-      }
-    },
-    Const: t => t.args.some(a => occurs(x, a)),
-    Fun: t => t.args.some(a => occurs(x, a)) || occurs(x, t.ret),
-    Record: ({ row }) => Row.fields(row).some(([_, ty]) => occurs(x, ty)),
-    NamedRecord: ({ row: fields }) => Row.fields(fields).some(([_, ty]) => occurs(x, ty)),
-  });
 
 const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
   const errors: UnificationError[] = [];
@@ -34,7 +19,7 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
       .when(([s, t]) => MonoTy.eq(s, t), () => { })
       // Eliminate
       .with([{ variant: 'Var', value: { kind: 'Unbound' } }, __], ([s, t]) => {
-        if (occurs(s.value.id, t)) {
+        if (MonoTy.occurs(s.value.id, t)) {
           errors.push(`occurs check failed: ${MonoTy.show(s)}, ${MonoTy.show(t)}`);
         } else {
           const link: TyVar = { kind: 'Link', to: MonoTy.deref(t) };

@@ -22,7 +22,7 @@ export const constExpr = fc.frequency(
   { arbitrary: constUnitExpr, weight: 1 },
 );
 
-export const expr = (maxDepth = 5) => fc.letrec(tie => ({
+export const expr = (maxDepth = 3) => fc.letrec(tie => ({
   primary: fc.frequency(
     { arbitrary: constExpr, weight: 2 },
     { arbitrary: varExpr, weight: 1 }

@@ -42,3 +42,9 @@ export const mapRecord = <T, U>(obj: Record<string, T>, f: (value: T) => U): Rec
 export const compose = <A, B, C>(f: (a: A) => B, g: (b: B) => C) => (x: A) => g(f(x));
 
 export const not = (q: boolean) => !q;
+
+export const forEach = <T>(it: Iterable<T>, f: (value: T) => void): void => {
+  for (const value of it) {
+    f(value);
+  }
+};

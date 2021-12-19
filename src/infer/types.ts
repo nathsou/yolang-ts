@@ -6,6 +6,7 @@ import { cond, matchString, panic } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./records";
+import { Subst } from "./subst";
 
 export type TyVarId = number;
 export type TyVar = { kind: 'Unbound', id: TyVarId } | { kind: 'Link', to: MonoTy };
@@ -96,6 +97,19 @@ export const MonoTy = {
     const id = Context.freshTyVarIndex();
     return MonoTy.Var({ kind: 'Unbound', id });
   },
+  occurs: (x: TyVarId, t: MonoTy): boolean => matchVariant(t, {
+    Var: ({ value }) => {
+      if (value.kind === 'Unbound') {
+        return value.id === x;
+      } else {
+        return MonoTy.occurs(x, value.to);
+      }
+    },
+    Const: t => t.args.some(a => MonoTy.occurs(x, a)),
+    Fun: t => t.args.some(a => MonoTy.occurs(x, a)) || MonoTy.occurs(x, t.ret),
+    Record: ({ row }) => Row.fields(row).some(([_, ty]) => MonoTy.occurs(x, ty)),
+    NamedRecord: ({ row: fields }) => Row.fields(fields).some(([_, ty]) => MonoTy.occurs(x, ty)),
+  }),
   deref: (ty: MonoTy): MonoTy => {
     if (ty.variant === 'Var' && ty.value.kind === 'Link') {
       const ret = MonoTy.deref(ty.value.to);
@@ -178,7 +192,7 @@ export const MonoTy = {
     NamedRecord: ({ name }) => name,
   }),
   eq: (s: MonoTy, t: MonoTy): boolean =>
-    match<[MonoTy, MonoTy]>([s, t])
+    match<[MonoTy, MonoTy]>([MonoTy.deref(s), MonoTy.deref(t)])
       .with(
         [
           { variant: 'Var', value: { kind: 'Unbound' } },
@@ -188,7 +202,7 @@ export const MonoTy = {
       )
       .with(
         [{ variant: 'Var' }, { variant: 'Var' }],
-        () => MonoTy.eq(MonoTy.deref(s), MonoTy.deref(t)),
+        () => MonoTy.eq(s, t),
       )
       .with(
         [{ variant: 'Const' }, { variant: 'Const' }],
@@ -274,8 +288,6 @@ export type ParameterizedTy = DataType<{
   Fun: { args: ParameterizedTy[], ret: ParameterizedTy },
 }>;
 
-export type Subst = Map<string, MonoTy>;
-
 export const ParameterizedTy = {
   Var: (id: TyVarId): ParameterizedTy => ({ variant: 'Var', id }),
   Param: (name: string): ParameterizedTy => ({ variant: 'Param', name }),
@@ -289,7 +301,7 @@ export const ParameterizedTy = {
       Fun: ({ args, ret }) => [...args.flatMap(ParameterizedTy.freeTyParams), ...ParameterizedTy.freeTyParams(ret)],
     });
   },
-  substituteTyParams: (ty: ParameterizedTy, subst: Subst): MonoTy => {
+  substituteTyParams: (ty: ParameterizedTy, subst: Map<string, MonoTy>): MonoTy => {
     return matchVariant(ty, {
       Var: ({ id }) => MonoTy.Var({ kind: 'Unbound', id }),
       Param: ({ name }) => {
