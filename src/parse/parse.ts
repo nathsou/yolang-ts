@@ -4,9 +4,10 @@ import { Argument, Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
 import { MonoTy, ParameterizedTy, TypeParamsContext } from '../infer/types';
 import { takeWhile } from '../utils/array';
 import { none, some } from '../utils/maybe';
-import { compose, isLowerCase, isUpperCase, ref, snd } from '../utils/misc';
+import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
+import { isLowerCase, isUpperCase } from '../utils/strings';
 import { alt, angleBrackets, chainLeft, commas, conditionalError, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, lazy, leftAssoc, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
 import { Const, Token } from './token';
 

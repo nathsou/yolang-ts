@@ -39,8 +39,6 @@ export const mapRecord = <T, U>(obj: Record<string, T>, f: (value: T) => U): Rec
   return Object.fromEntries(Object.entries(obj).map(([key, value]) => [key, f(value)]));
 };
 
-export const isUpperCase = (str: string): boolean => str === str.toUpperCase();
-
-export const isLowerCase = (str: string): boolean => str === str.toLowerCase();
-
 export const compose = <A, B, C>(f: (a: A) => B, g: (b: B) => C) => (x: A) => g(f(x));
+
+export const not = (q: boolean) => !q;

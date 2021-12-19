@@ -274,6 +274,8 @@ export type ParameterizedTy = DataType<{
   Fun: { args: ParameterizedTy[], ret: ParameterizedTy },
 }>;
 
+export type Subst = Map<string, MonoTy>;
+
 export const ParameterizedTy = {
   Var: (id: TyVarId): ParameterizedTy => ({ variant: 'Var', id }),
   Param: (name: string): ParameterizedTy => ({ variant: 'Param', name }),
@@ -287,7 +289,7 @@ export const ParameterizedTy = {
       Fun: ({ args, ret }) => [...args.flatMap(ParameterizedTy.freeTyParams), ...ParameterizedTy.freeTyParams(ret)],
     });
   },
-  substituteTyParams: (ty: ParameterizedTy, subst: Map<string, MonoTy>): MonoTy => {
+  substituteTyParams: (ty: ParameterizedTy, subst: Subst): MonoTy => {
     return matchVariant(ty, {
       Var: ({ id }) => MonoTy.Var({ kind: 'Unbound', id }),
       Param: ({ name }) => {

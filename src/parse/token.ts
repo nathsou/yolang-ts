@@ -70,7 +70,9 @@ export type Keyword = (typeof keywords)[number];
 
 export const Keyword = {
   values: keywords,
+  valuesSet: new Set(keywords),
   eq: (a: Keyword, b: Keyword) => a === b,
+  is: (ident: string): ident is Keyword => Keyword.valuesSet.has(ident as any),
 };
 
 export type Const = DataType<{

@@ -3,8 +3,7 @@ import { Maybe, none, some } from "../utils/maybe";
 import { firstSomeBy } from "../utils/array";
 import { Spaces } from "./token";
 import { Trie, Node } from "../utils/trie";
-
-export type Char = string;
+import { Char, isAlpha, isAlphaNum, isDigit, isLowerCaseLetter, isUpperCaseLetter } from "../utils/strings";
 
 export type Lexer<T> = (input: Slice<Char>) => Maybe<[T, Slice<Char>]>;
 
@@ -14,19 +13,13 @@ export const satisfy = (predicate: (char: Char) => boolean): Lexer<Char> => {
       .flatMap(char => predicate(char) ? some([char, Slice.tail(input)]) : none);
 };
 
-const isLowerCaseLetter = (c: Char) => c >= 'a' && c <= 'z';
-const isUpperCaseLetter = (c: Char) => c >= 'A' && c <= 'Z';
-const isAlpha = (c: Char) => isLowerCaseLetter(c) || isUpperCaseLetter(c);
-const isDigit = (c: Char) => c >= '0' && c <= '9';
-const isAlphaNum = (c: Char) => isAlpha(c) || isDigit(c);
-const isSpace = (char: Char) => Spaces.set.has(char);
-
 export const char = (c: Char) => satisfy(ch => ch === c);
 export const lowerLetter = satisfy(isLowerCaseLetter);
 export const upperLetter = satisfy(isUpperCaseLetter);
 export const letter = satisfy(isAlpha);
 export const digit = satisfy(isDigit);
 export const alphaNum = satisfy(isAlphaNum);
+export const isSpace = (char: Char) => Spaces.set.has(char);
 export const space = satisfy(isSpace);
 
 export const map = <T, U>(lexer: Lexer<T>, f: (t: T) => U): Lexer<U> => {

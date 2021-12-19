@@ -4,6 +4,8 @@ import { lex } from '../parse/lex';
 import { tuple } from '../parse/parse';
 import { Const, Token } from '../parse/token';
 import { Slice } from '../utils/slice';
+import fc from 'fast-check';
+import { expr } from './arbitraties/expr.arb';
 
 const tokens = (input: string): Slice<Token> => Slice.from(lex(input));
 
@@ -106,6 +108,12 @@ describe('Parser', () => {
           ]),
         ]),
       ]));
+    });
+
+    it('should parse randomly generated tuples', () => {
+      fc.assert(fc.property(expr(2).tuple, tup => {
+        expectExpr(tuple, Expr.show(tup), tup);
+      }));
     });
   });
 });
