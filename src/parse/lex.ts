@@ -2,25 +2,25 @@ import { Slice } from "../utils/slice";
 import { alphaNum, alt, digit, letter, many, map, not, oneOrMore, spaces, str, then, trie } from "./lexerCombinators";
 import { Const, Keyword, Position, Space, Spaces, Symbol, Token, TokenWithPos, withPos } from "./token";
 
-export const symbol = map(trie(Symbol.values), s => Token.symbol(s as Symbol));
+export const symbol = map(trie(Symbol.values), s => Token.Symbol(s as Symbol));
 
 export const keyword = map(
   then(
     trie(Keyword.values),
     not(alphaNum)
   ),
-  ([kw, _]) => Token.keyword(kw as Keyword)
+  ([kw, _]) => Token.Keyword(kw as Keyword)
 );
 
 const digits = map(oneOrMore(digit), digits => parseInt(digits.join(''), 10));
 
-export const u32 = map(digits, n => Token.const(Const.u32(n)));
-export const bool = map(alt(str('true'), str('false')), b => Token.const(Const.bool(b === 'true')));
-export const ident = map(then(letter, many(alphaNum)), ([h, tl]) => Token.identifier(h + tl.join('')));
+export const u32 = map(digits, n => Token.Const(Const.u32(n)));
+export const bool = map(alt(str('true'), str('false')), b => Token.Const(Const.bool(b === 'true')));
+export const ident = map(then(letter, many(alphaNum)), ([h, tl]) => Token.Identifier(h + tl.join('')));
 
 export const token = alt(u32, bool, keyword, symbol, ident);
 
-const invalid = map(oneOrMore(not(token)), chars => Token.invalid(chars.join('').trim()));
+const invalid = map(oneOrMore(not(token)), chars => Token.Invalid(chars.join('').trim()));
 
 export const lex = (input: string): TokenWithPos[] => {
   const tokens: TokenWithPos[] = [];

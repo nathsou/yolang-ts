@@ -1,5 +1,5 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
-import { MonoTy, ParameterizedTy, PolyTy, TyVarId } from "../infer/types";
+import { MonoTy, ParameterizedTy, PolyTy } from "../infer/types";
 import { Const } from "../parse/token";
 import { Maybe } from "../utils/maybe";
 import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
@@ -103,6 +103,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
   Match: { expr: Expr, cases: { pattern: Pattern, body: Expr }[] },
+  Struct: { name: string, fields: { name: string, value: Expr }[] },
 }>>;
 
 const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet: SweetExpr } => ({

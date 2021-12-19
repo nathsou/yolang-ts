@@ -10,8 +10,8 @@ export type Row =
 export const Row = {
   empty: (): Row => ({ type: 'empty' }),
   extend: (field: string, ty: MonoTy, tail: MonoTy): Row => ({ type: 'extend', field, ty, tail }),
-  fromRecord: (record: Record<string, MonoTy>): Row => {
-    return Row.fromFields(Object.entries(record));
+  fromObject: (obj: Record<string, MonoTy>): Row => {
+    return Row.fromFields(Object.entries(obj));
   },
   fromFields: (fields: [string, MonoTy][]): Row => {
     if (fields.length === 0) {
@@ -22,17 +22,17 @@ export const Row = {
     let row = Row.extend(firstField, firstTy, MonoTy.fresh());
 
     for (let [field, ty] of tail) {
-      row = Row.extend(field, ty, MonoTy.TyRecord(row));
+      row = Row.extend(field, ty, MonoTy.Record(row));
     }
 
     return row;
   },
   fromMonoTy: (ty: MonoTy): Maybe<Row> => {
-    if (ty.variant === 'TyRecord') {
+    if (ty.variant === 'Record') {
       return some(ty.row);
     }
 
-    if (ty.variant == 'TyVar' && ty.value.kind === 'Link') {
+    if (ty.variant == 'Var' && ty.value.kind === 'Link') {
       return Row.fromMonoTy(ty.value.ref);
     }
 
@@ -50,7 +50,7 @@ export const Row = {
       acc
     );
   },
-  asRecord: (row: Row): { [field: string]: MonoTy } => {
+  asObject: (row: Row): { [field: string]: MonoTy } => {
     let result: { [field: string]: MonoTy } = {};
 
     for (let [field, ty] of Row.fields(row)) {

@@ -7,6 +7,7 @@ import { formatError } from "./parse/combinators";
 import { lex } from "./parse/lex";
 import { parse } from "./parse/parse";
 import { Slice } from "./utils/slice";
+import { readFileSync } from 'fs';
 
 // pipeline:
 // <string> -> parse -> <sweet> -> desugar & resolve modules -> <bitter> -> infer ->
@@ -48,7 +49,7 @@ const prog = run(`
     }
 
     fn hey(r) {
-      r.a * r.b > 0 && r.c
+      r.yo + r.lo
     }
   }
 
@@ -82,4 +83,13 @@ const showTypes = (decls: Decl[], path: string[]): string[] => {
   return types;
 };
 
-console.log(showTypes(prog, []).join('\n\n'));
+const [, , source] = process.argv;
+
+if (source) {
+  const contents = readFileSync(source, 'utf8');
+  const prog = run(contents);
+  console.log(showTypes(prog, []).join('\n\n'));
+} else {
+  console.info('Usage: yo <source.yo>');
+  process.exit(0);
+}

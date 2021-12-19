@@ -11,11 +11,11 @@ export type Token = DataType<{
 }>;
 
 export const Token = {
-  symbol: (value: Symbol): Token => ({ variant: 'Symbol', value }),
-  keyword: (value: Keyword): Token => ({ variant: 'Keyword', value }),
-  const: (value: Const): Token => ({ variant: 'Const', value }),
-  identifier: (name: string): Token => ({ variant: 'Identifier', name }),
-  invalid: (lexeme: string): Token => ({ variant: 'Invalid', lexeme }),
+  Symbol: (value: Symbol): Token => ({ variant: 'Symbol', value }),
+  Keyword: (value: Keyword): Token => ({ variant: 'Keyword', value }),
+  Const: (value: Const): Token => ({ variant: 'Const', value }),
+  Identifier: (name: string): Token => ({ variant: 'Identifier', name }),
+  Invalid: (lexeme: string): Token => ({ variant: 'Invalid', lexeme }),
   show: (token: Token) => matchVariant(token, {
     Symbol: ({ value }) => value,
     Keyword: ({ value }) => value,

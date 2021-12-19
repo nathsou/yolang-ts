@@ -63,8 +63,8 @@ export const token = (token: Token): Parser<Token> => {
   return satisfy(t => Token.eq(t, token));
 };
 
-export const symbol = (symb: Symbol) => token(Token.symbol(symb));
-export const keyword = (keyword: Keyword) => token(Token.keyword(keyword));
+export const symbol = (symb: Symbol) => token(Token.Symbol(symb));
+export const keyword = (keyword: Keyword) => token(Token.Keyword(keyword));
 
 export const map = <T, U>(p: Parser<T>, f: (t: T, tokens: Slice<Token>) => U): Parser<U> => {
   return ref(tokens => {

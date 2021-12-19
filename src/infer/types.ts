@@ -2,7 +2,7 @@ import { DataType, match as matchVariant } from "itsamatch";
 import { match } from "ts-pattern";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
-import { cond, mapRecord, matchString, panic } from "../utils/misc";
+import { cond, matchString, panic } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./records";
@@ -12,36 +12,38 @@ export type TyVar = { kind: 'Var', id: TyVarId } | { kind: 'Link', ref: MonoTy }
 
 // Monomorphic types
 export type MonoTy = DataType<{
-  TyVar: { value: TyVar },
-  TyConst: { name: string, args: MonoTy[] },
-  TyFun: { args: MonoTy[], ret: MonoTy },
-  TyRecord: { row: Row },
+  Var: { value: TyVar },
+  Const: { name: string, args: MonoTy[] },
+  Fun: { args: MonoTy[], ret: MonoTy },
+  Record: { row: Row },
+  NamedRecord: { name: string, fields: Row },
 }>;
 
 export const showTyVarId = (n: TyVarId): string => {
   const l = String.fromCharCode(97 + n % 26);
-  return n >= 23 ? `${l}${Math.floor(n / 26)}` : l;
+  return n >= 26 ? `${l}${Math.floor(n / 26)}` : l;
 };
 
 export const MonoTy = {
-  TyVar: (tv: TyVar): MonoTy => {
+  Var: (tv: TyVar): MonoTy => {
     if (tv.kind === 'Link') {
-      return { variant: 'TyVar', value: { kind: 'Link', ref: MonoTy.deref(tv.ref) } };
+      return { variant: 'Var', value: { kind: 'Link', ref: MonoTy.deref(tv.ref) } };
     }
 
-    return { variant: 'TyVar', value: tv };
+    return { variant: 'Var', value: tv };
   },
-  TyConst: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'TyConst', name, args }),
-  TyFun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'TyFun', args, ret }),
-  TyRecord: (row: Row): MonoTy => ({ variant: 'TyRecord', row }),
+  Const: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', name, args }),
+  Fun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'Fun', args, ret }),
+  Record: (row: Row): MonoTy => ({ variant: 'Record', row }),
+  NamedRecord: (name: string, fields: Readonly<Row>): MonoTy => ({ variant: 'NamedRecord', name, fields }),
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
-  u32: () => MonoTy.TyConst('u32'),
-  bool: () => MonoTy.TyConst('bool'),
-  unit: () => MonoTy.TyConst('()'),
-  tuple: (tys: MonoTy[]) => MonoTy.TyConst('tuple', ...tys),
+  u32: () => MonoTy.Const('u32'),
+  bool: () => MonoTy.Const('bool'),
+  unit: () => MonoTy.Const('()'),
+  tuple: (tys: MonoTy[]) => MonoTy.Const('tuple', ...tys),
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
     matchVariant(ty, {
-      TyVar: ({ value }) => {
+      Var: ({ value }) => {
         if (value.kind === 'Var') {
           fvs.add(value.id);
         } else {
@@ -49,14 +51,14 @@ export const MonoTy = {
         }
         return fvs;
       },
-      TyConst: ({ args }) => {
+      Const: ({ args }) => {
         args.forEach(arg => {
           MonoTy.freeTypeVars(arg, fvs)
         });
 
         return fvs;
       },
-      TyFun: ({ args, ret }) => {
+      Fun: ({ args, ret }) => {
         args.forEach(arg => {
           MonoTy.freeTypeVars(arg, fvs);
         });
@@ -65,14 +67,20 @@ export const MonoTy = {
 
         return fvs;
       },
-      TyRecord: ({ row }) => {
+      Record: ({ row }) => {
         Row.fields(row).forEach(([_, ty]) => {
           MonoTy.freeTypeVars(ty, fvs);
         });
 
         return fvs;
       },
-      TyStruct: () => fvs,
+      NamedRecord: ({ fields }) => {
+        Row.fields(fields).forEach(([_, ty]) => {
+          MonoTy.freeTypeVars(ty, fvs);
+        });
+
+        return fvs;
+      },
     }),
   generalize: (env: Env, ty: MonoTy): PolyTy => {
     // can be optimized using (block instead of let) levels
@@ -86,10 +94,10 @@ export const MonoTy = {
   },
   fresh: () => {
     const id = Context.freshTyVarIndex();
-    return MonoTy.TyVar({ kind: 'Var', id });
+    return MonoTy.Var({ kind: 'Var', id });
   },
   deref: (ty: MonoTy): MonoTy => {
-    if (ty.variant === 'TyVar' && ty.value.kind === 'Link') {
+    if (ty.variant === 'Var' && ty.value.kind === 'Link') {
       const ret = MonoTy.deref(ty.value.ref);
       ty.value.ref = ret;
       return ret;
@@ -98,8 +106,19 @@ export const MonoTy = {
     return ty;
   },
   substitute: (ty: MonoTy, subst: Map<TyVarId, MonoTy>): MonoTy => {
+    const substituteRow = (row: Row): Row => {
+      if (row.type === 'empty') {
+        return Row.empty();
+      }
+
+      return Row.extend(row.field,
+        MonoTy.substitute(row.ty, subst),
+        MonoTy.substitute(row.tail, subst)
+      );
+    };
+
     return matchVariant(ty, {
-      TyVar: ({ value }) => {
+      Var: ({ value }) => {
         if (value.kind === 'Var') {
           if (subst.has(value.id)) {
             return subst.get(value.id)!;
@@ -110,73 +129,69 @@ export const MonoTy = {
           return MonoTy.substitute(value.ref, subst);
         }
       },
-      TyConst: ({ name, args }) => MonoTy.TyConst(
+      Const: ({ name, args }) => MonoTy.Const(
         name,
         ...args.map(arg => MonoTy.substitute(arg, subst))
       ),
-      TyFun: ({ args, ret }) => MonoTy.TyFun(
+      Fun: ({ args, ret }) => MonoTy.Fun(
         args.map(arg => MonoTy.substitute(arg, subst)),
         MonoTy.substitute(ret, subst)
       ),
-      TyRecord: ({ row }) => {
-        if (row.type === 'empty') {
-          return ty;
-        }
-
-        return MonoTy.TyRecord(
-          Row.extend(row.field,
-            MonoTy.substitute(row.ty, subst),
-            MonoTy.substitute(row.tail, subst)
-          )
-        );
+      Record: ({ row }) => {
+        return MonoTy.Record(substituteRow(row));
       },
+      NamedRecord: ({ name, fields }) => MonoTy.NamedRecord(
+        name,
+        substituteRow(fields)
+      ),
     });
   },
   show: (ty: MonoTy): string => matchVariant(ty, {
-    TyVar: ({ value }) => {
+    Var: ({ value }) => {
       if (value.kind === 'Var') {
         return showTyVarId(value.id);
       } else {
         return MonoTy.show(value.ref);
       }
     },
-    TyConst: ({ name, args }) => cond(args.length === 0, {
+    Const: ({ name, args }) => cond(args.length === 0, {
       then: () => name,
       else: () => matchString(name, {
         'tuple': () => `(${joinWith(args, MonoTy.show, ', ')})`,
         _: () => `(${name} ${joinWith(args, MonoTy.show, ', ')})`,
       }),
     }),
-    TyFun: ({ args, ret }) => cond(args.length === 1, {
+    Fun: ({ args, ret }) => cond(args.length === 1, {
       then: () =>
         match(MonoTy.deref(args[0]))
-          .with({ variant: 'TyConst', name: 'tuple' }, () => `(${MonoTy.show(args[0])}) -> ${MonoTy.show(ret)}`)
+          .with({ variant: 'Const', name: 'tuple' }, () => `(${MonoTy.show(args[0])}) -> ${MonoTy.show(ret)}`)
           .otherwise(a => `${MonoTy.show(a)} -> ${MonoTy.show(ret)}`),
       else: () => `(${joinWith(args, MonoTy.show, ', ')}) -> ${MonoTy.show(ret)}`,
     }),
-    TyRecord: ({ row }) => {
+    Record: ({ row }) => {
       if (row.type === 'empty') {
         return '{}';
       }
 
       return `{ ${joinWith(Row.fields(row).sort(([a], [b]) => a.localeCompare(b)), ([k, v]) => `${k}: ${MonoTy.show(v)}`, ', ')} }`;
     },
+    NamedRecord: ({ name }) => name,
   }),
   eq: (s: MonoTy, t: MonoTy): boolean =>
     match<[MonoTy, MonoTy]>([s, t])
       .with(
         [
-          { variant: 'TyVar', value: { kind: 'Var' } },
-          { variant: 'TyVar', value: { kind: 'Var' } },
+          { variant: 'Var', value: { kind: 'Var' } },
+          { variant: 'Var', value: { kind: 'Var' } },
         ],
         ([{ value: s }, { value: t }]) => s.id === t.id
       )
       .with(
-        [{ variant: 'TyVar' }, { variant: 'TyVar' }],
+        [{ variant: 'Var' }, { variant: 'Var' }],
         () => MonoTy.eq(MonoTy.deref(s), MonoTy.deref(t)),
       )
       .with(
-        [{ variant: 'TyConst' }, { variant: 'TyConst' }],
+        [{ variant: 'Const' }, { variant: 'Const' }],
         ([s, t]) => {
           if (s.name === t.name && s.args.length === t.args.length) {
             return s.args.every((arg, i) => MonoTy.eq(arg, t.args[i]));
@@ -186,7 +201,7 @@ export const MonoTy = {
         }
       )
       .with(
-        [{ variant: 'TyFun' }, { variant: 'TyFun' }],
+        [{ variant: 'Fun' }, { variant: 'Fun' }],
         ([s, t]) => {
           if (s.args.length === t.args.length && MonoTy.eq(s.ret, t.ret)) {
             return s.args.every((arg, i) => MonoTy.eq(arg, t.args[i]));
@@ -231,7 +246,7 @@ export const PolyTy = {
     const newVars = gen(vars.length, i => i);
 
     for (const [v1, v2] of zip(vars, newVars)) {
-      subts.set(v1, MonoTy.TyVar({ kind: 'Var', id: v2 }));
+      subts.set(v1, MonoTy.Var({ kind: 'Var', id: v2 }));
     }
 
     return [newVars, MonoTy.substitute(mono, subts)];
@@ -253,37 +268,37 @@ export const TypeParamsContext = {
 };
 
 export type ParameterizedTy = DataType<{
-  TyVar: { id: TyVarId },
-  TyParam: { name: string },
-  TyConst: { name: string, args: ParameterizedTy[] },
-  TyFun: { args: ParameterizedTy[], ret: ParameterizedTy },
+  Var: { id: TyVarId },
+  Param: { name: string },
+  Const: { name: string, args: ParameterizedTy[] },
+  Fun: { args: ParameterizedTy[], ret: ParameterizedTy },
 }>;
 
 export const ParameterizedTy = {
-  TyVar: (id: TyVarId): ParameterizedTy => ({ variant: 'TyVar', id }),
-  TyParam: (name: string): ParameterizedTy => ({ variant: 'TyParam', name }),
-  TyConst: (name: string, ...args: ParameterizedTy[]): ParameterizedTy => ({ variant: 'TyConst', name, args }),
-  TyFun: (args: ParameterizedTy[], ret: ParameterizedTy): ParameterizedTy => ({ variant: 'TyFun', args, ret }),
+  TyVar: (id: TyVarId): ParameterizedTy => ({ variant: 'Var', id }),
+  TyParam: (name: string): ParameterizedTy => ({ variant: 'Param', name }),
+  TyConst: (name: string, ...args: ParameterizedTy[]): ParameterizedTy => ({ variant: 'Const', name, args }),
+  TyFun: (args: ParameterizedTy[], ret: ParameterizedTy): ParameterizedTy => ({ variant: 'Fun', args, ret }),
   freeTyParams: (ty: ParameterizedTy): string[] => {
     return matchVariant(ty, {
-      TyVar: () => [],
-      TyParam: ({ name }) => [name],
-      TyConst: ({ args }) => args.flatMap(ParameterizedTy.freeTyParams),
-      TyFun: ({ args, ret }) => [...args.flatMap(ParameterizedTy.freeTyParams), ...ParameterizedTy.freeTyParams(ret)],
+      Var: () => [],
+      Param: ({ name }) => [name],
+      Const: ({ args }) => args.flatMap(ParameterizedTy.freeTyParams),
+      Fun: ({ args, ret }) => [...args.flatMap(ParameterizedTy.freeTyParams), ...ParameterizedTy.freeTyParams(ret)],
     });
   },
   substituteTyParams: (ty: ParameterizedTy, subst: Map<string, MonoTy>): MonoTy => {
     return matchVariant(ty, {
-      TyVar: ({ id }) => MonoTy.TyVar({ kind: 'Var', id }),
-      TyParam: ({ name }) => {
+      Var: ({ id }) => MonoTy.Var({ kind: 'Var', id }),
+      Param: ({ name }) => {
         if (!subst.has(name)) {
           panic(`Type parameter '${name}' not found in substitution`);
         }
 
         return subst.get(name)!;
       },
-      TyConst: ({ name, args }) => MonoTy.TyConst(name, ...args.map(a => ParameterizedTy.substituteTyParams(a, subst))),
-      TyFun: ({ args, ret }) => MonoTy.TyFun(
+      Const: ({ name, args }) => MonoTy.Const(name, ...args.map(a => ParameterizedTy.substituteTyParams(a, subst))),
+      Fun: ({ args, ret }) => MonoTy.Fun(
         args.map(a => ParameterizedTy.substituteTyParams(a, subst)),
         ParameterizedTy.substituteTyParams(ret, subst)
       ),
@@ -296,7 +311,7 @@ export const ParameterizedTy = {
 
     for (const t of params) {
       const v = Context.freshTyVarIndex();
-      subst.set(t, MonoTy.TyVar({ kind: 'Var', id: v }));
+      subst.set(t, MonoTy.Var({ kind: 'Var', id: v }));
       tyVars.push(v);
     }
 
@@ -306,23 +321,23 @@ export const ParameterizedTy = {
     const subst = new Map<string, MonoTy>();
 
     for (const [name, id] of params.entries()) {
-      subst.set(name, MonoTy.TyVar({ kind: 'Var', id: id }));
+      subst.set(name, MonoTy.Var({ kind: 'Var', id: id }));
     }
 
     return ParameterizedTy.substituteTyParams(ty, subst);
   },
   isUnparameterized: (ty: ParameterizedTy): boolean => {
     return matchVariant(ty, {
-      TyVar: () => true,
-      TyParam: () => false,
-      TyConst: ({ args }) => args.every(ParameterizedTy.isUnparameterized),
-      TyFun: ({ args, ret }) => args.every(ParameterizedTy.isUnparameterized) && ParameterizedTy.isUnparameterized(ret),
+      Var: () => true,
+      Param: () => false,
+      Const: ({ args }) => args.every(ParameterizedTy.isUnparameterized),
+      Fun: ({ args, ret }) => args.every(ParameterizedTy.isUnparameterized) && ParameterizedTy.isUnparameterized(ret),
     });
   },
   show: (ty: ParameterizedTy): string => {
     return matchVariant(ty, {
-      TyParam: ({ name }) => `'${name}`,
-      TyVar: ({ id }) => showTyVarId(id),
+      Param: ({ name }) => `'${name}`,
+      Var: ({ id }) => showTyVarId(id),
       _: () => MonoTy.show(ty as MonoTy),
     });
   },

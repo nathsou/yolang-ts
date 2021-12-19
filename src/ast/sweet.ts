@@ -1,5 +1,5 @@
 import { DataType, match as matchVariant } from 'itsamatch';
-import { MonoTy, ParameterizedTy, TyVarId } from '../infer/types';
+import { ParameterizedTy } from '../infer/types';
 import { Const } from '../parse/token';
 import { joinWith } from '../utils/array';
 import { Maybe } from '../utils/maybe';

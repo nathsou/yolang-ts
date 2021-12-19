@@ -420,7 +420,7 @@ const matchCase: Parser<{ pattern: Pattern, body: Expr }> = map(
     pattern,
     symbol('=>'),
     expectOrDefault(expr, `Expected an expression after '=>'`, Expr.Block([])),
-    expectOrDefault(symbol(','), `Expected ',' after pattern body`, Token.symbol(',')),
+    expectOrDefault(symbol(','), `Expected ',' after pattern body`, Token.Symbol(',')),
   ),
   ([pattern, _, body]) => ({ pattern, body })
 );
@@ -485,7 +485,7 @@ const letStmt = alt(
       expect(symbol('='), `Expected '=' after identifier`),
       expectOrDefault(expr, `Expected expression after '='`, Expr.Error),
     ),
-    ([kw, name, _, expr]) => Stmt.Let(name, expr, Token.eq(kw, Token.keyword('mut')))
+    ([kw, name, _, expr]) => Stmt.Let(name, expr, Token.eq(kw, Token.Keyword('mut')))
   ),
   exprStmt
 );
@@ -524,7 +524,7 @@ const structField = (ctx: TypeParamsContext) => {
   return map(
     seq(
       expectOrDefault(ident, `Expected field name`, '<?>'),
-      expectOrDefault(symbol(':'), `Expected ':' after field name`, Token.symbol(':')),
+      expectOrDefault(symbol(':'), `Expected ':' after field name`, Token.Symbol(':')),
       expectOrDefault(lazy(() => parameterizedTy(ctx)), `Expected type after ':'`, ParameterizedTy.TyConst('()')),
     ),
     ([name, _, ty]) => ({ name, ty })
@@ -545,7 +545,7 @@ const typeDecl = lazy(() => {
 
         return params;
       }),
-      expectOrDefault(symbol('='), `Expected '=' after type name`, Token.symbol('=')),
+      expectOrDefault(symbol('='), `Expected '=' after type name`, Token.Symbol('=')),
       alt(
         map(curlyBrackets(commas(lazy(() => structField(ctx)))), fields => ({ type: 'struct' as const, fields }))
       ),

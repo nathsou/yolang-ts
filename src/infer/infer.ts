@@ -11,18 +11,18 @@ import { unify as unif } from './unification';
 export type TypingError = string;
 
 const unaryOpSignature: Record<UnaryOperator, PolyTy> = {
-  '-': MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32()], MonoTy.u32())),
-  '!': MonoTy.toPoly(MonoTy.TyFun([MonoTy.bool()], MonoTy.bool())),
+  '-': MonoTy.toPoly(MonoTy.Fun([MonoTy.u32()], MonoTy.u32())),
+  '!': MonoTy.toPoly(MonoTy.Fun([MonoTy.bool()], MonoTy.bool())),
 };
 
-const u32OpSig = MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.u32()));
-const u32BoolOpSig = MonoTy.toPoly(MonoTy.TyFun([MonoTy.u32(), MonoTy.u32()], MonoTy.bool()));
+const u32OpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.u32(), MonoTy.u32()], MonoTy.u32()));
+const u32BoolOpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.u32(), MonoTy.u32()], MonoTy.bool()));
 const comparisonOpSig = PolyTy.make(
   [0],
-  MonoTy.TyFun([MonoTy.TyVar({ kind: 'Var', id: 0 }), MonoTy.TyVar({ kind: 'Var', id: 0 })], MonoTy.bool())
+  MonoTy.Fun([MonoTy.Var({ kind: 'Var', id: 0 }), MonoTy.Var({ kind: 'Var', id: 0 })], MonoTy.bool())
 );
 
-const logicalOpSig = MonoTy.toPoly(MonoTy.TyFun([MonoTy.bool(), MonoTy.bool()], MonoTy.bool()));
+const logicalOpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.bool(), MonoTy.bool()], MonoTy.bool()));
 
 const binaryOpSignature: Record<BinaryOperator, PolyTy> = {
   '+': u32OpSig,
@@ -102,14 +102,14 @@ export const inferExpr = (
     UnaryOp: ({ op, expr }) => {
       inferExpr(expr, ctx, errors);
       const opTy1 = PolyTy.instantiate(unaryOpSignature[op]);
-      const opTy2 = MonoTy.TyFun([expr.ty], tau);
+      const opTy2 = MonoTy.Fun([expr.ty], tau);
       unify(opTy1, opTy2);
     },
     BinaryOp: ({ lhs, op, rhs }) => {
       inferExpr(lhs, ctx, errors);
       inferExpr(rhs, ctx, errors);
       const opTy1 = PolyTy.instantiate(binaryOpSignature[op]);
-      const opTy2 = MonoTy.TyFun([lhs.ty, rhs.ty], tau);
+      const opTy2 = MonoTy.Fun([lhs.ty, rhs.ty], tau);
       unify(opTy1, opTy2);
     },
     Call: ({ lhs, args }) => {
@@ -118,7 +118,7 @@ export const inferExpr = (
         inferExpr(arg, ctx, errors);
       });
       const expectedFunTy = lhs.ty;
-      const actualFunTy = MonoTy.TyFun(args.map(proj('ty')), tau);
+      const actualFunTy = MonoTy.Fun(args.map(proj('ty')), tau);
 
       unify(expectedFunTy, actualFunTy);
     },
@@ -177,7 +177,7 @@ export const inferExpr = (
 
       inferExpr(body, bodyCtx, errors);
 
-      const funTy = MonoTy.TyFun(
+      const funTy = MonoTy.Fun(
         args.map(({ name: arg }) => arg.ty),
         body.ty
       );
@@ -244,10 +244,12 @@ export const inferExpr = (
     },
     FieldAccess: ({ lhs, field }) => {
       const rowTail = MonoTy.fresh();
-      const partialRecordTy = MonoTy.TyRecord(Row.extend(field, tau, rowTail));
+      const partialRecordTy = MonoTy.Record(Row.extend(field, tau, rowTail));
 
       inferExpr(lhs, ctx, errors);
       unify(partialRecordTy, lhs.ty);
+    },
+    Struct: ({ name, fields }) => {
     },
     Error: ({ message }) => {
       errors.push(message);
@@ -299,7 +301,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: TypingError[]): 
 
       inferExpr(body, bodyCtx, errors);
 
-      const funTy = MonoTy.TyFun(
+      const funTy = MonoTy.Fun(
         args.map(({ name: arg }) => arg.ty),
         body.ty
       );
