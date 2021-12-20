@@ -3,6 +3,6 @@ type Yo<T> = {
   yo: T
 }
 
-fn hey(r) {
-  (1, 2, r.x, 4)
+fn hey() {
+  (x, y) -> (x * y) * (x + y)
 }

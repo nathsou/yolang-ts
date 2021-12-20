@@ -8,10 +8,10 @@ import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, angleBrackets, chainLeft, commas, conditionalError, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, lazy, leftAssoc, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
+import { alt, angleBrackets, chainLeft, commas, conditionalError, consumeAll, curlyBrackets, expect, expectOrDefault, ignoreErrorsOnFail, initParser, keyword, lazy, leftAssoc, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
 import { Const, Token } from './token';
 
-const expr = uninitialized<Expr>();
+export const expr = uninitialized<Expr>();
 const stmt = uninitialized<Stmt>();
 const decl = uninitialized<Decl>();
 const pattern = uninitialized<Pattern>();
@@ -237,10 +237,12 @@ const block: Parser<Expr> = map(curlyBrackets(many(stmt)), Expr.Block);
 
 const constExpr = map(constVal, Expr.Const);
 
-const primary = alt(
+export const parenthesized = map(parens(expr), Expr.Parenthesized);
+
+export const primary = alt(
   constExpr,
   variable,
-  parens(expr),
+  parenthesized,
   block,
   invalid,
   // unexpected
@@ -291,7 +293,7 @@ const fieldAccess = chainLeft(
 
 const factor = fieldAccess;
 
-const unary = alt(
+export const unary = alt(
   map(seq(
     unaryOp,
     expectOrDefault(factor, `Expected expression after unary operator`, Expr.Error)
@@ -349,6 +351,8 @@ const equality = chainLeft(
   )
 );
 
+export const binary = equality;
+
 const ifThenElse = alt(
   map(
     seq(
@@ -405,18 +409,6 @@ const matchExpr = alt(
   assignment
 );
 
-const closure = alt(
-  map(
-    seq(
-      alt(argumentList, map(pattern, p => [{ pattern: p, mutable: false }])),
-      symbol('->'),
-      expectOrDefault(expr, `Expected expression after '->'`, Expr.Error),
-    ),
-    ([args, _, body]) => Expr.Closure(args, body)
-  ),
-  matchExpr
-);
-
 export const tuple = alt(
   map(
     parens(seq(
@@ -426,10 +418,24 @@ export const tuple = alt(
     )),
     ([h, _, tl]) => Expr.Tuple([h, ...tl])
   ),
-  closure
+  matchExpr
 );
 
-initParser(expr, tuple);
+const closure = alt(
+  ignoreErrorsOnFail(
+    map(
+      seq(
+        alt(argumentList, map(pattern, p => [{ pattern: p, mutable: false }])),
+        symbol('->'),
+        expectOrDefault(expr, `Expected expression after '->'`, Expr.Error),
+      ),
+      ([args, _, body]) => Expr.Closure(args, body)
+    )
+  ),
+  tuple
+);
+
+initParser(expr, closure);
 
 // PATTERNS
 

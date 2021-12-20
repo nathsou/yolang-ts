@@ -67,5 +67,7 @@ export const lex = (input: string): TokenWithPos[] => {
     skipSpaces();
   }
 
+  tokens.push(withPos(Token.EOF(), pos));
+
   return tokens;
 };

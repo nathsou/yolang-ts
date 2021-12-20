@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { match as matchVariant } from "itsamatch";
 import { Decl, Prog } from "./ast/bitter";
+import { Prog as SweetProg } from "./ast/sweet";
 import { Context } from './ast/context';
 import { infer } from "./infer/infer";
 import { ParameterizedTy, PolyTy } from "./infer/types";
@@ -20,6 +21,8 @@ const typeCheck = (source: string): [Prog, string[]] => {
   const tokens = lex(source);
   const [decls, parsingErrors] = parse(Slice.from(tokens));
   errors.push(...parsingErrors.map(err => formatError(err, tokens)));
+
+  console.log(SweetProg.show(decls) + '\n');
 
   const [prog, bitterErrors] = Prog.fromSweet(decls);
   errors.push(...bitterErrors);

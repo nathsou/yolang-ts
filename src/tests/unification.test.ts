@@ -4,7 +4,7 @@ import { Subst } from "../infer/subst";
 import { MonoTy } from "../infer/types";
 import { unify } from "../infer/unification";
 import { forEach } from "../utils/misc";
-import { typ } from './arbitraties/type.arb';
+import { typ } from './arbitraries/type.arb';
 import * as prand from 'pure-rand';
 
 const randSubst = (ty: MonoTy, rand: fc.Random): Subst => {

@@ -1,28 +1,58 @@
+import fc, { Arbitrary } from 'fast-check';
 import { Expr } from '../ast/sweet';
 import { Parser } from '../parse/combinators';
 import { lex } from '../parse/lex';
-import { tuple } from '../parse/parse';
+import { binary, expr, primary, tuple, unary } from '../parse/parse';
 import { Const, Token } from '../parse/token';
 import { Slice } from '../utils/slice';
-import fc from 'fast-check';
-import { expr } from './arbitraties/expr.arb';
+import { expr as exprArb } from './arbitraries/expr.arb';
 
 const tokens = (input: string): Slice<Token> => Slice.from(lex(input));
 
 const expectExpr = (parser: Parser<Expr>, input: string, expected: Expr): void => {
-  const [res] = parser.ref(tokens(input));
+  const [res, _, errs] = parser.ref(tokens(input));
   expect(res.isOk()).toBe(true);
+  expect(errs).toHaveLength(0);
   expect(res.unwrap()).toEqual(expected);
 };
 
 describe('Parser', () => {
+  describe('unary operators', () => {
+    it('should parse arithmetical negation', () => {
+      expectExpr(unary, '-0', Expr.UnaryOp('-', Expr.Const(Const.u32(0))));
+      expectExpr(unary, '-1', Expr.UnaryOp('-', Expr.Const(Const.u32(1))));
+      expectExpr(
+        unary,
+        '-(-1621)',
+        Expr.UnaryOp('-', Expr.Parenthesized(Expr.UnaryOp('-', Expr.Const(Const.u32(1621)))))
+      );
+    });
+
+    it('should parse logical negation', () => {
+      expectExpr(unary, '!true', Expr.UnaryOp('!', Expr.Const(Const.bool(true))));
+      expectExpr(unary, '!false', Expr.UnaryOp('!', Expr.Const(Const.bool(false))));
+      expectExpr(
+        unary,
+        '!(!true)',
+        Expr.UnaryOp('!', Expr.Parenthesized(Expr.UnaryOp('!', Expr.Const(Const.bool(true)))))
+      );
+    });
+  });
+
+  describe('binary operators', () => {
+    it('should parse addition', () => {
+      expectExpr(
+        binary,
+        '1 + 2',
+        Expr.BinaryOp(Expr.Const(Const.u32(1)), '+', Expr.Const(Const.u32(2)))
+      );
+    });
+  });
+
   describe('tuples', () => {
     it('should not parse parenthesized expressions as tuples', () => {
-      const [res1] = tuple.ref(tokens('(1)'));
-      expect(res1.isError()).toBe(true);
-
-      const [res2] = tuple.ref(tokens('(())'));
-      expect(res2.isError()).toBe(true);
+      expectExpr(tuple, '(1)', Expr.Parenthesized(Expr.Const(Const.u32(1))));
+      expectExpr(tuple, '(())', Expr.Parenthesized(Expr.Const(Const.unit())));
     });
 
     it('should accept tuples with primary expressions', () => {
@@ -109,11 +139,11 @@ describe('Parser', () => {
         ]),
       ]));
     });
+  });
 
-    it('should parse randomly generated tuples', () => {
-      fc.assert(fc.property(expr(2).tuple, tup => {
-        expectExpr(tuple, Expr.show(tup), tup);
-      }));
-    });
+  it('should parse randomly generated expressions', () => {
+    fc.assert(fc.property(exprArb(3).expr as Arbitrary<Expr>, e => {
+      expectExpr(expr, Expr.show(e), e);
+    }));
   });
 });

@@ -249,8 +249,6 @@ export const inferExpr = (
       inferExpr(lhs, ctx, errors);
       unify(partialRecordTy, lhs.ty);
     },
-    Struct: ({ name, fields }) => {
-    },
     Error: ({ message }) => {
       errors.push(message);
     },

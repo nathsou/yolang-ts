@@ -328,6 +328,10 @@ export const consumeAll = <T>(p: Parser<T>): Parser<T> => {
 
     return Slice.head(rem).match({
       Some: lastToken => {
+        if (lastToken.variant === 'EOF') {
+          return [t, rem, errs];
+        }
+
         const err: ParserError = {
           message: `Unexpected token: '${Token.show(lastToken)}'`,
           pos: rem.start
@@ -358,7 +362,7 @@ export const lazy = <T>(f: () => Parser<T>): Parser<T> => {
   });
 };
 
-export const nestedBy = (left: Symbol, right: Symbol) => <T>(p: Parser<T>): Parser<T> => {
+export const nestedBy = (left: Symbol, right: Symbol, msg = '') => <T>(p: Parser<T>): Parser<T> => {
   return map(
     seq(
       symbol(left),
@@ -367,6 +371,16 @@ export const nestedBy = (left: Symbol, right: Symbol) => <T>(p: Parser<T>): Pars
     ),
     ([, t,]) => t
   );
+};
+
+export const ignoreErrorsOnFail = <T>(p: Parser<T>): Parser<T> => {
+  return ref(tokens => {
+    const [t, rem, errs] = p.ref(tokens);
+    return t.match({
+      Ok: t => [ok(t), rem, errs],
+      Error: e => e.message === fail ? [error(e), rem, []] : [error(e), rem, errs],
+    });
+  });
 };
 
 export const parens = nestedBy('(', ')');

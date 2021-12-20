@@ -30,6 +30,7 @@ export type Expr = DataType<{
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
   Match: { expr: Expr, cases: { pattern: Pattern, body: Expr }[] },
+  Parenthesized: { expr: Expr },
 }>;
 
 export const Expr = {
@@ -48,12 +49,13 @@ export const Expr = {
   FieldAccess: (lhs: Expr, field: string): Expr => ({ variant: 'FieldAccess', lhs, field }),
   Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
   Match: (expr: Expr, cases: { pattern: Pattern, body: Expr }[]): Expr => ({ variant: 'Match', expr, cases }),
+  Parenthesized: (expr: Expr): Expr => ({ variant: 'Parenthesized', expr }),
   show: (expr: Expr): string => matchVariant(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
     Call: ({ lhs, args }) => `${Expr.show(lhs)}(${joinWith(args, Expr.show, ', ')})`,
     UnaryOp: ({ op, expr }) => `${op}${Expr.show(expr)}`,
-    BinaryOp: ({ lhs, op, rhs }) => `(${Expr.show(lhs)} ${op} ${Expr.show(rhs)})`,
+    BinaryOp: ({ lhs, op, rhs }) => `${Expr.show(lhs)} ${op} ${Expr.show(rhs)}`,
     Error: ({ message }) => `<Error: ${message}>`,
     Closure: ({ args, body }) => `${parenthesized(joinWith(args, ({ pattern, mutable }) => `${mutable ? 'mut ' : ''}${Pattern.show(pattern)}`, ', '), args.length !== 1 || (args.length > 0 && args[0].pattern.variant === 'Tuple'))} -> ${Expr.show(body)}`,
     Block: ({ statements }) => `{\n${joinWith(statements, s => '  ' + Stmt.show(s), '\n')}\n}`,
@@ -64,6 +66,7 @@ export const Expr = {
     FieldAccess: ({ lhs, field }) => `${Expr.show(lhs)}.${field}`,
     Tuple: ({ elements }) => `(${joinWith(elements, Expr.show, ', ')})`,
     Match: ({ expr, cases }) => `match ${Expr.show(expr)} {\n${joinWith(cases, ({ pattern, body }) => `  ${Pattern.show(pattern)} => ${Expr.show(body)}\n`, '\n')}\n}`,
+    Parenthesized: ({ expr }) => `(${Expr.show(expr)})`,
   }),
 };
 

@@ -8,6 +8,7 @@ export type Token = DataType<{
   Const: { value: Const },
   Identifier: { name: string },
   Invalid: { lexeme: string },
+  EOF: {},
 }>;
 
 export const Token = {
@@ -16,12 +17,14 @@ export const Token = {
   Const: (value: Const): Token => ({ variant: 'Const', value }),
   Identifier: (name: string): Token => ({ variant: 'Identifier', name }),
   Invalid: (lexeme: string): Token => ({ variant: 'Invalid', lexeme }),
+  EOF: (): Token => ({ variant: 'EOF' }),
   show: (token: Token) => matchVariant(token, {
     Symbol: ({ value }) => value,
     Keyword: ({ value }) => value,
     Const: ({ value }) => Const.show(value),
     Identifier: ({ name }) => name,
     Invalid: ({ lexeme: message }) => `Invalid token: '${message}'`,
+    EOF: () => '<EOF>',
   }),
   eq: (a: Token, b: Token) => match<[Token, Token]>([a, b])
     .with([{ variant: 'Symbol' }, { variant: 'Symbol' }], ([a, b]) => Symbol.eq(a.value, b.value))
@@ -29,6 +32,7 @@ export const Token = {
     .with([{ variant: 'Const' }, { variant: 'Const' }], ([a, b]) => Const.eq(a.value, b.value))
     .with([{ variant: 'Identifier' }, { variant: 'Identifier' }], ([a, b]) => a.name === b.name)
     .with([{ variant: 'Invalid' }, { variant: 'Invalid' }], ([a, b]) => a.lexeme === b.lexeme)
+    .with([{ variant: 'EOF' }, { variant: 'EOF' }], () => true)
     .otherwise(() => false),
 };
 

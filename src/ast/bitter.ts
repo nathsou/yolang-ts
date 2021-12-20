@@ -103,7 +103,6 @@ export type Expr = DataType<WithSweetRefAndType<{
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
   Match: { expr: Expr, cases: { pattern: Pattern, body: Expr }[] },
-  Struct: { name: string, fields: { name: string, value: Expr }[] },
 }>>;
 
 const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet: SweetExpr } => ({
@@ -179,6 +178,7 @@ export const Expr = {
       FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field, sweet),
       Tuple: ({ elements }) => Expr.Tuple(elements.map(e => go(e)), sweet),
       Match: ({ expr, cases }) => Expr.Match(go(expr), cases.map(c => ({ pattern: Pattern.fromSweet(c.pattern, nameEnv), body: go(c.body) })), sweet),
+      Parenthesized: ({ expr }) => go(expr),
     });
   },
   showSweet: (expr: Expr): string => SweetExpr.show(expr.sweet),
