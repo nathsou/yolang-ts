@@ -1,11 +1,11 @@
 import fc from "fast-check";
+import * as prand from 'pure-rand';
 import { Row } from "../infer/records";
 import { Subst } from "../infer/subst";
 import { MonoTy } from "../infer/types";
 import { unify } from "../infer/unification";
 import { forEach } from "../utils/misc";
 import { typ } from './arbitraries/type.arb';
-import * as prand from 'pure-rand';
 
 const randSubst = (ty: MonoTy, rand: fc.Random): Subst => {
   const subst = Subst.make();

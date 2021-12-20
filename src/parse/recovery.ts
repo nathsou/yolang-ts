@@ -12,7 +12,7 @@ export const RecoveryStrategy = {
   },
   reachNearest: (token: Token): RecoveryStrategy => {
     return tokens => {
-      const slice = { ...tokens };
+      const slice = Slice.clone(tokens);
 
       while (!Slice.isEmpty(slice)) {
         const head = Slice.head(slice).unwrap();
@@ -20,7 +20,7 @@ export const RecoveryStrategy = {
           return slice;
         }
 
-        slice.start += 1;
+        Slice.stepMut(slice);
       }
 
       return slice;
@@ -28,7 +28,7 @@ export const RecoveryStrategy = {
   },
   skipNested: (left: Symbol, right: Symbol): RecoveryStrategy => tokens => {
     let depth = 1;
-    const slice = { ...tokens };
+    const slice = Slice.clone(tokens);
 
     while (depth > 0 && !Slice.isEmpty(slice)) {
       const token = Slice.head(slice).unwrap();
@@ -38,7 +38,7 @@ export const RecoveryStrategy = {
         depth -= 1;
       }
 
-      slice.start += 1;
+      Slice.stepMut(slice);
     }
 
     return slice;

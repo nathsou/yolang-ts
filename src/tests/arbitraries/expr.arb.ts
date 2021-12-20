@@ -1,26 +1,28 @@
 import fc from 'fast-check';
-import { BinaryOperator, CompoundAssignmentOperator, Expr, UnaryOperator } from '../../ast/sweet';
-import { Const, Keyword } from '../../parse/token';
-import { isAlpha, isAlphaNum, isLowerCaseLetter, isUpperCase } from '../../utils/strings';
-
-const lowerAlpha = fc.char().filter(isLowerCaseLetter);
-const upperAlpha = fc.char().filter(isUpperCase);
-const alpha = fc.char().filter(isAlpha);
-const alphaNum = fc.char().filter(isAlphaNum);
+import { Argument, BinaryOperator, CompoundAssignmentOperator, Expr, UnaryOperator } from '../../ast/sweet';
+import { Const } from '../../parse/token';
+import { lowerIdent } from './common.arb';
+import { pattern } from './pattern.arb';
 
 export const constU32Expr = fc.integer({ min: 0 }).map(n => Expr.Const(Const.u32(n)));
 export const constBoolExpr = fc.boolean().map(b => Expr.Const(Const.bool(b)));
 export const constUnitExpr = fc.constant(Expr.Const(Const.unit()));
-export const varExpr = fc.tuple(lowerAlpha, fc.array(alphaNum, { minLength: 0 }))
-  .map(([h, tl]) => h + tl.join(''))
-  .filter(ident => !Keyword.is(ident))
-  .map(Expr.Variable);
+export const varExpr = lowerIdent.map(Expr.Variable);
 
 export const constExpr = fc.frequency(
   { arbitrary: constU32Expr, weight: 4 },
   { arbitrary: constBoolExpr, weight: 2 },
   { arbitrary: constUnitExpr, weight: 1 },
 );
+
+const closureArgument = (maxDepth: number): fc.Arbitrary<Argument> =>
+  fc.tuple(
+    pattern(maxDepth),
+    fc.frequency(
+      { arbitrary: fc.constant(false), weight: 2 },
+      { arbitrary: fc.constant(true), weight: 1 },
+    )
+  ).map(([pattern, mutable]) => ({ pattern, mutable }));
 
 export const expr = (maxDepth = 3) => fc.letrec(tie => ({
   primary: fc.frequency(
@@ -48,12 +50,17 @@ export const expr = (maxDepth = 3) => fc.letrec(tie => ({
     fc.oneof(...['+=', '-=', '*=', '/=', '%='].map(fc.constant)),
     tie('binaryOp')
   ).map(([lhs, op, rhs]) => Expr.CompoundAssignment(lhs as Expr, op as CompoundAssignmentOperator, rhs as Expr)),
+  closure: fc.tuple(
+    fc.array(closureArgument(maxDepth)),
+    tie('expr'),
+  ).map(([args, body]) => Expr.Closure(args, body as Expr)),
   expr: fc.frequency({ maxDepth },
-    { arbitrary: tie('primary'), weight: 3 },
+    { arbitrary: tie('primary'), weight: 2 },
     { arbitrary: tie('tuple'), weight: 1 },
     { arbitrary: tie('unaryOp'), weight: 1 },
     { arbitrary: tie('binaryOp'), weight: 2 },
-    { arbitrary: tie('assignment'), weight: 2 },
+    { arbitrary: tie('assignment'), weight: 1 },
     { arbitrary: tie('compoundAssignment'), weight: 1 },
+    { arbitrary: tie('closure'), weight: 1 },
   ),
 }));

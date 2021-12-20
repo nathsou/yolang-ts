@@ -1,8 +1,8 @@
 import fc, { Arbitrary } from 'fast-check';
-import { Expr } from '../ast/sweet';
+import { Expr, Pattern } from '../ast/sweet';
 import { Parser } from '../parse/combinators';
 import { lex } from '../parse/lex';
-import { binary, expr, primary, tuple, unary } from '../parse/parse';
+import { binary, expr, tuple, unary } from '../parse/parse';
 import { Const, Token } from '../parse/token';
 import { Slice } from '../utils/slice';
 import { expr as exprArb } from './arbitraries/expr.arb';
@@ -138,6 +138,50 @@ describe('Parser', () => {
           ]),
         ]),
       ]));
+    });
+  });
+
+  describe('closures', () => {
+    it('should parse closures with no parameters', () => {
+      expectExpr(expr, '() -> ()', Expr.Closure([], Expr.Const(Const.unit())));
+    });
+
+    it('should parse closures with one parameter', () => {
+      expectExpr(
+        expr,
+        'x -> x',
+        Expr.Closure(
+          [{ pattern: Pattern.Variable('x'), mutable: false }],
+          Expr.Variable('x')
+        )
+      );
+
+      expectExpr(
+        expr,
+        '(x) -> x',
+        Expr.Closure(
+          [{ pattern: Pattern.Variable('x'), mutable: false }],
+          Expr.Variable('x')
+        )
+      );
+    });
+
+    it('should parse closures with multiple parameters', () => {
+      expectExpr(
+        expr,
+        '(a, b, c) -> (a, b, c)',
+        Expr.Closure([
+          { pattern: Pattern.Variable('a'), mutable: false },
+          { pattern: Pattern.Variable('b'), mutable: false },
+          { pattern: Pattern.Variable('c'), mutable: false },
+        ],
+          Expr.Tuple([
+            Expr.Variable('a'),
+            Expr.Variable('b'),
+            Expr.Variable('c'),
+          ])
+        )
+      );
     });
   });
 

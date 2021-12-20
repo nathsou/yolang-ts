@@ -57,7 +57,7 @@ export const Expr = {
     UnaryOp: ({ op, expr }) => `${op}${Expr.show(expr)}`,
     BinaryOp: ({ lhs, op, rhs }) => `${Expr.show(lhs)} ${op} ${Expr.show(rhs)}`,
     Error: ({ message }) => `<Error: ${message}>`,
-    Closure: ({ args, body }) => `${parenthesized(joinWith(args, ({ pattern, mutable }) => `${mutable ? 'mut ' : ''}${Pattern.show(pattern)}`, ', '), args.length !== 1 || (args.length > 0 && args[0].pattern.variant === 'Tuple'))} -> ${Expr.show(body)}`,
+    Closure: ({ args, body }) => `${parenthesized(joinWith(args, ({ pattern, mutable }) => `${mutable ? 'mut ' : ''}${Pattern.show(pattern)}`, ', '), args.length !== 1 || (args.length === 1 && args[0].mutable) || (args.length > 0 && args[0].pattern.variant === 'Tuple'))} -> ${Expr.show(body)}`,
     Block: ({ statements }) => `{\n${joinWith(statements, s => '  ' + Stmt.show(s), '\n')}\n}`,
     IfThenElse: ({ condition, then, else_ }) => `if ${Expr.show(condition)} ${Expr.show(then)}${else_.map(e => ` else ${Expr.show(e)}`).orDefault('')}`,
     Assignment: ({ lhs, rhs }) => `${Expr.show(lhs)} = ${Expr.show(rhs)}`,

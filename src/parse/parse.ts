@@ -8,7 +8,7 @@ import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, angleBrackets, chainLeft, commas, conditionalError, consumeAll, curlyBrackets, expect, expectOrDefault, ignoreErrorsOnFail, initParser, keyword, lazy, leftAssoc, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
+import { alt, angleBrackets, chainLeft, commas, conditionalError, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, lazy, leftAssoc, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
 import { Const, Token } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -422,15 +422,36 @@ export const tuple = alt(
 );
 
 const closure = alt(
-  ignoreErrorsOnFail(
-    map(
-      seq(
-        alt(argumentList, map(pattern, p => [{ pattern: p, mutable: false }])),
-        symbol('->'),
-        expectOrDefault(expr, `Expected expression after '->'`, Expr.Error),
-      ),
-      ([args, _, body]) => Expr.Closure(args, body)
-    )
+
+  map(
+    seq(
+      lookahead(tokens => {
+        let openParensCount = 0;
+        const slice = Slice.clone(tokens);
+
+        do {
+          const tok = Slice.head(slice).unwrap();
+          if (tok.variant === 'Symbol' && tok.value === '(') {
+            openParensCount++;
+          } else if (tok.variant === 'Symbol' && tok.value === ')') {
+            openParensCount--;
+          }
+
+          Slice.stepMut(slice);
+        } while (!Slice.isEmpty(slice) && openParensCount > 0);
+
+        // we are after the argument list
+        // the next token should be '->'
+        return Slice.head(slice).match({
+          Some: next => next.variant === 'Symbol' && next.value === '->',
+          None: () => false,
+        });
+      }),
+      alt(argumentList, map(pattern, p => [{ pattern: p, mutable: false }])),
+      symbol('->'),
+      expectOrDefault(expr, `Expected expression after '->'`, Expr.Error),
+    ),
+    ([_l, args, _, body]) => Expr.Closure(args, body)
   ),
   tuple
 );
