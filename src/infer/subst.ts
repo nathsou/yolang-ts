@@ -15,7 +15,7 @@ export const Subst = {
 
     for (const [k, v] of s1) {
       if (s2.has(k)) {
-        return MonoTy.eq(MonoTy.deref(v), MonoTy.deref(s2.get(k)!));
+        return MonoTy.eq(v, s2.get(k)!);
       } else {
         return false;
       }

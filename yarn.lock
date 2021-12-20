@@ -1588,10 +1588,10 @@ istanbul-reports@^3.0.2:
     html-escaper "^2.0.0"
     istanbul-lib-report "^3.0.0"
 
-itsamatch@^1.0.1:
-  version "1.0.1"
-  resolved "https://registry.yarnpkg.com/itsamatch/-/itsamatch-1.0.1.tgz#75c19f7ce895e7fc6ceac6c04f27a4fb694d3516"
-  integrity sha512-UJYl+fFt+0p/mXHH0/05VFbaTJ+mRQBA1FL4CXxQ42vKWkca1xSLfoyMTLNhwBphdVTCbFPqtE3fOoqbP95tDQ==
+itsamatch@^1.0.2:
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/itsamatch/-/itsamatch-1.0.2.tgz#40b532b8abd473c66d523754eee4b55bf0ed6dbe"
+  integrity sha512-wuLHFfapqpFjrisYC3zNgy2/rDruKS+FqeKLichtvyB3ZkmC0jhRrjw+YKSeeBD///9yyRpjhjTnzwEzN6iXow==
 
 jest-changed-files@^27.4.2:
   version "27.4.2"

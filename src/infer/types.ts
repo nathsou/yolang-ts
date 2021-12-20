@@ -6,10 +6,12 @@ import { cond, matchString, panic } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./records";
-import { Subst } from "./subst";
 
 export type TyVarId = number;
-export type TyVar = { kind: 'Unbound', id: TyVarId } | { kind: 'Link', to: MonoTy };
+export type TyVar = DataType<{
+  Unbound: { id: TyVarId },
+  Link: { to: MonoTy },
+}, 'kind'>;
 
 // Monomorphic types
 export type MonoTy = DataType<{
@@ -26,13 +28,10 @@ export const showTyVarId = (n: TyVarId): string => {
 };
 
 export const MonoTy = {
-  Var: (tv: TyVar): MonoTy => {
-    if (tv.kind === 'Link') {
-      return { variant: 'Var', value: { kind: 'Link', to: MonoTy.deref(tv.to) } };
-    }
-
-    return { variant: 'Var', value: tv };
-  },
+  Var: (tv: TyVar) => matchVariant(tv, {
+    Unbound: (tv): MonoTy => ({ variant: 'Var', value: tv }),
+    Link: ({ to }): MonoTy => ({ variant: 'Var', value: { kind: 'Link', to: MonoTy.deref(to) } }),
+  }, 'kind'),
   Const: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', name, args }),
   Fun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'Fun', args, ret }),
   Record: (row: Row): MonoTy => ({ variant: 'Record', row }),
@@ -50,6 +49,7 @@ export const MonoTy = {
         } else {
           MonoTy.freeTypeVars(value.to, fvs);
         }
+
         return fvs;
       },
       Const: ({ args }) => {
@@ -132,17 +132,10 @@ export const MonoTy = {
     };
 
     return matchVariant(ty, {
-      Var: ({ value }) => {
-        if (value.kind === 'Unbound') {
-          if (subst.has(value.id)) {
-            return subst.get(value.id)!;
-          } else {
-            return ty;
-          }
-        } else {
-          return MonoTy.substitute(value.to, subst);
-        }
-      },
+      Var: ({ value }) => matchVariant(value, {
+        Unbound: ({ id }) => subst.has(id) ? subst.get(id)! : ty,
+        Link: ({ to }) => MonoTy.substitute(to, subst),
+      }, 'kind'),
       Const: ({ name, args }) => MonoTy.Const(
         name,
         ...args.map(arg => MonoTy.substitute(arg, subst))
@@ -161,13 +154,10 @@ export const MonoTy = {
     });
   },
   show: (ty: MonoTy): string => matchVariant(ty, {
-    Var: ({ value }) => {
-      if (value.kind === 'Unbound') {
-        return showTyVarId(value.id);
-      } else {
-        return MonoTy.show(value.to);
-      }
-    },
+    Var: ({ value }) => matchVariant(value, {
+      Unbound: ({ id }) => showTyVarId(id),
+      Link: ({ to }) => MonoTy.show(to),
+    }, 'kind'),
     Const: ({ name, args }) => cond(args.length === 0, {
       then: () => name,
       else: () => matchString(name, {
