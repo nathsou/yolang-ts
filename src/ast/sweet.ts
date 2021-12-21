@@ -1,5 +1,5 @@
 import { DataType, match as matchVariant } from 'itsamatch';
-import { ParameterizedTy } from '../infer/types';
+import { MonoTy, ParameterizedTy } from '../infer/types';
 import { Const } from '../parse/token';
 import { joinWith } from '../utils/array';
 import { Maybe } from '../utils/maybe';
@@ -101,17 +101,22 @@ export const Pattern = {
 };
 
 export type Stmt = DataType<{
-  Let: { name: string, expr: Expr, mutable: boolean },
+  Let: {
+    name: string,
+    expr: Expr,
+    mutable: boolean,
+    annotation: Maybe<MonoTy>
+  },
   Expr: { expr: Expr },
   Error: { message: string },
 }>;
 
 export const Stmt = {
-  Let: (name: string, expr: Expr, mutable: boolean): Stmt => ({ variant: 'Let', name, expr, mutable }),
+  Let: (name: string, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
   show: (stmt: Stmt): string => matchVariant(stmt, {
-    Let: ({ name, expr, mutable }) => `${mutable ? 'mut' : 'let'} ${name} = ${Expr.show(expr)}`,
+    Let: ({ name, expr, mutable, annotation }) => `${mutable ? 'mut' : 'let'} ${name}${annotation.mapWithDefault(ty => ': ' + MonoTy.show(ty), '')} = ${Expr.show(expr)}`,
     Expr: ({ expr }) => Expr.show(expr),
     Error: ({ message }) => `<Error: ${message}>`,
   }),

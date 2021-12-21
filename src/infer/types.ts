@@ -265,6 +265,7 @@ export type TypeParamsContext = {
 
 export const TypeParamsContext = {
   make: (): TypeParamsContext => ({ typeParams: [] }),
+  clone: (ctx: TypeParamsContext): TypeParamsContext => ({ ...ctx }),
   declare: (ctx: TypeParamsContext, name: string): void => {
     ctx.typeParams.push(name);
   },

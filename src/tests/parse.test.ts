@@ -1,5 +1,6 @@
 import fc from 'fast-check';
 import { Expr, Pattern } from '../ast/sweet';
+import { TypeParamsContext } from '../infer/types';
 import { Parser } from '../parse/combinators';
 import { lex } from '../parse/lex';
 import { binary, expr, tuple, unary } from '../parse/parse';
@@ -10,7 +11,7 @@ import { Arb } from './arbitraries/arb';
 const tokens = (input: string): Slice<Token> => Slice.from(lex(input));
 
 const expectExpr = (parser: Parser<Expr>, input: string, expected: Expr): void => {
-  const [res, _, errs] = parser.ref(tokens(input));
+  const [res, _, errs] = parser.ref(tokens(input), TypeParamsContext.make());
   expect(res.isOk()).toBe(true);
   expect(errs).toHaveLength(0);
   expect(res.unwrap()).toEqual(expected);

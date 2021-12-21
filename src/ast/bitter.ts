@@ -185,21 +185,22 @@ export const Expr = {
 };
 
 export type Stmt = DataType<{
-  Let: { name: Name, expr: Expr, mutable: boolean },
+  Let: { name: Name, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy> },
   Expr: { expr: Expr },
   Error: { message: string },
 }>;
 
 export const Stmt = {
-  Let: (name: Name, expr: Expr, mutable: boolean): Stmt => ({ variant: 'Let', name, expr, mutable }),
+  Let: (name: Name, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetStmt, nameEnv: NameEnv, errors: BitterConversionError[]): Stmt => {
     return matchVariant(sweet, {
-      Let: ({ name, expr, mutable }) => Stmt.Let(
+      Let: ({ name, expr, mutable, annotation }) => Stmt.Let(
         NameEnv.declare(nameEnv, name, mutable),
         Expr.fromSweet(expr, nameEnv, errors),
-        mutable
+        mutable,
+        annotation
       ),
       Expr: ({ expr }) => Stmt.Expr(Expr.fromSweet(expr, nameEnv, errors)),
       Error: ({ message }) => Stmt.Error(message),

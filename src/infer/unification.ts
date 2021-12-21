@@ -52,16 +52,7 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
 
           pushEqs([s.ret, t.ret]);
         } else {
-          const msg = (() => {
-            const len = s.args.length;
-            if (len === 0) {
-              return `expected no arguments, received ${t.args.length}`;
-            }
-
-            return `expected ${len} argument${len === 1 ? '' : 's'}, received ${t.args.length}`;
-          })();
-
-          errors.push(msg);
+          errors.push(`cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`);
         }
       })
       .with([

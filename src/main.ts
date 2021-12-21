@@ -22,7 +22,7 @@ const typeCheck = (source: string): [Prog, string[]] => {
   const [decls, parsingErrors] = parse(Slice.from(tokens));
   errors.push(...parsingErrors.map(err => formatError(err, tokens)));
 
-  // console.log(SweetProg.show(decls) + '\n');
+  console.log(SweetProg.show(decls) + '\n');
 
   const [prog, bitterErrors] = Prog.fromSweet(decls);
   errors.push(...bitterErrors);

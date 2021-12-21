@@ -271,8 +271,16 @@ export const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors:
 
 export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: TypingError[]): TypingError[] => {
   matchVariant(stmt, {
-    Let: ({ name, expr }) => {
+    Let: ({ name, expr, annotation }) => {
       inferExpr(expr, ctx, errors);
+
+      annotation.match({
+        Some: ann => {
+          errors.push(...unif(expr.ty, ann));
+        },
+        None: () => { },
+      });
+
       const genTy = MonoTy.generalize(ctx.env, expr.ty);
       Env.addPoly(ctx.env, name.original, genTy);
     },

@@ -3,6 +3,7 @@ type Yo<T> = {
   yo: T
 }
 
-fn hey() {
-  (f, g) -> x -> g(f(x))
+fn hey(a) {
+  let double: u32 -> (u32, u32) = x -> (x, x);
+  double(a)
 }
