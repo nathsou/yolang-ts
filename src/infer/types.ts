@@ -177,7 +177,7 @@ export const MonoTy = {
         return '{}';
       }
 
-      return `{ ${joinWith(Row.fields(row).sort(([a], [b]) => a.localeCompare(b)), ([k, v]) => `${k}: ${MonoTy.show(v)}`, ', ')} }`;
+      return `{ ${joinWith(Row.sortedFields(row), ([k, v]) => `${k}: ${MonoTy.show(v)}`, ', ')} }`;
     },
     NamedRecord: ({ name }) => name,
   }),
@@ -332,19 +332,15 @@ export const ParameterizedTy = {
 
     return ParameterizedTy.substituteTyParams(ty, subst);
   },
-  isUnparameterized: (ty: ParameterizedTy): boolean => {
-    return matchVariant(ty, {
-      Var: () => true,
-      Param: () => false,
-      Const: ({ args }) => args.every(ParameterizedTy.isUnparameterized),
-      Fun: ({ args, ret }) => args.every(ParameterizedTy.isUnparameterized) && ParameterizedTy.isUnparameterized(ret),
-    });
-  },
-  show: (ty: ParameterizedTy): string => {
-    return matchVariant(ty, {
-      Param: ({ name }) => `'${name}`,
-      Var: ({ id }) => showTyVarId(id),
-      _: () => MonoTy.show(ty as MonoTy),
-    });
-  },
+  isUnparameterized: (ty: ParameterizedTy): boolean => matchVariant(ty, {
+    Var: () => true,
+    Param: () => false,
+    Const: ({ args }) => args.every(ParameterizedTy.isUnparameterized),
+    Fun: ({ args, ret }) => args.every(ParameterizedTy.isUnparameterized) && ParameterizedTy.isUnparameterized(ret),
+  }),
+  show: (ty: ParameterizedTy): string => matchVariant(ty, {
+    Param: ({ name }) => `'${name}`,
+    Var: ({ id }) => showTyVarId(id),
+    _: () => MonoTy.show(ty as MonoTy),
+  }),
 };

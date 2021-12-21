@@ -28,4 +28,9 @@ export const Slice = {
   stepMut: <T>(slice: Slice<T>, stepCount = 1): void => {
     slice.start += stepCount;
   },
+  iter: function* <T>(slice: Slice<T>): Iterable<T> {
+    for (let i = slice.start; i < slice.end; i++) {
+      yield slice.elems[i];
+    }
+  },
 };

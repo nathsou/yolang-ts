@@ -412,17 +412,38 @@ const matchExpr = alt(
 export const tuple = alt(
   map(
     parens(seq(
+      lookahead(tokens => {
+        let openParensCount = 1;
+
+        for (const tok of Slice.iter(tokens)) {
+          if (tok.variant === 'Symbol' && tok.value === '(') {
+            openParensCount++;
+          } else if (tok.variant === 'Symbol' && tok.value === ')') {
+            openParensCount--;
+            if (openParensCount === 0) {
+              break;
+            }
+          }
+
+          if (openParensCount === 1 && tok.variant === 'Symbol' && tok.value === ',') {
+            return true;
+          }
+        }
+
+        // we haven't found a top-level ','
+        // so this is a parenthesized expression and not a tuple
+        return false;
+      }),
       expr,
       symbol(','),
       expectOrDefault(commas(expr), `Expected expression in tuple after ','`, [Expr.Const(Const.unit())]),
     )),
-    ([h, _, tl]) => Expr.Tuple([h, ...tl])
+    ([_l, h, _, tl]) => Expr.Tuple([h, ...tl])
   ),
   matchExpr
 );
 
 const closure = alt(
-
   map(
     seq(
       lookahead(tokens => {
@@ -438,7 +459,8 @@ const closure = alt(
           }
 
           Slice.stepMut(slice);
-        } while (!Slice.isEmpty(slice) && openParensCount > 0);
+
+        } while (openParensCount > 0 && !Slice.isEmpty(slice));
 
         // we are after the argument list
         // the next token should be '->'
@@ -447,7 +469,12 @@ const closure = alt(
           None: () => false,
         });
       }),
-      alt(argumentList, map(pattern, p => [{ pattern: p, mutable: false }])),
+      alt(
+        map(parens(
+          optional(commas(argument))
+        ), args => args.orDefault([])),
+        map(pattern, p => [{ pattern: p, mutable: false }])
+      ),
       symbol('->'),
       expectOrDefault(expr, `Expected expression after '->'`, Expr.Error),
     ),

@@ -5,10 +5,10 @@ type Err<E> = { type: 'error', data: E };
 type Res<T, E> = Ok<T> | Err<E>;
 
 export class Result<T, E> {
-  private res: Res<T, E>;
+  public raw: Res<T, E>;
 
   private constructor(res: Res<T, E>) {
-    this.res = res;
+    this.raw = res;
   }
 
   static ok<T, E>(data: T): Result<T, E> {
@@ -24,40 +24,40 @@ export class Result<T, E> {
   }
 
   isOk(): boolean {
-    return this.res.type === 'ok';
+    return this.raw.type === 'ok';
   }
 
   isError(): boolean {
-    return this.res.type === 'error';
+    return this.raw.type === 'error';
   }
 
   map<U>(f: (data: T) => U): Result<U, E> {
-    if (this.res.type === 'ok') {
-      return Result.ok(f(this.res.data));
+    if (this.raw.type === 'ok') {
+      return Result.ok(f(this.raw.data));
     }
 
-    return Result.error(this.res.data);
+    return Result.error(this.raw.data);
   }
 
   flatMap<U>(f: (data: T) => Result<U, E>): Result<U, E> {
-    if (this.res.type === 'ok') {
-      return f(this.res.data);
+    if (this.raw.type === 'ok') {
+      return f(this.raw.data);
     }
 
-    return Result.error(this.res.data);
+    return Result.error(this.raw.data);
   }
 
   match<U>(actions: { Ok: (data: T) => U, Error: (error: E) => U }): U {
-    if (this.res.type === 'ok') {
-      return actions.Ok(this.res.data);
+    if (this.raw.type === 'ok') {
+      return actions.Ok(this.raw.data);
     }
 
-    return actions.Error(this.res.data);
+    return actions.Error(this.raw.data);
   }
 
   unwrap(): T {
-    if (this.res.type === 'ok') {
-      return this.res.data;
+    if (this.raw.type === 'ok') {
+      return this.raw.data;
     }
 
     return panic(`Tried to unwrap an error result: ${this.show()}`);
@@ -67,11 +67,11 @@ export class Result<T, E> {
     showData: (data: T) => string = JSON.stringify,
     showError: (error: E) => string = JSON.stringify
   ): string {
-    if (this.res.type === 'ok') {
-      return `Ok(${showData(this.res.data)})`;
+    if (this.raw.type === 'ok') {
+      return `Ok(${showData(this.raw.data)})`;
     }
 
-    return `Error(${showError(this.res.data)})`;
+    return `Error(${showError(this.raw.data)})`;
   }
 }
 

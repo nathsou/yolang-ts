@@ -1,12 +1,14 @@
+import { DataType } from "itsamatch";
 import { zip } from "../utils/array";
 import { Maybe, none, some } from "../utils/maybe";
 import { MonoTy } from "./types";
 
 // https://github.com/tomprimozic/type-systems/tree/master/extensible_rows
 
-export type Row =
-  { type: 'empty' } |
-  { type: 'extend', field: string, ty: MonoTy, tail: MonoTy };
+export type Row = DataType<{
+  empty: {},
+  extend: { field: string, ty: MonoTy, tail: MonoTy },
+}, 'type'>;
 
 export const Row = {
   empty: (): Row => ({ type: 'empty' }),
@@ -51,17 +53,23 @@ export const Row = {
       acc
     );
   },
+  sortedFields: (row: Row): [string, MonoTy][] => {
+    return Row.fields(row).sort(([a], [b]) => a.localeCompare(b));
+  },
   asObject: (row: Row): { [field: string]: MonoTy } => {
-    let result: { [field: string]: MonoTy } = {};
+    const result: { [field: string]: MonoTy } = {};
 
-    for (let [field, ty] of Row.fields(row)) {
+    for (const [field, ty] of Row.fields(row)) {
       result[field] = ty;
     }
 
     return result;
   },
   strictEq: (row1: Row, row2: Row): boolean => {
-    return zip(Row.fields(row1), Row.fields(row2)).every(([[field1, ty1], [field2, ty2]]) => {
+    const fields1 = Row.sortedFields(row1);
+    const fields2 = Row.sortedFields(row2);
+
+    return fields1.length === fields2.length && zip(fields1, fields2).every(([[field1, ty1], [field2, ty2]]) => {
       return field1 === field2 && MonoTy.eq(ty1, ty2);
     });
   },

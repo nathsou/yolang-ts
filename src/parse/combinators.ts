@@ -92,82 +92,68 @@ type MapP<Ts extends readonly any[]> =
   Ts extends [Parser<infer A>] ? [A] : [];
 
 export const seq = <T extends readonly Parser<any>[]>(...parsers: T): Parser<[...MapP<T>]> => {
-  if (parsers.length === 0) {
-    return ref(tokens => [ok([] as [...MapP<T>]), tokens, []]);
-  }
-
-  const [p, ...ps] = parsers;
-
   return ref(tokens => {
-    const [a, rema, errsa] = p.ref(tokens);
-    return a.match({
-      Ok: a => {
-        const [b, remb, errsb] = seq(...ps).ref(rema);
-        return b.match({
-          Ok: b => [ok([a, ...b] as [...MapP<T>]), remb, [...errsa, ...errsb]], // seq.1
-          Error: err => [error(err), rema, [...errsa, ...errsb]], // seq.2 & seq.3
-        });
-      },
-      Error: err => [error(err), rema, errsa], // seq.4
-    });
-  });
-};
+    const errors: ParserError[] = [];
+    const tuple = [];
 
-export const alt = <T>(...parsers: Parser<T>[]): Parser<T> => {
-  return ref(tokens => {
-    if (parsers.length === 0) {
-      return [error({ message: fail, pos: tokens.start }), tokens, []];
+    for (const p of parsers) {
+      const [t, rem, errs] = p.ref(tokens);
+      errors.push(...errs);
+      tokens = rem;
+
+      if (t.isError()) {
+        return [t, tokens, errors];
+      }
+
+      tuple.push(t.unwrap());
     }
 
-    const [p, ...ps] = parsers;
-    const [t, rem, errs] = p.ref(tokens);
-    return t.match({
-      Ok: t => [ok(t), rem, errs], // ord.1
-      Error: l1 => {
-        if (l1.message !== fail) {
-          return [error(l1), rem, errs]; // ord.2
-        } else {
-          const [t2, rem2, errs2] = alt(...ps).ref(tokens);
-          return t2.match({
-            Ok: t2 => [ok(t2), rem2, [...errs, ...errs2]], // ord.4
-            Error: l2 => {
-              if (l2.message !== fail) {
-                return [error(l2), rem, [...errs, ...errs2]]; // ord.5
-              } else {
-                // ord.3
-                return [error({ message: fail, pos: tokens.start }), tokens, [...errs, ...errs2]];
-              }
-            },
-          });
-        }
+    return [ok(tuple), tokens, errors];
+  });
+};
+export const alt = <T>(...parsers: Parser<T>[]): Parser<T> => {
+  return ref(tokens => {
+    const errors: ParserError[] = [];
+
+    for (const p of parsers) {
+      const [t, rem, errs] = p.ref(tokens);
+      errors.push(...errs);
+
+      if (t.raw.type === 'ok') {
+        return [t, rem, errors];
       }
-    });
+
+      if (t.raw.data.message !== fail) {
+        return [t, tokens, errors];
+      }
+    }
+
+    return [error({ message: fail, pos: tokens.start }), tokens, errors];
   });
 };
 
 export const many = <T>(p: Parser<T>): Parser<T[]> => {
   return ref(tokens => {
-    const [t, rem, errs] = p.ref(tokens);
-    if (Slice.isEmpty(tokens)) {
-      return [t.map(t => [t]), rem, errs];
-    }
+    const errors: ParserError[] = [];
+    const ts: T[] = [];
+    let isFirst = true;
 
-    return t.match({
-      Ok: t => {
-        const [ts, rem2, errs2] = many(p).ref(rem);
-        return ts.match({
-          Ok: ts => [ok([t, ...ts]), rem2, [...errs, ...errs2]], // rep.2
-          Error: () => [ok([t]), rem2, errs], // rep.4
-        });
-      },
-      Error: l => {
-        if (l.message === fail) {
-          return [ok([]), rem, errs]; // rep.1
-        } else {
-          return [error(l), rem, errs]; // rep.3
+    while (true) {
+      const [t, rem, errs] = p.ref(tokens);
+      errors.push(...errs);
+      tokens = rem;
+
+      if (t.raw.type === 'error') {
+        if (isFirst && t.raw.data.message !== fail) {
+          return [error(t.raw.data), tokens, errors];
         }
-      },
-    });
+
+        return [ok(ts), tokens, errors];
+      }
+
+      ts.push(t.unwrap());
+      isFirst = false;
+    }
   });
 };
 
@@ -239,29 +225,6 @@ export const recover = (err: ParserError): Parser<null> => {
 
 export const expect = <T>(
   p: Parser<T>,
-  message: ParserError['message'],
-  recovery?: ParserError['recovery'],
-): Parser<Maybe<T>> => {
-  return ref(tokens => {
-    const [t, rem, errs] = p.ref(tokens);
-    return t.match({
-      Ok: t => [ok(some(t)), rem, errs],
-      Error: e => {
-        const [_, rem2, errs2] = recover({
-          message,
-          pos: e.pos,
-          recovery: recovery ?? e.recovery
-        }).ref(tokens);
-
-        return [ok(none), rem2, errs2];
-      },
-    });
-  });
-};
-
-export const expectIf = <T>(
-  p: Parser<T>,
-  predicate: (data: T) => boolean,
   message: ParserError['message'],
   recovery?: ParserError['recovery'],
 ): Parser<Maybe<T>> => {

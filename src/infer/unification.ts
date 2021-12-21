@@ -95,33 +95,33 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
 // https://github.com/tomprimozic/type-systems/blob/master/extensible_rows/infer.ml
 export const rewriteRow = (row2: MonoTy, field1: string, fieldTy1: MonoTy, errors: string[]): MonoTy => {
   return matchVariant(row2, {
-    Record: ({ row: row2 }) => {
-      if (row2.type === 'empty') {
+    Record: ({ row: row2 }) => matchVariant(row2, {
+      empty: () => {
         errors.push(`row does not contain field ${field1}`);
         return MonoTy.Record(Row.empty());
-      }
+      },
+      extend: ({ field: field2, ty: fieldTy2, tail: row2Tail }) => {
+        if (field1 === field2) {
+          errors.push(...unify(fieldTy1, fieldTy2));
+          return row2Tail;
+        }
 
-      if (row2.field === field1) {
-        errors.push(...unify(fieldTy1, row2.ty));
-        return row2.tail;
-      }
-
-      return MonoTy.Record(Row.extend(
-        row2.field,
-        row2.ty,
-        rewriteRow(row2.tail, field1, fieldTy1, errors)
-      ));
-    },
-    Var: v => {
-      if (v.value.kind === 'Link') {
-        return rewriteRow(v.value.to, field1, fieldTy1, errors);
-      } else {
+        return MonoTy.Record(Row.extend(
+          field2,
+          fieldTy2,
+          rewriteRow(row2Tail, field1, fieldTy1, errors)
+        ));
+      },
+    }, 'type'),
+    Var: v => matchVariant(v.value, {
+      Unbound: () => {
         const row2Tail = MonoTy.fresh();
         const ty2 = MonoTy.Record(Row.extend(field1, fieldTy1, row2Tail));
         v.value = { kind: 'Link', to: ty2 };
         return row2Tail;
-      }
-    },
+      },
+      Link: ({ to }) => rewriteRow(to, field1, fieldTy1, errors),
+    }, 'kind'),
     _: () => {
       errors.push(`expected row type, got ${MonoTy.show(row2)}`);
       return MonoTy.Record(Row.empty());
