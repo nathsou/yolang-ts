@@ -1,6 +1,8 @@
 import fc from 'fast-check';
 import { Argument, BinaryOperator, CompoundAssignmentOperator, Expr, UnaryOperator } from '../../ast/sweet';
 import { Const } from '../../parse/token';
+import { none, some } from '../../utils/maybe';
+import { Arb } from './arb';
 import { lowerIdent } from './common.arb';
 import { patternArb } from './pattern.arb';
 
@@ -21,8 +23,13 @@ const closureArgument = (maxDepth: number): fc.Arbitrary<Argument> =>
     fc.frequency(
       { arbitrary: fc.constant(false), weight: 2 },
       { arbitrary: fc.constant(true), weight: 1 },
+    ),
+    fc.frequency(
+      { arbitrary: fc.constant(none), weight: 3 },
+      // TODO: add annotations when records types can be parsed 
+      // { arbitrary: Arb.ty(maxDepth).map(some), weight: 1 },
     )
-  ).map(([pattern, mutable]) => ({ pattern, mutable }));
+  ).map(([pattern, mutable, annotation]) => ({ pattern, mutable, annotation }));
 
 export const exprArb = (maxDepth = 3) => fc.letrec(tie => ({
   primary: fc.frequency(

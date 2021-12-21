@@ -2,7 +2,7 @@ import { DataType, match as matchVariant } from "itsamatch";
 import { match } from "ts-pattern";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
-import { cond, matchString, panic } from "../utils/misc";
+import { cond, matchString, panic, parenthesized } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./records";
@@ -165,13 +165,15 @@ export const MonoTy = {
         _: () => `(${name} ${joinWith(args, MonoTy.show, ', ')})`,
       }),
     }),
-    Fun: ({ args, ret }) => cond(args.length === 1, {
-      then: () =>
-        match(MonoTy.deref(args[0]))
-          .with({ variant: 'Const', name: 'tuple' }, () => `(${MonoTy.show(args[0])}) -> ${MonoTy.show(ret)}`)
-          .otherwise(a => `${MonoTy.show(a)} -> ${MonoTy.show(ret)}`),
-      else: () => `(${joinWith(args, MonoTy.show, ', ')}) -> ${MonoTy.show(ret)}`,
-    }),
+    Fun: ({ args, ret }) => {
+      const showParens = args.length !== 1 || (
+        args[0].variant === 'Record' ||
+        args[0].variant === 'Const' && args[0].name === 'tuple' ||
+        args[0].variant === 'Const' && args[0].name === '()'
+      );
+
+      return `${parenthesized(joinWith(args, MonoTy.show, ', '), showParens)} -> ${MonoTy.show(ret)}`;
+    },
     Record: ({ row }) => {
       if (row.type === 'empty') {
         return '{}';

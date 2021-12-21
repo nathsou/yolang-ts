@@ -30,6 +30,12 @@ export class Maybe<T> {
     return none;
   }
 
+  do(f: (val: T) => void): void {
+    if (this.raw.type === 'some') {
+      f(this.raw.data);
+    }
+  }
+
   mapWithDefault<U>(f: (val: T) => U, defaultValue: U): U {
     if (this.raw.type === 'some') {
       return f(this.raw.data);

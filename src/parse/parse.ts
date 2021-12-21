@@ -1,7 +1,9 @@
 import { match as matchVariant } from 'itsamatch';
 import { match, select } from 'ts-pattern';
 import { Argument, Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
+import { Row } from '../infer/records';
 import { MonoTy, ParameterizedTy, TypeParamsContext } from '../infer/types';
+import { lowerIdent } from '../tests/arbitraries/common.arb';
 import { takeWhile } from '../utils/array';
 import { none, some } from '../utils/maybe';
 import { compose, ref, snd } from '../utils/misc';
@@ -65,19 +67,6 @@ const unexpected = mapParserResult(
   }
 );
 
-const argument = alt<Argument>(
-  map(
-    seq(
-      keyword('mut'),
-      expectOrDefault(pattern, `Expected a pattern after 'mut' keyword`, Pattern.Error),
-    ),
-    ([_, pattern]) => ({ pattern, mutable: true })
-  ),
-  map(pattern, pattern => ({ pattern, mutable: false }))
-);
-
-const argumentList = map(parens(optional(commas(argument))), args => args.orDefault([]));
-
 // TYPES
 const monoTy = uninitialized<MonoTy>();
 
@@ -114,6 +103,16 @@ const tupleTy = map(
   ([h, _, tl]) => ParameterizedTy.Const('tuple', h, ...tl)
 );
 
+// TODO: support type parameters
+const recordTy = map(
+  curlyBrackets(many(seq(
+    ident,
+    symbol(':'),
+    monoTy,
+  ))),
+  fields => MonoTy.Record(Row.fromFields(fields.map(([name, _, ty]) => [name, ty])))
+);
+
 const allExceptFunTy = alt(
   constTy,
   tupleTy,
@@ -123,7 +122,7 @@ const allExceptFunTy = alt(
 
 const funTy = map(seq(
   alt(
-    parens(commas(parameterizedTy)),
+    map(parens(optional(commas(parameterizedTy))), args => args.orDefault([])),
     map(allExceptFunTy, ty => [ty])
   ),
   symbol('->'),
@@ -148,6 +147,23 @@ const typeAnnotation = map(seq(
   symbol(':'),
   expectOrDefault(monoTy, `Expected type after ':'`, MonoTy.unit()),
 ), snd);
+
+const argument = alt<Argument>(
+  map(
+    seq(
+      keyword('mut'),
+      expectOrDefault(pattern, `Expected a pattern after 'mut' keyword`, Pattern.Error),
+      optional(typeAnnotation),
+    ),
+    ([_, pattern, annotation]) => ({ pattern, mutable: true, annotation })
+  ),
+  map(seq(
+    pattern,
+    optional(typeAnnotation),
+  ), ([pattern, annotation]) => ({ pattern, mutable: false, annotation }))
+);
+
+const argumentList = map(parens(optional(commas(argument))), args => args.orDefault([]));
 
 // EXPRESSIONS
 
@@ -472,7 +488,7 @@ const closure = alt(
         map(parens(
           optional(commas(argument))
         ), args => args.orDefault([])),
-        map(pattern, p => [{ pattern: p, mutable: false }])
+        map(pattern, p => [{ pattern: p, mutable: false, annotation: none }])
       ),
       symbol('->'),
       expectOrDefault(expr, `Expected expression after '->'`, Expr.Error),

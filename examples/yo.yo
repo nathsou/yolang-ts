@@ -1,9 +1,4 @@
 
-type Yo<T> = {
-  yo: T
-}
-
-fn hey(a) {
-  let double: u32 -> (u32, u32) = x -> (x, x);
-  double(a)
+fn yo(a) {
+  ((x: ()) -> (x, (x, (x, (x, x)))))(a)
 }

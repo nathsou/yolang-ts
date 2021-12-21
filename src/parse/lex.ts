@@ -44,15 +44,12 @@ export const lex = (input: string): TokenWithPos[] => {
   };
 
   const skipSpaces = () => {
-    spaces(slice).match({
-      Some: ([spaces, rem]) => {
-        spaces.forEach(space => {
-          spaceActionMap[space as Space](pos);
-        });
+    spaces(slice).do(([spaces, rem]) => {
+      spaces.forEach(space => {
+        spaceActionMap[space as Space](pos);
+      });
 
-        slice.start = rem.start;
-      },
-      None: () => { },
+      slice.start = rem.start;
     });
   };
 

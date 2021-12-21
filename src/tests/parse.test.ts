@@ -5,6 +5,7 @@ import { Parser } from '../parse/combinators';
 import { lex } from '../parse/lex';
 import { binary, expr, tuple, unary } from '../parse/parse';
 import { Const, Token } from '../parse/token';
+import { none } from '../utils/maybe';
 import { Slice } from '../utils/slice';
 import { Arb } from './arbitraries/arb';
 
@@ -152,7 +153,7 @@ describe('Parser', () => {
         expr,
         'x -> x',
         Expr.Closure(
-          [{ pattern: Pattern.Variable('x'), mutable: false }],
+          [{ pattern: Pattern.Variable('x'), mutable: false, annotation: none }],
           Expr.Variable('x')
         )
       );
@@ -161,7 +162,7 @@ describe('Parser', () => {
         expr,
         '(x) -> x',
         Expr.Closure(
-          [{ pattern: Pattern.Variable('x'), mutable: false }],
+          [{ pattern: Pattern.Variable('x'), mutable: false, annotation: none }],
           Expr.Variable('x')
         )
       );
@@ -172,9 +173,9 @@ describe('Parser', () => {
         expr,
         '(a, b, c) -> (a, b, c)',
         Expr.Closure([
-          { pattern: Pattern.Variable('a'), mutable: false },
-          { pattern: Pattern.Variable('b'), mutable: false },
-          { pattern: Pattern.Variable('c'), mutable: false },
+          { pattern: Pattern.Variable('a'), mutable: false, annotation: none },
+          { pattern: Pattern.Variable('b'), mutable: false, annotation: none },
+          { pattern: Pattern.Variable('c'), mutable: false, annotation: none },
         ],
           Expr.Tuple([
             Expr.Variable('a'),

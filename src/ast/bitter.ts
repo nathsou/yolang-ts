@@ -1,7 +1,7 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { MonoTy, ParameterizedTy, PolyTy } from "../infer/types";
 import { Const } from "../parse/token";
-import { Maybe } from "../utils/maybe";
+import { Maybe, none } from "../utils/maybe";
 import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
 
 // Bitter expressions are *unsugared* representations
@@ -86,7 +86,7 @@ export const Pattern = {
   }),
 };
 
-type Argument = { name: Name, mutable: boolean };
+type Argument = { name: Name, mutable: boolean, annotation: Maybe<MonoTy> };
 
 export type Expr = DataType<WithSweetRefAndType<{
   Const: { value: Const },
@@ -213,7 +213,7 @@ type Field = { name: string, ty: ParameterizedTy };
 export type Decl = DataType<{
   Function: {
     name: Name,
-    args: { name: Name, mutable: boolean }[],
+    args: { name: Name, mutable: boolean, annotation: Maybe<MonoTy> }[],
     body: Expr,
     funTy: PolyTy,
   },
@@ -231,7 +231,7 @@ export type Decl = DataType<{
 }>;
 
 export const Decl = {
-  Function: (name: Name, args: { name: Name, mutable: boolean }[], body: Expr): Decl => ({ variant: 'Function', name, args, body, funTy: PolyTy.fresh() }),
+  Function: (name: Name, args: { name: Name, mutable: boolean, annotation: Maybe<MonoTy> }[], body: Expr): Decl => ({ variant: 'Function', name, args, body, funTy: PolyTy.fresh() }),
   Module: (name: string, decls: Decl[]): Decl => {
     const mod: VariantOf<Decl, 'Module'> = {
       variant: 'Module',
@@ -332,9 +332,10 @@ export const removeFuncArgsPatternMatching = (
   // we don't have to do anything if all the patterns are variables or _
   if (args.every(arg => arg.pattern.variant === 'Variable' || arg.pattern.variant === 'Any')) {
     return {
-      args: args.map(({ pattern, mutable }, index) => ({
+      args: args.map(({ pattern, mutable, annotation }, index) => ({
         name: NameEnv.declare(nameEnv, pattern.variant === 'Variable' ? pattern.name : `_${index}`, mutable),
-        mutable
+        mutable,
+        annotation
       })),
       body: Expr.fromSweet(body, nameEnv, errors),
     };
@@ -359,7 +360,7 @@ export const removeFuncArgsPatternMatching = (
   );
 
   return {
-    args: varNames.map(arg => ({ name: arg, mutable: arg.mutable })),
+    args: varNames.map(arg => ({ name: arg, mutable: arg.mutable, annotation: none })),
     body: newBody,
   };
 };

@@ -139,9 +139,8 @@ export const inferExpr = (
     IfThenElse: ({ condition, then, else_ }) => {
       inferExpr(condition, ctx, errors);
       inferExpr(then, ctx, errors);
-      else_.match({
-        Some: e => inferExpr(e, ctx, errors),
-        None: () => { },
+      else_.do(e => {
+        inferExpr(e, ctx, errors);
       });
 
       const condTy = condition.ty;
@@ -173,6 +172,9 @@ export const inferExpr = (
 
       args.forEach(arg => {
         Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
+        arg.annotation.do(ann => {
+          unify(arg.name.ty, ann);
+        });
       });
 
       inferExpr(body, bodyCtx, errors);
@@ -274,11 +276,8 @@ export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: TypingError[]): 
     Let: ({ name, expr, annotation }) => {
       inferExpr(expr, ctx, errors);
 
-      annotation.match({
-        Some: ann => {
-          errors.push(...unif(expr.ty, ann));
-        },
-        None: () => { },
+      annotation.do(ann => {
+        errors.push(...unif(expr.ty, ann));
       });
 
       const genTy = MonoTy.generalize(ctx.env, expr.ty);
@@ -303,6 +302,9 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: TypingError[]): 
 
       args.forEach(arg => {
         Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
+        arg.annotation.do(ann => {
+          errors.push(...unif(arg.name.ty, ann));
+        });
       });
 
       inferExpr(body, bodyCtx, errors);
