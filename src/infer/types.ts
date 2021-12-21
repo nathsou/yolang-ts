@@ -214,6 +214,8 @@ export const MonoTy = {
           return false;
         }
       )
+      .with([{ variant: 'Record' }, { variant: 'Record' }], ([s, t]) =>
+        Row.strictEq(s.row, t.row))
       .otherwise(() => false),
 };
 

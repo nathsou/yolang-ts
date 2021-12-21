@@ -1,3 +1,4 @@
+import { zip } from "../utils/array";
 import { Maybe, none, some } from "../utils/maybe";
 import { MonoTy } from "./types";
 
@@ -58,5 +59,10 @@ export const Row = {
     }
 
     return result;
+  },
+  strictEq: (row1: Row, row2: Row): boolean => {
+    return zip(Row.fields(row1), Row.fields(row2)).every(([[field1, ty1], [field2, ty2]]) => {
+      return field1 === field2 && MonoTy.eq(ty1, ty2);
+    });
   },
 };
