@@ -1,11 +1,11 @@
-import fc, { Arbitrary } from 'fast-check';
+import fc from 'fast-check';
 import { Expr, Pattern } from '../ast/sweet';
 import { Parser } from '../parse/combinators';
 import { lex } from '../parse/lex';
 import { binary, expr, tuple, unary } from '../parse/parse';
 import { Const, Token } from '../parse/token';
 import { Slice } from '../utils/slice';
-import { expr as exprArb } from './arbitraries/expr.arb';
+import { Arb } from './arbitraries/arb';
 
 const tokens = (input: string): Slice<Token> => Slice.from(lex(input));
 
@@ -186,7 +186,7 @@ describe('Parser', () => {
   });
 
   it('should parse randomly generated expressions', () => {
-    fc.assert(fc.property(exprArb(3).expr as Arbitrary<Expr>, e => {
+    fc.assert(fc.property(Arb.expr(3), e => {
       expectExpr(expr, Expr.show(e), e);
     }));
   });

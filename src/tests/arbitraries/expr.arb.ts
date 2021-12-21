@@ -2,7 +2,7 @@ import fc from 'fast-check';
 import { Argument, BinaryOperator, CompoundAssignmentOperator, Expr, UnaryOperator } from '../../ast/sweet';
 import { Const } from '../../parse/token';
 import { lowerIdent } from './common.arb';
-import { pattern } from './pattern.arb';
+import { patternArb } from './pattern.arb';
 
 export const constU32Expr = fc.integer({ min: 0 }).map(n => Expr.Const(Const.u32(n)));
 export const constBoolExpr = fc.boolean().map(b => Expr.Const(Const.bool(b)));
@@ -17,14 +17,14 @@ export const constExpr = fc.frequency(
 
 const closureArgument = (maxDepth: number): fc.Arbitrary<Argument> =>
   fc.tuple(
-    pattern(maxDepth),
+    patternArb(maxDepth),
     fc.frequency(
       { arbitrary: fc.constant(false), weight: 2 },
       { arbitrary: fc.constant(true), weight: 1 },
     )
   ).map(([pattern, mutable]) => ({ pattern, mutable }));
 
-export const expr = (maxDepth = 3) => fc.letrec(tie => ({
+export const exprArb = (maxDepth = 3) => fc.letrec(tie => ({
   primary: fc.frequency(
     { arbitrary: constExpr, weight: 3 },
     { arbitrary: varExpr, weight: 1 },

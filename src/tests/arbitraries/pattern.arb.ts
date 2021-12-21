@@ -4,4 +4,4 @@ import { lowerIdent } from './common.arb';
 
 export const varPat = lowerIdent.map(Pattern.Variable);
 
-export const pattern = (maxDepth = 5) => fc.oneof({ maxDepth: maxDepth }, varPat);
+export const patternArb = (maxDepth = 5) => fc.oneof({ maxDepth: maxDepth }, varPat);

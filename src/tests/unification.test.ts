@@ -1,27 +1,9 @@
 import fc from "fast-check";
-import * as prand from 'pure-rand';
 import { Row } from "../infer/records";
 import { Subst } from "../infer/subst";
 import { MonoTy } from "../infer/types";
 import { unify } from "../infer/unification";
-import { forEach } from "../utils/misc";
-import { typ } from './arbitraries/type.arb';
-
-const randSubst = (ty: MonoTy, rand: fc.Random): Subst => {
-  const subst = Subst.make();
-  forEach(MonoTy.freeTypeVars(ty), v => {
-    const shouldChange = fc.boolean().generate(rand).value;
-
-    if (shouldChange) {
-      const t = typ().generate(rand).value;
-      if (!MonoTy.occurs(v, t)) {
-        subst.set(v, t);
-      }
-    }
-  });
-
-  return subst;
-};
+import { Arb } from './arbitraries/arb';
 
 describe('unification', () => {
   it('should unify type variables correctly', () => {
@@ -170,10 +152,7 @@ describe('unification', () => {
   });
 
   it('should unify random types', () => {
-    const seed = Math.floor(Math.random() * 1000_0000);
-    const rand = new fc.Random(prand.xorshift128plus(seed));
-    fc.assert(fc.property(typ(5), ty => {
-      const subst = randSubst(ty, rand);
+    fc.assert(fc.property(Arb.ty(5).chain(ty => fc.tuple(fc.constant(ty), Arb.subst(ty))), ([ty, subst]) => {
       const ty2 = Subst.apply(subst, ty);
       const errs = unify(ty, ty2);
       expect(errs).toHaveLength(0);

@@ -26,6 +26,6 @@ export const ty = (maxDepth = 3) => fc.letrec(tie => ({
   ),
 }));
 
-export const typ = (maxDepth?: number) => {
+export const typeArb = (maxDepth?: number) => {
   return ty(maxDepth).ty as Arbitrary<MonoTy>;
 };
