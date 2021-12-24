@@ -39,6 +39,14 @@ export const mapRecord = <T, U>(obj: Record<string, T>, f: (value: T) => U): Rec
   return Object.fromEntries(Object.entries(obj).map(([key, value]) => [key, f(value)]));
 };
 
+export const pushRecord = <T>(obj: Record<string, T[]>, key: string, value: T): void => {
+  if (key in obj) {
+    obj[key].push(value);
+  } else {
+    obj[key] = [value];
+  }
+};
+
 export const compose = <A, B, C>(f: (a: A) => B, g: (b: B) => C) => (x: A) => g(f(x));
 
 export const not = (q: boolean) => !q;

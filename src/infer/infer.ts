@@ -1,78 +1,15 @@
-import { match as matchVariant, VariantOf } from 'itsamatch';
+import { match as matchVariant } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
-import { BinaryOperator, UnaryOperator } from '../ast/sweet';
-import { Maybe, none, some } from '../utils/maybe';
-import { proj } from '../utils/misc';
+import { some } from '../utils/maybe';
+import { cond, proj } from '../utils/misc';
 import { Env } from './env';
 import { Row } from './records';
+import { signatures } from './signatures';
+import { TypeContext } from './typeContext';
 import { MonoTy, PolyTy } from './types';
-import { unify as unif } from './unification';
+import { unifyMut } from './unification';
 
 export type TypingError = string;
-
-const unaryOpSignature: Record<UnaryOperator, PolyTy> = {
-  '-': MonoTy.toPoly(MonoTy.Fun([MonoTy.u32()], MonoTy.u32())),
-  '!': MonoTy.toPoly(MonoTy.Fun([MonoTy.bool()], MonoTy.bool())),
-};
-
-const u32OpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.u32(), MonoTy.u32()], MonoTy.u32()));
-const u32BoolOpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.u32(), MonoTy.u32()], MonoTy.bool()));
-const comparisonOpSig = PolyTy.make(
-  [0],
-  MonoTy.Fun([MonoTy.Var({ kind: 'Unbound', id: 0 }), MonoTy.Var({ kind: 'Unbound', id: 0 })], MonoTy.bool())
-);
-
-const logicalOpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.bool(), MonoTy.bool()], MonoTy.bool()));
-
-const binaryOpSignature: Record<BinaryOperator, PolyTy> = {
-  '+': u32OpSig,
-  '-': u32OpSig,
-  '*': u32OpSig,
-  '/': u32OpSig,
-  '%': u32OpSig,
-  '==': comparisonOpSig,
-  '!=': comparisonOpSig,
-  '<': u32BoolOpSig,
-  '>': u32BoolOpSig,
-  '<=': u32BoolOpSig,
-  '>=': u32BoolOpSig,
-  '&&': logicalOpSig,
-  '||': logicalOpSig,
-};
-
-type TypeContext = {
-  env: Env,
-  modules: Record<string, VariantOf<Decl, 'Module'>>,
-  typeDecls: Record<string, VariantOf<Decl, 'NamedRecord'>>,
-};
-
-const TypeContext = {
-  make: (): TypeContext => ({ env: Env.make(), modules: {}, typeDecls: {} }),
-  clone: (ctx: TypeContext) => ({ env: Env.clone(ctx.env), modules: { ...ctx.modules }, typeDecls: { ...ctx.typeDecls } }),
-  declareModule: (ctx: TypeContext, mod: VariantOf<Decl, 'Module'>): void => {
-    ctx.modules[mod.name] = mod;
-  },
-  declareType: (ctx: TypeContext, ty: VariantOf<Decl, 'NamedRecord'>): void => {
-    ctx.typeDecls[ty.name] = ty;
-  },
-  // TODO: cleanup
-  resolveModule: (ctx: TypeContext, path: string[]): Maybe<VariantOf<Decl, 'Module'>> => {
-    let members: Record<string, Decl> = ctx.modules;
-    let mod: VariantOf<Decl, 'Module'> | undefined;
-
-    for (const name of path) {
-      const decl = members[name];
-      if (decl !== undefined && decl.variant === 'Module') {
-        mod = decl;
-        members = mod.members;
-      } else {
-        return none;
-      }
-    }
-
-    return mod ? some(mod) : none;
-  },
-};
 
 export const inferExpr = (
   expr: Expr,
@@ -80,7 +17,7 @@ export const inferExpr = (
   errors: TypingError[]
 ): TypingError[] => {
   const unify = (s: MonoTy, t: MonoTy): void => {
-    errors.push(...unif(s, t).map(err => err + ' in ' + Expr.showSweet(expr)));
+    errors.push(...unifyMut(s, t).map(err => err + ' in ' + Expr.showSweet(expr)));
   };
 
   const { env } = ctx;
@@ -101,14 +38,14 @@ export const inferExpr = (
     },
     UnaryOp: ({ op, expr }) => {
       inferExpr(expr, ctx, errors);
-      const opTy1 = PolyTy.instantiate(unaryOpSignature[op]);
+      const opTy1 = PolyTy.instantiate(signatures.unaryOp[op]);
       const opTy2 = MonoTy.Fun([expr.ty], tau);
       unify(opTy1, opTy2);
     },
     BinaryOp: ({ lhs, op, rhs }) => {
       inferExpr(lhs, ctx, errors);
       inferExpr(rhs, ctx, errors);
-      const opTy1 = PolyTy.instantiate(binaryOpSignature[op]);
+      const opTy1 = PolyTy.instantiate(signatures.binaryOp[op]);
       const opTy2 = MonoTy.Fun([lhs.ty, rhs.ty], tau);
       unify(opTy1, opTy2);
     },
@@ -186,6 +123,42 @@ export const inferExpr = (
 
       unify(tau, funTy);
     },
+    MethodCall: expr => {
+      const { receiver, method, args } = expr;
+      inferExpr(receiver, ctx, errors);
+      args.forEach(arg => {
+        inferExpr(arg, ctx, errors);
+      });
+
+      TypeContext.findImplMethod(ctx, method, receiver.ty).match({
+        Some: ([impl, _subst]) => {
+          const isMethod = method in impl.methods;
+          if (!isMethod) {
+            errors.push(`no method '${method}' found on type ${MonoTy.show(receiver.ty)}`);
+          } else {
+            expr.impl = some(impl);
+
+            unify(impl.ty, receiver.ty);
+            const func = impl.methods[method];
+
+            args.forEach(arg => {
+              inferExpr(arg, ctx, errors);
+            });
+
+            const expectedFunTy = MonoTy.Fun(func.args.map(arg => arg.name.ty), func.body.ty);
+
+            const argsTysWithSelf = [receiver.ty, ...args.map(proj('ty'))];
+            const actualFunTy = MonoTy.Fun(argsTysWithSelf, tau);
+
+            unify(expectedFunTy, actualFunTy);
+            unify(func.body.ty, tau);
+          }
+        },
+        None: () => {
+          errors.push(`no method '${method}' found on type ${MonoTy.show(receiver.ty)}`);
+        },
+      });
+    },
     ModuleAccess: ({ path, member }) => {
       TypeContext.resolveModule(ctx, path).match({
         Some: mod => {
@@ -261,7 +234,7 @@ export const inferExpr = (
 
 export const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors: TypingError[]): TypingError[] => {
   const unify = (s: MonoTy, t: MonoTy): void => {
-    errors.push(...unif(s, t).map(err => err + ' in ' + Expr.showSweet(expr)));
+    errors.push(...unifyMut(s, t).map(err => err + ' in ' + Expr.showSweet(expr)));
   };
 
   const tau = expr.ty;
@@ -277,7 +250,7 @@ export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: TypingError[]): 
       inferExpr(expr, ctx, errors);
 
       annotation.do(ann => {
-        errors.push(...unif(expr.ty, ann));
+        errors.push(...unifyMut(expr.ty, ann));
       });
 
       const genTy = MonoTy.generalize(ctx.env, expr.ty);
@@ -303,7 +276,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: TypingError[]): 
       args.forEach(arg => {
         Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
         arg.annotation.do(ann => {
-          errors.push(...unif(arg.name.ty, ann));
+          errors.push(...unifyMut(arg.name.ty, ann));
         });
       });
 
@@ -314,7 +287,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: TypingError[]): 
         body.ty
       );
 
-      errors.push(...unif(funTy, name.ty));
+      errors.push(...unifyMut(funTy, name.ty));
 
       const genFunTy = MonoTy.generalize(ctx.env, funTy);
       func.funTy = genFunTy;
@@ -344,6 +317,14 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: TypingError[]): 
     },
     NamedRecord: struct => {
       TypeContext.declareType(ctx, struct);
+    },
+    Impl: impl => {
+      TypeContext.declareImpl(ctx, impl);
+      const implCtx = TypeContext.clone(ctx);
+
+      for (const decl of impl.decls) {
+        inferDecl(decl, implCtx, errors);
+      }
     },
     Error: ({ message }) => {
       errors.push(message);

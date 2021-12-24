@@ -2,15 +2,15 @@ import fc from "fast-check";
 import { Row } from "../infer/records";
 import { Subst } from "../infer/subst";
 import { MonoTy } from "../infer/types";
-import { unify } from "../infer/unification";
+import { unifyMut, unifyPure } from "../infer/unification";
 import { Arb } from './arbitraries/arb';
 
-describe('unification', () => {
+describe('unifyMut', () => {
   it('should unify type variables correctly', () => {
     const tv1 = MonoTy.Var({ kind: 'Unbound', id: 0 });
     const tv2 = MonoTy.Var({ kind: 'Unbound', id: 1 });
 
-    const errs = unify(tv1, tv2);
+    const errs = unifyMut(tv1, tv2);
 
     expect(errs).toHaveLength(0);
     expect(tv1).toMatchObject(MonoTy.Var({
@@ -25,7 +25,7 @@ describe('unification', () => {
     const tyVar = MonoTy.Var({ kind: 'Unbound', id: 0 });
     const tyConst = MonoTy.Const('Yolo');
 
-    const errs = unify(tyVar, tyConst);
+    const errs = unifyMut(tyVar, tyConst);
 
     expect(errs).toHaveLength(0);
     expect(tyVar).toMatchObject(MonoTy.Var({
@@ -40,7 +40,7 @@ describe('unification', () => {
     const tyVar = MonoTy.Var({ kind: 'Unbound', id: 0 });
     const tyConst = MonoTy.Const('Yolo');
 
-    const errs = unify(tyConst, tyVar);
+    const errs = unifyMut(tyConst, tyVar);
 
     expect(errs).toHaveLength(0);
     expect(tyVar).toMatchObject(MonoTy.Var({
@@ -59,7 +59,7 @@ describe('unification', () => {
     const pair1 = MonoTy.Const('Pair', tv1, tc1);
     const pair2 = MonoTy.Const('Pair', tc2, tv2);
 
-    const errs = unify(pair1, pair2);
+    const errs = unifyMut(pair1, pair2);
 
     expect(errs).toHaveLength(0);
 
@@ -81,7 +81,7 @@ describe('unification', () => {
     const pair1 = MonoTy.Const('Pair', tv1, tc1);
     const pair2 = MonoTy.Const('Pair', tc2, tv1);
 
-    const errs = unify(pair1, pair2);
+    const errs = unifyMut(pair1, pair2);
     expect(errs).toHaveLength(1);
   });
 
@@ -93,7 +93,7 @@ describe('unification', () => {
     const funTy1 = MonoTy.Fun([tv1, tc1], tc2);
     const funTy2 = MonoTy.Fun([tc2, tv2], tv1);
 
-    const errs = unify(funTy1, funTy2);
+    const errs = unifyMut(funTy1, funTy2);
 
     expect(errs).toHaveLength(0);
 
@@ -116,7 +116,7 @@ describe('unification', () => {
     const rec1 = MonoTy.Record(row1);
     const rec2 = MonoTy.Record(row2);
 
-    const errs = unify(rec1, rec2);
+    const errs = unifyMut(rec1, rec2);
 
     expect(errs).toHaveLength(0);
 
@@ -154,9 +154,29 @@ describe('unification', () => {
   it('should unify random types', () => {
     fc.assert(fc.property(Arb.ty(5).chain(ty => fc.tuple(fc.constant(ty), Arb.subst(ty))), ([ty, subst]) => {
       const ty2 = Subst.apply(subst, ty);
-      const errs = unify(ty, ty2);
+      const errs = unifyMut(ty, ty2);
       expect(errs).toHaveLength(0);
       expect(MonoTy.eq(ty, ty2)).toBeTruthy();
     }));
+  });
+});
+
+describe('unifyPure', () => {
+  it('should not mutate type variables', () => {
+    const tv1 = MonoTy.Var({ kind: 'Unbound', id: 0 });
+    const tv2 = MonoTy.Var({ kind: 'Unbound', id: 1 });
+
+    const ty1 = MonoTy.tuple([tv1, tv2]);
+    const ty2 = MonoTy.tuple([MonoTy.bool(), MonoTy.u32()]);
+
+    const res = unifyPure(ty1, ty2);
+
+    expect(res.isOk()).toBeTruthy();
+    expect(tv1).toMatchObject(MonoTy.Var({ kind: 'Unbound', id: 0 }));
+    expect(tv2).toMatchObject(MonoTy.Var({ kind: 'Unbound', id: 1 }));
+
+    const subst = res.unwrap();
+    expect(subst.get(0)).toMatchObject(MonoTy.bool());
+    expect(subst.get(1)).toMatchObject(MonoTy.u32());
   });
 });

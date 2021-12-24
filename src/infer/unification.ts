@@ -1,11 +1,29 @@
-import { match as matchVariant } from "itsamatch";
+import { match as matchVariant, VariantOf } from "itsamatch";
 import { match, __ } from "ts-pattern";
+import { panic } from "../utils/misc";
+import { Result } from "../utils/result";
 import { Row } from "./records";
+import { Subst } from "./subst";
 import { MonoTy, TyVar } from "./types";
 
 export type UnificationError = string;
 
-const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
+const linkTo = (v: VariantOf<MonoTy, 'Var'>, to: MonoTy, subst?: Subst) => {
+  if (subst) {
+    if (v.value.kind === 'Link') {
+      return panic('cannot link to a bound type variable');
+    }
+
+    subst.set(v.value.id, MonoTy.deref(to));
+  } else {
+    const link: TyVar = { kind: 'Link', to: MonoTy.deref(to) };
+    /// @ts-ignore
+    v.value = link;
+  }
+};
+
+// if subst is present, the unification does not mutate type variables
+const unifyMany = (eqs: [MonoTy, MonoTy][], subst?: Subst): UnificationError[] => {
   const errors: UnificationError[] = [];
   const pushEqs = (...newEqs: [MonoTy, MonoTy][]): void => {
     eqs.push(...newEqs.map(([s, t]) => [MonoTy.deref(s), MonoTy.deref(t)] as [MonoTy, MonoTy]));
@@ -22,9 +40,7 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
         if (MonoTy.occurs(s.value.id, t)) {
           errors.push(`occurs check failed: ${MonoTy.show(s)}, ${MonoTy.show(t)}`);
         } else {
-          const link: TyVar = { kind: 'Link', to: MonoTy.deref(t) };
-          /// @ts-ignore
-          s.value = link;
+          linkTo(s, t, subst);
         }
       })
       .with([{ variant: 'Var', value: { kind: 'Link' } }, __], ([s, t]) => {
@@ -66,7 +82,7 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
         { variant: 'Record', row: { type: 'extend' } }
       ], ([s, t]) => {
         const isTailUnboundVar = s.row.tail.variant === 'Var' && s.row.tail.value.kind === 'Unbound';
-        const row2Tail = rewriteRow(t, s.row.field, s.row.ty, errors);
+        const row2Tail = rewriteRow(t, s.row.field, s.row.ty, subst, errors);
         if (isTailUnboundVar && s.row.tail.variant === 'Var' && s.row.tail.value.kind === 'Link') {
           errors.push('recursive row type');
           // prevent infinite loop
@@ -84,7 +100,13 @@ const unifyMany = (eqs: [MonoTy, MonoTy][]): UnificationError[] => {
 };
 
 // https://github.com/tomprimozic/type-systems/blob/master/extensible_rows/infer.ml
-export const rewriteRow = (row2: MonoTy, field1: string, fieldTy1: MonoTy, errors: string[]): MonoTy => {
+const rewriteRow = (
+  row2: MonoTy,
+  field1: string,
+  fieldTy1: MonoTy,
+  subst: Subst | undefined,
+  errors: string[],
+): MonoTy => {
   return matchVariant(row2, {
     Record: ({ row: row2 }) => matchVariant(row2, {
       empty: () => {
@@ -93,14 +115,14 @@ export const rewriteRow = (row2: MonoTy, field1: string, fieldTy1: MonoTy, error
       },
       extend: ({ field: field2, ty: fieldTy2, tail: row2Tail }) => {
         if (field1 === field2) {
-          errors.push(...unify(fieldTy1, fieldTy2));
+          errors.push(...unifyMut(fieldTy1, fieldTy2));
           return row2Tail;
         }
 
         return MonoTy.Record(Row.extend(
           field2,
           fieldTy2,
-          rewriteRow(row2Tail, field1, fieldTy1, errors)
+          rewriteRow(row2Tail, field1, fieldTy1, subst, errors)
         ));
       },
     }, 'type'),
@@ -108,10 +130,10 @@ export const rewriteRow = (row2: MonoTy, field1: string, fieldTy1: MonoTy, error
       Unbound: () => {
         const row2Tail = MonoTy.fresh();
         const ty2 = MonoTy.Record(Row.extend(field1, fieldTy1, row2Tail));
-        v.value = { kind: 'Link', to: ty2 };
+        linkTo(v, ty2, subst);
         return row2Tail;
       },
-      Link: ({ to }) => rewriteRow(to, field1, fieldTy1, errors),
+      Link: ({ to }) => rewriteRow(to, field1, fieldTy1, subst, errors),
     }, 'kind'),
     _: () => {
       errors.push(`expected row type, got ${MonoTy.show(row2)}`);
@@ -120,6 +142,12 @@ export const rewriteRow = (row2: MonoTy, field1: string, fieldTy1: MonoTy, error
   });
 };
 
-export const unify = (s: MonoTy, t: MonoTy): UnificationError[] => {
+export const unifyMut = (s: MonoTy, t: MonoTy): UnificationError[] => {
   return unifyMany([[MonoTy.deref(s), MonoTy.deref(t)]]);
+};
+
+export const unifyPure = (s: MonoTy, t: MonoTy): Result<Subst, UnificationError[]> => {
+  const subst = Subst.make();
+  const errors = unifyMany([[s, t]], subst);
+  return Result.wrap([subst, errors]);
 };

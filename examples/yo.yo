@@ -1,4 +1,26 @@
 
-fn yo(a) {
-  ((x: ()) -> (x, (x, (x, (x, x)))))(a)
+impl u32 {
+  fn squared(self) {
+    self * self
+  }
+}
+
+impl bool {
+  fn not(self) {
+    !self
+  }
+}
+
+fn fst((a, b)) { a }
+
+fn snd((a, b)) { b }
+
+impl (u32, u32) {
+  fn sum(self) {
+    fst(self) + snd(self)
+  }
+}
+
+fn yo() {
+  (3.squared(), 4.squared()).sum()
 }

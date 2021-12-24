@@ -1,4 +1,5 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
+import { Impl } from "../infer/impls";
 import { MonoTy, ParameterizedTy, PolyTy } from "../infer/types";
 import { Const } from "../parse/token";
 import { Maybe, none } from "../utils/maybe";
@@ -99,6 +100,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   Block: { statements: Stmt[] },
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
   Assignment: { lhs: Expr, rhs: Expr },
+  MethodCall: { receiver: Expr, method: string, args: Expr[], impl: Maybe<Impl> },
   ModuleAccess: { path: string[], member: string },
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
@@ -122,6 +124,7 @@ export const Expr = {
   Block: (statements: Stmt[], sweet: SweetExpr): Expr => typed({ variant: 'Block', statements }, sweet),
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>, sweet: SweetExpr): Expr => typed({ variant: 'IfThenElse', condition, then, else_ }, sweet),
   Assignment: (lhs: Expr, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Assignment', lhs, rhs }, sweet),
+  MethodCall: (receiver: Expr, method: string, args: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'MethodCall', receiver, method, args, impl: none }, sweet),
   ModuleAccess: (path: string[], member: string, sweet: SweetExpr): Expr => typed({ variant: 'ModuleAccess', path, member }, sweet),
   FieldAccess: (lhs: Expr, field: string, sweet: SweetExpr): Expr => typed({ variant: 'FieldAccess', lhs, field }, sweet),
   Tuple: (elements: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Tuple', elements }, sweet),
@@ -174,6 +177,7 @@ export const Expr = {
           sweet
         );
       },
+      MethodCall: ({ receiver, method, args }) => Expr.MethodCall(go(receiver), method, args.map(arg => go(arg)), sweet),
       ModuleAccess: ({ path, member }) => Expr.ModuleAccess(path, member, sweet),
       FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field, sweet),
       Tuple: ({ elements }) => Expr.Tuple(elements.map(e => go(e)), sweet),
@@ -227,6 +231,10 @@ export type Decl = DataType<{
     typeParams: string[],
     fields: Field[],
   },
+  Impl: {
+    ty: MonoTy,
+    decls: Decl[],
+  },
   Error: { message: string },
 }>;
 
@@ -251,6 +259,9 @@ export const Decl = {
         NamedRecord: rec => {
           mod.members[rec.name] = rec;
         },
+        Impl: () => {
+
+        },
         Error: () => { },
       });
     }
@@ -258,6 +269,7 @@ export const Decl = {
     return mod;
   },
   NamedRecord: (name: string, typeParams: string[], fields: Field[]): Decl => ({ variant: 'NamedRecord', typeParams, name, fields }),
+  Impl: (ty: MonoTy, decls: Decl[]): Decl => ({ variant: 'Impl', ty, decls }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: BitterConversionError[]): Decl =>
     matchVariant(sweet, {
@@ -285,6 +297,17 @@ export const Decl = {
         );
       },
       NamedRecord: ({ name, typeParams, fields }) => Decl.NamedRecord(name, typeParams, fields),
+      Impl: ({ ty, decls }) => {
+        const implEnv = NameEnv.clone(nameEnv);
+
+        for (const decl of decls) {
+          if (decl.variant === 'Function') {
+            NameEnv.declare(implEnv, decl.name, false);
+          }
+        }
+
+        return Decl.Impl(ty, decls.map(decl => Decl.fromSweet(decl, implEnv, false, errors)));
+      },
       Error: ({ message }) => Decl.Error(message),
     }),
 };

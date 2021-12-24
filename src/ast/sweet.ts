@@ -43,6 +43,7 @@ export type Expr = DataType<{
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
   Assignment: { lhs: Expr, rhs: Expr },
   CompoundAssignment: { lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr },
+  MethodCall: { receiver: Expr, method: string, args: Expr[] },
   ModuleAccess: { path: string[], member: string },
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
@@ -62,6 +63,7 @@ export const Expr = {
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>): Expr => ({ variant: 'IfThenElse', condition, then, else_ }),
   Assignment: (lhs: Expr, rhs: Expr): Expr => ({ variant: 'Assignment', lhs, rhs }),
   CompoundAssignment: (lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr): Expr => ({ variant: 'CompoundAssignment', lhs, op, rhs }),
+  MethodCall: (receiver: Expr, method: string, args: Expr[]): Expr => ({ variant: 'MethodCall', receiver, method, args }),
   ModuleAccess: (path: string[], member: string): Expr => ({ variant: 'ModuleAccess', path, member }),
   FieldAccess: (lhs: Expr, field: string): Expr => ({ variant: 'FieldAccess', lhs, field }),
   Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
@@ -79,6 +81,7 @@ export const Expr = {
     IfThenElse: ({ condition, then, else_ }) => `if ${Expr.show(condition)} ${Expr.show(then)}${else_.map(e => ` else ${Expr.show(e)}`).orDefault('')}`,
     Assignment: ({ lhs, rhs }) => `${Expr.show(lhs)} = ${Expr.show(rhs)}`,
     CompoundAssignment: ({ lhs, op, rhs }) => `${Expr.show(lhs)} ${op} ${Expr.show(rhs)}`,
+    MethodCall: ({ receiver, method, args }) => `${Expr.show(receiver)}.${method}(${joinWith(args, Expr.show, ', ')})`,
     ModuleAccess: ({ path, member }) => `${path.join('.')}.${member}`,
     FieldAccess: ({ lhs, field }) => `${Expr.show(lhs)}.${field}`,
     Tuple: ({ elements }) => `(${joinWith(elements, Expr.show, ', ')})`,
@@ -104,7 +107,7 @@ export const Pattern = {
   show: (pattern: Pattern): string => matchVariant(pattern, {
     Const: ({ value }) => `${Const.show(value)}`,
     Variable: ({ name }) => `${name}`,
-    Tuple: ({ elements }) => `(${elements.map(Pattern.show).join(', ')})`,
+    Tuple: ({ elements }) => `(${joinWith(elements, Pattern.show)})`,
     Any: () => '_',
     Error: ({ message }) => `<Error: ${message}>`,
   }),
@@ -145,6 +148,7 @@ export type Decl = DataType<{
   Function: { name: string, args: Argument[], body: Expr },
   Module: { name: string, decls: Decl[] },
   NamedRecord: { name: string, typeParams: string[], fields: Field[] },
+  Impl: { ty: MonoTy, decls: Decl[] },
   Error: { message: string },
 }>;
 
@@ -152,6 +156,7 @@ export const Decl = {
   Function: (name: string, args: Argument[], body: Expr): Decl => ({ variant: 'Function', name, args, body }),
   Module: (name: string, decls: Decl[]): Decl => ({ variant: 'Module', name, decls }),
   NamedRecord: (name: string, typeParams: string[], fields: Field[]): Decl => ({ variant: 'NamedRecord', name, typeParams, fields }),
+  Impl: (ty: MonoTy, decls: Decl[]): Decl => ({ variant: 'Impl', ty, decls }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   show: (decl: Decl): string => matchVariant(decl, {
     Function: ({ name, args, body }) => `fn ${name}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
@@ -160,7 +165,8 @@ export const Decl = {
       const params = typeParams.length > 0 ? `< ${typeParams.join(', ')}> ` : '';
       return `type ${name}${params} = { \n${joinWith(fields, ({ name, ty }) => `  ${name}: ${ParameterizedTy.show(ty)}`, `,\n`)} \n } `;
     },
-    Error: ({ message }) => `< Error: ${message}> `,
+    Impl: ({ ty, decls }) => `impl ${MonoTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
+    Error: ({ message }) => `<Error: ${message}> `,
   }),
 };
 
