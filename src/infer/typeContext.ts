@@ -5,7 +5,7 @@ import { pushRecord } from "../utils/misc";
 import { Env } from "./env";
 import { Impl } from "./impls";
 import { Subst } from "./subst";
-import { MonoTy } from "./types";
+import { MonoTy, ParameterizedTy, PolyTy } from "./types";
 import { unifyPure } from "./unification";
 
 export type TypeContext = {
@@ -55,12 +55,13 @@ export const TypeContext = {
 
     return mod ? some(mod) : none;
   },
-  findImplMethod: (ctx: TypeContext, funcName: string, ty: MonoTy): Maybe<[Impl, Subst]> => {
+  findImplMethod: (ctx: TypeContext, funcName: string, ty: MonoTy): Maybe<[Impl, Subst, MonoTy]> => {
     if (funcName in ctx.impls) {
       for (const impl of ctx.impls[funcName]) {
-        const res = unifyPure(impl.ty, ty);
+        const implTyInst = ParameterizedTy.instantiate(impl.ty, impl.typeParams);
+        const res = unifyPure(implTyInst, ty);
         if (res.isOk()) {
-          return some([impl, res.unwrap()]);
+          return some([impl, res.unwrap(), implTyInst]);
         }
       }
     }

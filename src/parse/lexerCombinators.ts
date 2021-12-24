@@ -76,11 +76,11 @@ export const str = (str: string): Lexer<string> => {
   return map(seq(str.split('').map(char)), () => str);
 };
 
-export const not = (lexer: Lexer<any>): Lexer<string> => {
+export const not = (lexer: Lexer<any>, consume = true): Lexer<string> => {
   return (input: Slice<Char>) =>
     lexer(input).match({
       Some: () => none,
-      None: () => Slice.head(input).map(h => [h, Slice.tail(input)]),
+      None: () => Slice.head(input).map(h => [h, consume ? Slice.tail(input) : input]),
     });
 };
 

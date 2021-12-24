@@ -1,0 +1,27 @@
+
+fn fst((a, b)) { a }
+fn snd((a, b)) { b }
+
+impl<A, B> (A, B) {
+  fn first(self) {
+    fst(self)
+  }
+
+  fn second(self) {
+    snd(self)
+  }
+}
+
+impl (u32, u32) {
+  fn sum(self) {
+    self.first() + self.second()
+  }
+
+  fn product(self) {
+    self.first() * self.second()
+  } 
+}
+
+fn yo() {
+  ((5, 2).sum(), (3, 7).product()).second()
+}

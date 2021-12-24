@@ -5,22 +5,6 @@ impl u32 {
   }
 }
 
-impl bool {
-  fn not(self) {
-    !self
-  }
-}
-
-fn fst((a, b)) { a }
-
-fn snd((a, b)) { b }
-
-impl (u32, u32) {
-  fn sum(self) {
-    fst(self) + snd(self)
-  }
-}
-
-fn yo() {
-  (3.squared(), 4.squared()).sum()
+fn yo(a) {
+  a.squared()
 }

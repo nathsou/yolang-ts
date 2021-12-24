@@ -7,7 +7,7 @@ export const symbol = map(trie(Symbol.values), s => Token.Symbol(s as Symbol));
 export const keyword = map(
   then(
     trie(Keyword.values),
-    not(alphaNum)
+    not(alphaNum, false)
   ),
   ([kw, _]) => Token.Keyword(kw as Keyword)
 );

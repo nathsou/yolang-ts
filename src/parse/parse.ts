@@ -569,13 +569,17 @@ const funcDecl = map(seq(
   ([_, name, args, body]) => Decl.Function(name, args, body)
 );
 
-const inherentImplDecl = map(seq(
+const inherentImplDecl = withContext(ctx => map(seq(
   keyword('impl'),
-  monoTy,
+  map(optionalOrDefault(typeParams, []), params => {
+    TypeParamsContext.declare(ctx, ...params);
+    return params;
+  }),
+  parameterizedTy,
   curlyBrackets(many(decl))
 ),
-  ([_, ty, decls]) => Decl.Impl(ty, decls)
-);
+  ([_, tyParams, ty, decls]) => Decl.Impl(ty, tyParams, decls)
+));
 
 const moduleDecl = map(seq(
   keyword('module'),
@@ -598,10 +602,7 @@ const typeDecl = withContext(ctx => {
     keyword('type'),
     expectOrDefault(upperIdent, `Expected identifier after 'type' keyword`, '<?>'),
     map(optionalOrDefault(typeParams, []), params => {
-      for (const p of params) {
-        TypeParamsContext.declare(ctx, p);
-      }
-
+      TypeParamsContext.declare(ctx, ...params);
       return params;
     }),
     expectOrDefault(symbol('='), `Expected '=' after type name`, Token.Symbol('=')),

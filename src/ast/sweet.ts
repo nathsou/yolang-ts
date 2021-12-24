@@ -1,5 +1,5 @@
 import { DataType, match as matchVariant } from 'itsamatch';
-import { MonoTy, ParameterizedTy } from '../infer/types';
+import { MonoTy, ParameterizedTy, TypeParams } from '../infer/types';
 import { Const } from '../parse/token';
 import { joinWith } from '../utils/array';
 import { Maybe } from '../utils/maybe';
@@ -147,25 +147,22 @@ type Field = { name: string, ty: ParameterizedTy };
 export type Decl = DataType<{
   Function: { name: string, args: Argument[], body: Expr },
   Module: { name: string, decls: Decl[] },
-  NamedRecord: { name: string, typeParams: string[], fields: Field[] },
-  Impl: { ty: MonoTy, decls: Decl[] },
+  NamedRecord: { name: string, typeParams: TypeParams, fields: Field[] },
+  Impl: { ty: ParameterizedTy, typeParams: TypeParams, decls: Decl[] },
   Error: { message: string },
 }>;
 
 export const Decl = {
   Function: (name: string, args: Argument[], body: Expr): Decl => ({ variant: 'Function', name, args, body }),
   Module: (name: string, decls: Decl[]): Decl => ({ variant: 'Module', name, decls }),
-  NamedRecord: (name: string, typeParams: string[], fields: Field[]): Decl => ({ variant: 'NamedRecord', name, typeParams, fields }),
-  Impl: (ty: MonoTy, decls: Decl[]): Decl => ({ variant: 'Impl', ty, decls }),
+  NamedRecord: (name: string, typeParams: TypeParams, fields: Field[]): Decl => ({ variant: 'NamedRecord', name, typeParams, fields }),
+  Impl: (ty: ParameterizedTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   show: (decl: Decl): string => matchVariant(decl, {
     Function: ({ name, args, body }) => `fn ${name}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
-    Module: ({ name, decls }) => `module ${name} { \n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
-    NamedRecord: ({ name, typeParams, fields }) => {
-      const params = typeParams.length > 0 ? `< ${typeParams.join(', ')}> ` : '';
-      return `type ${name}${params} = { \n${joinWith(fields, ({ name, ty }) => `  ${name}: ${ParameterizedTy.show(ty)}`, `,\n`)} \n } `;
-    },
-    Impl: ({ ty, decls }) => `impl ${MonoTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
+    Module: ({ name, decls }) => `module ${name} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
+    NamedRecord: ({ name, typeParams, fields }) => `type ${name}${TypeParams.show(typeParams)} = {\n${joinWith(fields, ({ name, ty }) => `  ${name}: ${ParameterizedTy.show(ty)}`, `,\n`)} \n} `,
+    Impl: ({ ty, typeParams, decls }) => `impl${TypeParams.show(typeParams)} ${ParameterizedTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     Error: ({ message }) => `<Error: ${message}> `,
   }),
 };

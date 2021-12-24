@@ -1,17 +1,19 @@
 import { VariantOf } from "itsamatch";
 import { Decl } from "../ast/bitter";
-import { MonoTy } from "./types";
+import { MonoTy, ParameterizedTy, TypeParams } from "./types";
 
 export type Impl = {
-  ty: MonoTy,
+  ty: ParameterizedTy,
+  typeParams: TypeParams,
   methods: Record<string, VariantOf<Decl, 'Function'>>,
   staticFuncs: Record<string, VariantOf<Decl, 'Function'>>,
 };
 
 export const Impl = {
-  from: ({ ty, decls }: VariantOf<Decl, 'Impl'>): Impl => {
+  from: ({ ty, typeParams, decls }: VariantOf<Decl, 'Impl'>): Impl => {
     const impl: Impl = {
       ty,
+      typeParams,
       methods: {},
       staticFuncs: {},
     };

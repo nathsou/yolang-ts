@@ -261,6 +261,12 @@ export const PolyTy = {
   },
 };
 
+export type TypeParams = string[];
+
+export const TypeParams = {
+  show: (params: TypeParams) => params.length > 0 ? `<${params.join(', ')}>` : '',
+};
+
 export type TypeParamsContext = {
   typeParams: string[],
 };
@@ -268,8 +274,8 @@ export type TypeParamsContext = {
 export const TypeParamsContext = {
   make: (): TypeParamsContext => ({ typeParams: [] }),
   clone: (ctx: TypeParamsContext): TypeParamsContext => ({ ...ctx }),
-  declare: (ctx: TypeParamsContext, name: string): void => {
-    ctx.typeParams.push(name);
+  declare: (ctx: TypeParamsContext, ...names: string[]): void => {
+    ctx.typeParams.push(...names);
   },
   has: (ctx: TypeParamsContext, name: string): boolean => {
     return ctx.typeParams.some(p => p === name);
@@ -313,8 +319,7 @@ export const ParameterizedTy = {
       ),
     });
   },
-  toPoly: (ty: ParameterizedTy, params: string[]): PolyTy => {
-    const tyParams = ParameterizedTy.freeTyParams(ty);
+  toPoly: (ty: ParameterizedTy, params: TypeParams): PolyTy => {
     const subst = new Map<string, MonoTy>();
     const tyVars: TyVarId[] = [];
 
@@ -326,14 +331,8 @@ export const ParameterizedTy = {
 
     return PolyTy.make(tyVars, ParameterizedTy.substituteTyParams(ty, subst));
   },
-  toMono: (ty: ParameterizedTy, params: Map<string, TyVarId>): MonoTy => {
-    const subst = new Map<string, MonoTy>();
-
-    for (const [name, id] of params.entries()) {
-      subst.set(name, MonoTy.Var({ kind: 'Unbound', id: id }));
-    }
-
-    return ParameterizedTy.substituteTyParams(ty, subst);
+  instantiate: (ty: ParameterizedTy, params: TypeParams): MonoTy => {
+    return PolyTy.instantiate(ParameterizedTy.toPoly(ty, params));
   },
   isUnparameterized: (ty: ParameterizedTy): boolean => matchVariant(ty, {
     Var: () => true,
@@ -344,6 +343,7 @@ export const ParameterizedTy = {
   show: (ty: ParameterizedTy): string => matchVariant(ty, {
     Param: ({ name }) => `'${name}`,
     Var: ({ id }) => showTyVarId(id),
-    _: () => MonoTy.show(ty as MonoTy),
+    Const: ({ name, args }) => `${name}${TypeParams.show(args.map(ParameterizedTy.show))}`,
+    Fun: ({ args, ret }) => `(${args.map(ParameterizedTy.show).join(' -> ')}) -> ${ParameterizedTy.show(ret)}`,
   }),
 };

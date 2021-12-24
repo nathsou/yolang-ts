@@ -1,7 +1,7 @@
 import { match as matchVariant } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
 import { some } from '../utils/maybe';
-import { cond, proj } from '../utils/misc';
+import { proj } from '../utils/misc';
 import { Env } from './env';
 import { Row } from './records';
 import { signatures } from './signatures';
@@ -131,14 +131,14 @@ export const inferExpr = (
       });
 
       TypeContext.findImplMethod(ctx, method, receiver.ty).match({
-        Some: ([impl, _subst]) => {
+        Some: ([impl, _subst, implInstTy]) => {
           const isMethod = method in impl.methods;
           if (!isMethod) {
-            errors.push(`no method '${method}' found on type ${MonoTy.show(receiver.ty)}`);
+            errors.push(`no method '${method}' found for type ${MonoTy.show(receiver.ty)}`);
           } else {
             expr.impl = some(impl);
 
-            unify(impl.ty, receiver.ty);
+            unify(implInstTy, receiver.ty);
             const func = impl.methods[method];
 
             args.forEach(arg => {
@@ -155,7 +155,7 @@ export const inferExpr = (
           }
         },
         None: () => {
-          errors.push(`no method '${method}' found on type ${MonoTy.show(receiver.ty)}`);
+          errors.push(`no method '${method}' found for type ${MonoTy.show(receiver.ty)}`);
         },
       });
     },
@@ -267,7 +267,7 @@ export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: TypingError[]): 
   return errors;
 };
 
-export const inferDecl = (decl: Decl, ctx: TypeContext, errors: TypingError[]): TypingError[] => {
+export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors: TypingError[]): TypingError[] => {
   matchVariant(decl, {
     Function: func => {
       const { name, args, body } = func;
@@ -305,25 +305,33 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: TypingError[]): 
             Env.addPoly(modCtx.env, name.original, funTy);
           },
           Module: subMod => {
-            inferDecl(subMod, modCtx, errors);
+            inferDecl(subMod, modCtx, declare, errors);
+          },
+          Impl: impl => {
+            inferDecl(impl, modCtx, declare, errors);
           },
           _: () => { },
         });
       }
 
       for (const decl of mod.decls) {
-        inferDecl(decl, modCtx, errors);
+        inferDecl(decl, modCtx, false, errors);
       }
     },
-    NamedRecord: struct => {
-      TypeContext.declareType(ctx, struct);
+    NamedRecord: record => {
+      if (declare) {
+        TypeContext.declareType(ctx, record);
+      }
     },
     Impl: impl => {
-      TypeContext.declareImpl(ctx, impl);
-      const implCtx = TypeContext.clone(ctx);
+      if (declare) {
+        TypeContext.declareImpl(ctx, impl);
 
-      for (const decl of impl.decls) {
-        inferDecl(decl, implCtx, errors);
+        const implCtx = TypeContext.clone(ctx);
+
+        for (const decl of impl.decls) {
+          inferDecl(decl, implCtx, declare, errors);
+        }
       }
     },
     Error: ({ message }) => {
@@ -339,7 +347,7 @@ export const infer = (prog: Prog): TypingError[] => {
   const topModule = Decl.Module('top', prog);
   const ctx = TypeContext.make();
 
-  inferDecl(topModule, ctx, errors);
+  inferDecl(topModule, ctx, true, errors);
 
   return errors;
 };

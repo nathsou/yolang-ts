@@ -1,6 +1,6 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { Impl } from "../infer/impls";
-import { MonoTy, ParameterizedTy, PolyTy } from "../infer/types";
+import { MonoTy, ParameterizedTy, PolyTy, TypeParams } from "../infer/types";
 import { Const } from "../parse/token";
 import { Maybe, none } from "../utils/maybe";
 import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
@@ -228,11 +228,12 @@ export type Decl = DataType<{
   },
   NamedRecord: {
     name: string,
-    typeParams: string[],
+    typeParams: TypeParams,
     fields: Field[],
   },
   Impl: {
-    ty: MonoTy,
+    ty: ParameterizedTy,
+    typeParams: TypeParams,
     decls: Decl[],
   },
   Error: { message: string },
@@ -269,7 +270,7 @@ export const Decl = {
     return mod;
   },
   NamedRecord: (name: string, typeParams: string[], fields: Field[]): Decl => ({ variant: 'NamedRecord', typeParams, name, fields }),
-  Impl: (ty: MonoTy, decls: Decl[]): Decl => ({ variant: 'Impl', ty, decls }),
+  Impl: (ty: ParameterizedTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: BitterConversionError[]): Decl =>
     matchVariant(sweet, {
@@ -297,7 +298,7 @@ export const Decl = {
         );
       },
       NamedRecord: ({ name, typeParams, fields }) => Decl.NamedRecord(name, typeParams, fields),
-      Impl: ({ ty, decls }) => {
+      Impl: ({ ty, typeParams, decls }) => {
         const implEnv = NameEnv.clone(nameEnv);
 
         for (const decl of decls) {
@@ -306,7 +307,7 @@ export const Decl = {
           }
         }
 
-        return Decl.Impl(ty, decls.map(decl => Decl.fromSweet(decl, implEnv, false, errors)));
+        return Decl.Impl(ty, typeParams, decls.map(decl => Decl.fromSweet(decl, implEnv, false, errors)));
       },
       Error: ({ message }) => Decl.Error(message),
     }),
