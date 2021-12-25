@@ -239,6 +239,25 @@ export const inferExpr = (
       unify(expectedTy, actualTy);
       unify(tau, expectedTy);
     },
+    TupleIndexing: ({ lhs, index }) => {
+      inferExpr(lhs, ctx, errors);
+
+      const lhsTy = MonoTy.deref(lhs.ty);
+
+      // type annotations may be necessary to ensure that lhs is a tuple
+      // as we cannot unify with a tuple of variable length
+      if (lhsTy.variant === 'Const' && lhsTy.name === 'tuple') {
+        const size = lhsTy.args.length;
+
+        if (index >= size) {
+          errors.push(`tuple index out of bounds in ${Expr.showSweet(expr)}`);
+        } else {
+          unify(tau, lhsTy.args[index]);
+        }
+      } else {
+        errors.push(`Expected tuple in tuple indexing expression, got: ${Expr.showSweet(lhs)}`);
+      }
+    },
     Error: ({ message }) => {
       errors.push(message);
     },

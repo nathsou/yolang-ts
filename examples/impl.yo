@@ -1,27 +1,42 @@
 
-fn fst((a, b)) { a }
-fn snd((a, b)) { b }
-
-impl<A, B> (A, B) {
-  fn first(self) {
-    fst(self)
-  }
-
-  fn second(self) {
-    snd(self)
-  }
+type Vec2 = {
+  x: u32,
+  y: u32
 }
 
-impl (u32, u32) {
-  fn sum(self) {
-    self.first() + self.second()
+impl Vec2 {
+  fn new(x, y) {
+    Vec2 { x: x, y: y }
   }
 
-  fn product(self) {
-    self.first() * self.second()
+  fn plus(self, v) {
+    Vec2 {
+      x: self.x + v.x,
+      y: self.y + v.y
+    }
+  }
+
+  fn minus(self, v) {
+    Vec2 {
+      x: self.x - v.x,
+      y: self.y - v.y
+    }
+  }
+
+  fn dot(self, v) {
+    self.x * v.x + self.y * v.y
+  }
+
+  fn distanceSquared(self, v) {
+    let dx = v.x - self.x
+    let dy = v.y - self.y
+    dx * dx + dy * dy
   } 
 }
 
 fn yo() {
-  ((5, 2).sum(), (3, 7).product()).second()
+  let u = Vec2 { x: 3, y: 4 }
+  let v = Vec2 { x: 7, y: 11 }
+
+  u.dot(v)
 }

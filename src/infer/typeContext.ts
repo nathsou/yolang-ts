@@ -53,6 +53,11 @@ export const TypeContext = {
     for (const decl of impl.decls) {
       if (decl.variant === 'Function') {
         pushRecord(ctx.impls, decl.name.original, imp);
+
+        if (decl.args.length > 0 && decl.args[0].name.original === 'self') {
+          const implTyInst = ParameterizedTy.instantiate(impl.ty, ctx);
+          decl.args[0].name.ty = implTyInst;
+        }
       }
     }
   },

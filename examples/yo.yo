@@ -1,40 +1,10 @@
 
-type Vec2 = {
-  x: u32,
-  y: u32
+impl (bool, bool) {
+  fn and(self) {
+    self.0 && self.1
+  }
 }
 
-impl Vec2 {
-  fn plus(self, v) {
-    Vec2 {
-      x: self.x + v.x,
-      y: self.y + v.y
-    }
-  }
-
-  fn minus(self, v) {
-    Vec2 {
-      x: self.x - v.x,
-      y: self.y - v.y
-    }
-  }
-
-  fn dot(self, v) {
-    self.x * v.x + self.y * v.y
-  }
-
-  fn distanceSquared(self, v) {
-    let dx = v.x - self.x
-    let dy = v.y - self.y
-    dx * dx + dy * dy
-  } 
-}
-
-type Pair<A, B> = (A, B)
-
-fn yo(p: Pair<u32, bool>) {
-  let u = Vec2 { x: 3, y: 4 }
-  let v = Vec2 { x: 7, y: 11 }
-
-  (u.dot(v), p)
+fn yo() {
+  (true, false).and()
 }

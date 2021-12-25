@@ -50,6 +50,7 @@ export type Expr = DataType<{
   Match: { expr: Expr, cases: { pattern: Pattern, body: Expr }[] },
   Parenthesized: { expr: Expr },
   NamedRecord: { name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[] },
+  TupleIndexing: { lhs: Expr, index: number },
 }>;
 
 export const Expr = {
@@ -71,6 +72,7 @@ export const Expr = {
   Match: (expr: Expr, cases: { pattern: Pattern, body: Expr }[]): Expr => ({ variant: 'Match', expr, cases }),
   Parenthesized: (expr: Expr): Expr => ({ variant: 'Parenthesized', expr }),
   NamedRecord: (name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[]): Expr => ({ variant: 'NamedRecord', name, typeParams, fields }),
+  TupleIndexing: (lhs: Expr, index: number): Expr => ({ variant: 'TupleIndexing', lhs, index }),
   show: (expr: Expr): string => matchVariant(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
@@ -90,6 +92,7 @@ export const Expr = {
     Match: ({ expr, cases }) => `match ${Expr.show(expr)} {\n${joinWith(cases, ({ pattern, body }) => `  ${Pattern.show(pattern)} => ${Expr.show(body)}\n`, '\n')}\n}`,
     Parenthesized: ({ expr }) => `(${Expr.show(expr)})`,
     NamedRecord: ({ name, typeParams, fields }) => `${name}<${joinWith(typeParams, ParameterizedTy.show, ', ')}> {\n${joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, ', ')}\n}`,
+    TupleIndexing: ({ lhs, index }) => `${Expr.show(lhs)}.${index}`,
   }),
 };
 
@@ -144,8 +147,6 @@ export const Stmt = {
     Error: ({ message }) => `<Error: ${message}>`,
   }),
 };
-
-type Field = { name: string, ty: ParameterizedTy };
 
 export type Decl = DataType<{
   Function: { name: string, args: Argument[], body: Expr },

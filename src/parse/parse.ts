@@ -166,7 +166,7 @@ const argumentList = map(parens(optional(commas(argument))), args => args.orDefa
 
 // EXPRESSIONS
 
-const integer = satisfyBy<Const>(token =>
+const integer = satisfyBy<number>(token =>
   match(token)
     .with({
       variant: 'Const',
@@ -175,12 +175,14 @@ const integer = satisfyBy<Const>(token =>
         value: select()
       }
     },
-      n => some(Const.u32(n))
+      n => some(n)
     )
     .otherwise(() => none)
 );
 
-const bool = satisfyBy<Const>(token =>
+const integerConst = map(integer, Const.u32);
+
+const boolConst = satisfyBy<Const>(token =>
   match(token)
     .with({
       variant: 'Const',
@@ -194,12 +196,12 @@ const bool = satisfyBy<Const>(token =>
     .otherwise(() => none)
 );
 
-const unit: Parser<Const> = map(
+const unitConst: Parser<Const> = map(
   seq(symbol('('), symbol(')')),
   Const.unit
 );
 
-const constVal: Parser<Const> = alt(integer, bool, unit);
+const constVal: Parser<Const> = alt(integerConst, boolConst, unitConst);
 
 const unaryOp = alt(
   map(symbol('-'), () => '-' as const),
@@ -351,17 +353,27 @@ const moduleAccess = alt(
   namedRecord
 );
 
-// field access or method call
+// field access or method call or tuple indexing
 const fieldAccess = chainLeft(
   moduleAccess,
   symbol('.'),
   seq(
-    expectOrDefault(ident, `Expected identifier after '.'`, '<?>'),
+    expectOrDefault(alt<{ variant: 'ident', name: string } | { variant: 'int', value: number }>(
+      map(ident, name => ({ variant: 'ident', name })),
+      map(integer, n => ({ variant: 'int', value: n })),
+    ), `Expected identifier or integer after '.'`, { variant: 'ident', name: '<?>' }),
     optional(parens(map(optional(commas(expr)), args => args.orDefault([])))),
   ),
   (lhs, _, [field, args]) => args.match({
-    Some: args => Expr.MethodCall(lhs, field, args),
-    None: () => Expr.FieldAccess(lhs, field),
+    Some: args => matchVariant(field, {
+      ident: ({ name }) => Expr.MethodCall(lhs, name, args),
+      // this will fail in the inferencer as integers are not valid method names
+      int: ({ value: n }) => Expr.MethodCall(lhs, `${n}`, args),
+    }),
+    None: () => matchVariant(field, {
+      ident: ({ name }) => Expr.FieldAccess(lhs, name),
+      int: ({ value: n }) => Expr.TupleIndexing(lhs, n),
+    }),
   })
 );
 

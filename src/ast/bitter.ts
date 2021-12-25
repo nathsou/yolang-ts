@@ -106,6 +106,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   Tuple: { elements: Expr[] },
   Match: { expr: Expr, cases: { pattern: Pattern, body: Expr }[] },
   NamedRecord: { name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[] },
+  TupleIndexing: { lhs: Expr, index: number },
 }>>;
 
 const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet: SweetExpr } => ({
@@ -131,6 +132,7 @@ export const Expr = {
   Tuple: (elements: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Tuple', elements }, sweet),
   Match: (expr: Expr, cases: { pattern: Pattern, body: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Match', expr, cases }, sweet),
   NamedRecord: (name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'NamedRecord', name, typeParams, fields }, sweet),
+  TupleIndexing: (lhs: Expr, index: number, sweet: SweetExpr): Expr => typed({ variant: 'TupleIndexing', lhs, index }, sweet),
   fromSweet: (sweet: SweetExpr, nameEnv: NameEnv, errors: BitterConversionError[]): Expr => {
     const go = (expr: SweetExpr, env = nameEnv) => Expr.fromSweet(expr, env, errors);
 
@@ -186,6 +188,7 @@ export const Expr = {
       Match: ({ expr, cases }) => Expr.Match(go(expr), cases.map(c => ({ pattern: Pattern.fromSweet(c.pattern, nameEnv), body: go(c.body) })), sweet),
       Parenthesized: ({ expr }) => go(expr),
       NamedRecord: ({ name, typeParams, fields }) => Expr.NamedRecord(name, typeParams, fields.map(f => ({ name: f.name, value: go(f.value) })), sweet),
+      TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index, sweet),
     });
   },
   showSweet: (expr: Expr): string => SweetExpr.show(expr.sweet),
