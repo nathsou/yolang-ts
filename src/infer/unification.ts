@@ -4,7 +4,8 @@ import { panic } from "../utils/misc";
 import { Result } from "../utils/result";
 import { RowMono } from "./records";
 import { Subst } from "./subst";
-import { MonoTy, TyVar } from "./types";
+import { TypeContext } from "./typeContext";
+import { MonoTy, ParameterizedTy, TyVar } from "./types";
 
 export type UnificationError = string;
 
@@ -23,7 +24,11 @@ const linkTo = (v: VariantOf<MonoTy, 'Var'>, to: MonoTy, subst?: Subst) => {
 };
 
 // if subst is present, the unification does not mutate type variables
-const unifyMany = (eqs: [MonoTy, MonoTy][], subst?: Subst): UnificationError[] => {
+const unifyMany = (
+  eqs: [MonoTy, MonoTy][],
+  ctx: TypeContext,
+  subst?: Subst
+): UnificationError[] => {
   const errors: UnificationError[] = [];
   const pushEqs = (...newEqs: [MonoTy, MonoTy][]): void => {
     eqs.push(...newEqs.map(([s, t]) => [MonoTy.deref(s), MonoTy.deref(t)] as [MonoTy, MonoTy]));
@@ -82,7 +87,7 @@ const unifyMany = (eqs: [MonoTy, MonoTy][], subst?: Subst): UnificationError[] =
         { variant: 'Record', row: { type: 'extend' } }
       ], ([s, t]) => {
         const isTailUnboundVar = s.row.tail.variant === 'Var' && s.row.tail.value.kind === 'Unbound';
-        const row2Tail = rewriteRow(t, s.row.field, s.row.ty, subst, errors);
+        const row2Tail = rewriteRow(t, s.row.field, s.row.ty, ctx, subst, errors);
         if (isTailUnboundVar && s.row.tail.variant === 'Var' && s.row.tail.value.kind === 'Link') {
           errors.push('recursive row type');
           // prevent infinite loop
@@ -90,6 +95,24 @@ const unifyMany = (eqs: [MonoTy, MonoTy][], subst?: Subst): UnificationError[] =
         }
 
         pushEqs([s.row.tail, row2Tail]);
+      })
+      .with([{ variant: 'Const' }, __], ([s, t]) => {
+        if (s.name in ctx.typeAliases) {
+          const genericTy = ctx.typeAliases[s.name].ty;
+          const monoTy = ParameterizedTy.instantiate(genericTy, ctx);
+          pushEqs([monoTy, t]);
+        } else {
+          errors.push(`No type alias named '${s.name}' found`);
+        }
+      })
+      .with([__, { variant: 'Const' }], ([s, t]) => {
+        if (t.name in ctx.typeAliases) {
+          const genericTy = ctx.typeAliases[t.name].ty;
+          const monoTy = ParameterizedTy.instantiate(genericTy, ctx);
+          pushEqs([s, monoTy]);
+        } else {
+          errors.push(`No type alias named '${t.name}' found`);
+        }
       })
       .otherwise(([s, t]) => {
         errors.push(`cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`);
@@ -104,6 +127,7 @@ const rewriteRow = (
   row2: MonoTy,
   field1: string,
   fieldTy1: MonoTy,
+  ctx: TypeContext,
   subst: Subst | undefined,
   errors: string[],
 ): MonoTy => {
@@ -115,14 +139,14 @@ const rewriteRow = (
       },
       extend: ({ field: field2, ty: fieldTy2, tail: row2Tail }) => {
         if (field1 === field2) {
-          errors.push(...unifyMut(fieldTy1, fieldTy2));
+          errors.push(...unifyMut(fieldTy1, fieldTy2, ctx));
           return row2Tail;
         }
 
         return MonoTy.Record(RowMono.extend(
           field2,
           fieldTy2,
-          rewriteRow(row2Tail, field1, fieldTy1, subst, errors)
+          rewriteRow(row2Tail, field1, fieldTy1, ctx, subst, errors)
         ));
       },
     }, 'type'),
@@ -133,7 +157,7 @@ const rewriteRow = (
         linkTo(v, ty2, subst);
         return row2Tail;
       },
-      Link: ({ to }) => rewriteRow(to, field1, fieldTy1, subst, errors),
+      Link: ({ to }) => rewriteRow(to, field1, fieldTy1, ctx, subst, errors),
     }, 'kind'),
     _: () => {
       errors.push(`expected row type, got ${MonoTy.show(row2)}`);
@@ -142,12 +166,12 @@ const rewriteRow = (
   });
 };
 
-export const unifyMut = (s: MonoTy, t: MonoTy): UnificationError[] => {
-  return unifyMany([[MonoTy.deref(s), MonoTy.deref(t)]]);
+export const unifyMut = (s: MonoTy, t: MonoTy, ctx: TypeContext): UnificationError[] => {
+  return unifyMany([[MonoTy.deref(s), MonoTy.deref(t)]], ctx);
 };
 
-export const unifyPure = (s: MonoTy, t: MonoTy): Result<Subst, UnificationError[]> => {
+export const unifyPure = (s: MonoTy, t: MonoTy, ctx: TypeContext): Result<Subst, UnificationError[]> => {
   const subst = Subst.make();
-  const errors = unifyMany([[s, t]], subst);
+  const errors = unifyMany([[s, t]], ctx, subst);
   return Result.wrap([subst, errors]);
 };

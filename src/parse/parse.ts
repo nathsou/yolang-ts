@@ -78,7 +78,7 @@ const constTy = alt(unitTy, boolTy, u32Ty);
 const namedTy = withContext(ctx => map(
   seq(
     upperIdent,
-    optionalOrDefault(angleBrackets(many(parameterizedTy)), []),
+    optionalOrDefault(angleBrackets(optionalOrDefault(commas(parameterizedTy), [])), []),
   ),
   ([name, args]) => {
     if (args.length === 0) {
@@ -302,6 +302,25 @@ export const tuple = alt(
   app
 );
 
+const recordField = map(seq(
+  expectOrDefault(ident, `Expected field name`, '<?>'),
+  expectOrDefault(symbol(':'), `Expected ':' after field name`, Token.Symbol(':')),
+  expectOrDefault(expr, `Expected expression after ':'`, Expr.Error),
+),
+  ([name, _, value]) => ({ name, value })
+);
+
+const namedRecord = alt(
+  map(seq(
+    upperIdent,
+    optionalOrDefault(angleBrackets(optionalOrDefault(commas(parameterizedTy), [])), []),
+    expectOrDefault(curlyBrackets(optionalOrDefault(commas(recordField), [])), `Expected '{' in named record expression`, []),
+  ),
+    ([name, params, fields]) => Expr.NamedRecord(name, params, fields)
+  ),
+  tuple
+);
+
 // e.g Main.Yolo.yo
 const moduleAccess = alt(
   map(
@@ -329,7 +348,7 @@ const moduleAccess = alt(
       return Expr.ModuleAccess(modulePath, members[0]);
     }
   ),
-  tuple
+  namedRecord
 );
 
 // field access or method call
@@ -588,15 +607,7 @@ const moduleDecl = map(seq(
   ([_, name, decls]) => Decl.Module(name, decls)
 );
 
-const structField = map(seq(
-  expectOrDefault(ident, `Expected field name`, '<?>'),
-  expectOrDefault(symbol(':'), `Expected ':' after field name`, Token.Symbol(':')),
-  expectOrDefault(parameterizedTy, `Expected type after ':'`, ParameterizedTy.Const('()')),
-),
-  ([name, _, ty]) => ({ name, ty })
-);
-
-const typeDecl = withContext(ctx => {
+const typeAliasDecl = withContext(ctx => {
   return map(seq(
     keyword('type'),
     expectOrDefault(upperIdent, `Expected identifier after 'type' keyword`, '<?>'),
@@ -604,23 +615,16 @@ const typeDecl = withContext(ctx => {
       TypeParamsContext.declare(ctx, ...params);
     }),
     expectOrDefault(symbol('='), `Expected '=' after type name`, Token.Symbol('=')),
-    alt(
-      map(curlyBrackets(commas(structField)), fields => ({ type: 'struct' as const, fields }))
-    ),
+    parameterizedTy,
   ),
-    ([_t, name, params, _eq, rhs]) => {
-      switch (rhs.type) {
-        case 'struct':
-          return Decl.NamedRecord(name, params, rhs.fields);
-      }
-    }
+    ([_t, name, params, _eq, rhs]) => Decl.TypeAlias(name, params, rhs)
   );
 });
 
 initParser(decl, withContext(ctx =>
   ref(tokens => alt(
     funcDecl,
-    typeDecl,
+    typeAliasDecl,
     moduleDecl,
     inherentImplDecl,
   ).ref(tokens, TypeParamsContext.clone(ctx)))

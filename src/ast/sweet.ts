@@ -49,6 +49,7 @@ export type Expr = DataType<{
   Tuple: { elements: Expr[] },
   Match: { expr: Expr, cases: { pattern: Pattern, body: Expr }[] },
   Parenthesized: { expr: Expr },
+  NamedRecord: { name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[] },
 }>;
 
 export const Expr = {
@@ -69,6 +70,7 @@ export const Expr = {
   Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
   Match: (expr: Expr, cases: { pattern: Pattern, body: Expr }[]): Expr => ({ variant: 'Match', expr, cases }),
   Parenthesized: (expr: Expr): Expr => ({ variant: 'Parenthesized', expr }),
+  NamedRecord: (name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[]): Expr => ({ variant: 'NamedRecord', name, typeParams, fields }),
   show: (expr: Expr): string => matchVariant(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
@@ -87,6 +89,7 @@ export const Expr = {
     Tuple: ({ elements }) => `(${joinWith(elements, Expr.show, ', ')})`,
     Match: ({ expr, cases }) => `match ${Expr.show(expr)} {\n${joinWith(cases, ({ pattern, body }) => `  ${Pattern.show(pattern)} => ${Expr.show(body)}\n`, '\n')}\n}`,
     Parenthesized: ({ expr }) => `(${Expr.show(expr)})`,
+    NamedRecord: ({ name, typeParams, fields }) => `${name}<${joinWith(typeParams, ParameterizedTy.show, ', ')}> {\n${joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, ', ')}\n}`,
   }),
 };
 
@@ -147,7 +150,7 @@ type Field = { name: string, ty: ParameterizedTy };
 export type Decl = DataType<{
   Function: { name: string, args: Argument[], body: Expr },
   Module: { name: string, decls: Decl[] },
-  NamedRecord: { name: string, typeParams: TypeParams, fields: Field[] },
+  TypeAlias: { name: string, typeParams: TypeParams, alias: ParameterizedTy },
   Impl: { ty: ParameterizedTy, typeParams: TypeParams, decls: Decl[] },
   Error: { message: string },
 }>;
@@ -155,13 +158,13 @@ export type Decl = DataType<{
 export const Decl = {
   Function: (name: string, args: Argument[], body: Expr): Decl => ({ variant: 'Function', name, args, body }),
   Module: (name: string, decls: Decl[]): Decl => ({ variant: 'Module', name, decls }),
-  NamedRecord: (name: string, typeParams: TypeParams, fields: Field[]): Decl => ({ variant: 'NamedRecord', name, typeParams, fields }),
+  TypeAlias: (name: string, typeParams: TypeParams, alias: ParameterizedTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
   Impl: (ty: ParameterizedTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   show: (decl: Decl): string => matchVariant(decl, {
     Function: ({ name, args, body }) => `fn ${name}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
     Module: ({ name, decls }) => `module ${name} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
-    NamedRecord: ({ name, typeParams, fields }) => `type ${name}${TypeParams.show(typeParams)} = {\n${joinWith(fields, ({ name, ty }) => `  ${name}: ${ParameterizedTy.show(ty)}`, `,\n`)} \n} `,
+    TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${ParameterizedTy.show(alias)}`,
     Impl: ({ ty, typeParams, decls }) => `impl${TypeParams.show(typeParams)} ${ParameterizedTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     Error: ({ message }) => `<Error: ${message}> `,
   }),

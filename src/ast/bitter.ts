@@ -105,6 +105,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
   Match: { expr: Expr, cases: { pattern: Pattern, body: Expr }[] },
+  NamedRecord: { name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[] },
 }>>;
 
 const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet: SweetExpr } => ({
@@ -129,6 +130,7 @@ export const Expr = {
   FieldAccess: (lhs: Expr, field: string, sweet: SweetExpr): Expr => typed({ variant: 'FieldAccess', lhs, field }, sweet),
   Tuple: (elements: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Tuple', elements }, sweet),
   Match: (expr: Expr, cases: { pattern: Pattern, body: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Match', expr, cases }, sweet),
+  NamedRecord: (name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'NamedRecord', name, typeParams, fields }, sweet),
   fromSweet: (sweet: SweetExpr, nameEnv: NameEnv, errors: BitterConversionError[]): Expr => {
     const go = (expr: SweetExpr, env = nameEnv) => Expr.fromSweet(expr, env, errors);
 
@@ -183,6 +185,7 @@ export const Expr = {
       Tuple: ({ elements }) => Expr.Tuple(elements.map(e => go(e)), sweet),
       Match: ({ expr, cases }) => Expr.Match(go(expr), cases.map(c => ({ pattern: Pattern.fromSweet(c.pattern, nameEnv), body: go(c.body) })), sweet),
       Parenthesized: ({ expr }) => go(expr),
+      NamedRecord: ({ name, typeParams, fields }) => Expr.NamedRecord(name, typeParams, fields.map(f => ({ name: f.name, value: go(f.value) })), sweet),
     });
   },
   showSweet: (expr: Expr): string => SweetExpr.show(expr.sweet),
@@ -226,10 +229,10 @@ export type Decl = DataType<{
     decls: Decl[],
     members: Record<string, Decl>,
   },
-  NamedRecord: {
+  TypeAlias: {
     name: string,
     typeParams: TypeParams,
-    fields: Field[],
+    alias: ParameterizedTy,
   },
   Impl: {
     ty: ParameterizedTy,
@@ -257,8 +260,8 @@ export const Decl = {
         Module: subMod => {
           mod.members[subMod.name] = subMod;
         },
-        NamedRecord: rec => {
-          mod.members[rec.name] = rec;
+        TypeAlias: alias => {
+          mod.members[alias.name] = alias;
         },
         Impl: () => {
 
@@ -269,7 +272,7 @@ export const Decl = {
 
     return mod;
   },
-  NamedRecord: (name: string, typeParams: string[], fields: Field[]): Decl => ({ variant: 'NamedRecord', typeParams, name, fields }),
+  TypeAlias: (name: string, typeParams: TypeParams, alias: ParameterizedTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
   Impl: (ty: ParameterizedTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: BitterConversionError[]): Decl =>
@@ -297,7 +300,7 @@ export const Decl = {
           decls.map(decl => Decl.fromSweet(decl, modEnv, false, errors))
         );
       },
-      NamedRecord: ({ name, typeParams, fields }) => Decl.NamedRecord(name, typeParams, fields),
+      TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias(name, typeParams, alias),
       Impl: ({ ty, typeParams, decls }) => {
         const implEnv = NameEnv.clone(nameEnv);
 

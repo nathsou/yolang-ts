@@ -6,7 +6,7 @@ import { Env } from './env';
 import { RowMono } from './records';
 import { signatures } from './signatures';
 import { TypeContext } from './typeContext';
-import { MonoTy, PolyTy } from './types';
+import { MonoTy, ParameterizedTy, PolyTy } from './types';
 import { unifyMut } from './unification';
 
 export type TypingError = string;
@@ -17,7 +17,7 @@ export const inferExpr = (
   errors: TypingError[]
 ): TypingError[] => {
   const unify = (s: MonoTy, t: MonoTy): void => {
-    errors.push(...unifyMut(s, t).map(err => err + ' in ' + Expr.showSweet(expr)));
+    errors.push(...unifyMut(s, t, ctx).map(err => err + ' in ' + Expr.showSweet(expr)));
   };
 
   const { env } = ctx;
@@ -224,6 +224,21 @@ export const inferExpr = (
       inferExpr(lhs, ctx, errors);
       unify(partialRecordTy, lhs.ty);
     },
+    NamedRecord: ({ name, typeParams, fields }) => {
+      const tyParmsInst = typeParams.map(ty => ParameterizedTy.instantiate(ty, ctx));
+      const expectedTy = MonoTy.Const(name, ...tyParmsInst);
+
+      fields.forEach(({ value }) => {
+        inferExpr(value, ctx, errors);
+      });
+
+      const actualTy = MonoTy.Record(
+        RowMono.fromFields(fields.map(f => [f.name, f.value.ty]))
+      );
+
+      unify(expectedTy, actualTy);
+      unify(tau, expectedTy);
+    },
     Error: ({ message }) => {
       errors.push(message);
     },
@@ -234,7 +249,7 @@ export const inferExpr = (
 
 export const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors: TypingError[]): TypingError[] => {
   const unify = (s: MonoTy, t: MonoTy): void => {
-    errors.push(...unifyMut(s, t).map(err => err + ' in ' + Expr.showSweet(expr)));
+    errors.push(...unifyMut(s, t, ctx).map(err => err + ' in ' + Expr.showSweet(expr)));
   };
 
   const tau = expr.ty;
@@ -250,7 +265,7 @@ export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: TypingError[]): 
       inferExpr(expr, ctx, errors);
 
       annotation.do(ann => {
-        errors.push(...unifyMut(expr.ty, ann));
+        errors.push(...unifyMut(expr.ty, ann, ctx));
       });
 
       const genTy = MonoTy.generalize(ctx.env, expr.ty);
@@ -276,7 +291,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
       args.forEach(arg => {
         Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
         arg.annotation.do(ann => {
-          errors.push(...unifyMut(arg.name.ty, ann));
+          errors.push(...unifyMut(arg.name.ty, ann, ctx));
         });
       });
 
@@ -287,7 +302,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
         body.ty
       );
 
-      errors.push(...unifyMut(funTy, name.ty));
+      errors.push(...unifyMut(funTy, name.ty, ctx));
 
       const genFunTy = MonoTy.generalize(ctx.env, funTy);
       func.funTy = genFunTy;
@@ -304,13 +319,9 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
           Function: ({ name, funTy }) => {
             Env.addPoly(modCtx.env, name.original, funTy);
           },
-          Module: subMod => {
-            inferDecl(subMod, modCtx, declare, errors);
+          _: decl => {
+            inferDecl(decl, modCtx, true, errors);
           },
-          Impl: impl => {
-            inferDecl(impl, modCtx, declare, errors);
-          },
-          _: () => { },
         });
       }
 
@@ -318,9 +329,9 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
         inferDecl(decl, modCtx, false, errors);
       }
     },
-    NamedRecord: record => {
+    TypeAlias: ({ name, typeParams, alias }) => {
       if (declare) {
-        TypeContext.declareType(ctx, record);
+        TypeContext.declareTypeAlias(ctx, name, typeParams, alias);
       }
     },
     Impl: impl => {
@@ -328,6 +339,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
         TypeContext.declareImpl(ctx, impl);
 
         const implCtx = TypeContext.clone(ctx);
+        TypeContext.declareTypeParams(implCtx, ...impl.typeParams);
 
         for (const decl of impl.decls) {
           inferDecl(decl, implCtx, declare, errors);

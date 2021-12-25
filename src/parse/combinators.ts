@@ -27,7 +27,6 @@ export const initParser = <T>(l: Parser<T>, r: Parser<T>): void => {
 };
 
 export const formatError = (error: ParserError, tokens: TokenWithPos[]): string => {
-  console.log(error);
   const { pos } = tokens[error.pos];
   return `${error.message} at ${pos.line}:${pos.column}`;
 };

@@ -2,16 +2,23 @@ import { DataType, match as matchVariant } from "itsamatch";
 import { match } from "ts-pattern";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
-import { cond, matchString, panic, parenthesized } from "../utils/misc";
+import { cond, mapRecord, matchString, panic, parenthesized } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row, RowGeneric, RowMono } from "./records";
+import { TypeContext } from "./typeContext";
 
 export type TyVarId = number;
 export type TyVar = DataType<{
   Unbound: { id: TyVarId },
   Link: { to: MonoTy },
 }, 'kind'>;
+
+export const TyVar = {
+  Unbound: (id: TyVarId): TyVar => ({ kind: 'Unbound', id }),
+  Link: (to: MonoTy): TyVar => ({ kind: 'Link', to }),
+  fresh: (): TyVar => TyVar.Unbound(Context.freshTyVarIndex()),
+};
 
 // Monomorphic types
 export type MonoTy = DataType<{
@@ -23,7 +30,7 @@ export type MonoTy = DataType<{
 }>;
 
 export const showTyVarId = (n: TyVarId): string => {
-  const l = String.fromCharCode(65 + n % 26);
+  const l = String.fromCharCode(97 + n % 26);
   return n >= 26 ? `${l}${Math.floor(n / 26)}` : l;
 };
 
@@ -93,10 +100,7 @@ export const MonoTy = {
 
     return PolyTy.make(quantified, ty);
   },
-  fresh: () => {
-    const id = Context.freshTyVarIndex();
-    return MonoTy.Var({ kind: 'Unbound', id });
-  },
+  fresh: () => MonoTy.Var(TyVar.Unbound(Context.freshTyVarIndex())),
   occurs: (x: TyVarId, t: MonoTy): boolean => matchVariant(t, {
     Var: ({ value }) => {
       if (value.kind === 'Unbound') {
@@ -162,7 +166,7 @@ export const MonoTy = {
       then: () => name,
       else: () => matchString(name, {
         'tuple': () => `(${joinWith(args, MonoTy.show, ', ')})`,
-        _: () => `(${name} ${joinWith(args, MonoTy.show, ', ')})`,
+        _: () => `${name}<${joinWith(args, MonoTy.show, ', ')}>`,
       }),
     }),
     Fun: ({ args, ret }) => {
@@ -335,14 +339,15 @@ export const ParameterizedTy = {
 
     for (const t of params) {
       const v = Context.freshTyVarIndex();
-      subst.set(t, MonoTy.Var({ kind: 'Unbound', id: v }));
+      subst.set(t, MonoTy.Var(TyVar.Unbound(v)));
       tyVars.push(v);
     }
 
     return PolyTy.make(tyVars, ParameterizedTy.substituteTyParams(ty, subst));
   },
-  instantiate: (ty: ParameterizedTy, params: TypeParams): MonoTy => {
-    return PolyTy.instantiate(ParameterizedTy.toPoly(ty, params));
+  instantiate: (ty: ParameterizedTy, ctx: TypeContext): MonoTy => {
+    const subst = new Map<string, MonoTy>(Object.entries(mapRecord(ctx.typeParamsEnv, MonoTy.Var)));
+    return ParameterizedTy.substituteTyParams(ty, subst);
   },
   isUnparameterized: (ty: ParameterizedTy): boolean => matchVariant(ty, {
     Var: () => true,
@@ -356,9 +361,9 @@ export const ParameterizedTy = {
     Var: ({ id }) => showTyVarId(id),
     Const: ({ name, args }) => `${name}${TypeParams.show(args.map(ParameterizedTy.show))}`,
     Fun: ({ args, ret }) => `(${args.map(ParameterizedTy.show).join(', ')}) -> ${ParameterizedTy.show(ret)}`,
-    Record: ({ row }) => `{ ${RowGeneric.fields(row).map(([name, ty]) => `${name}: ${ParameterizedTy.show(ty)}`).join(', ')} }`,
+    Record: ({ row }) => `{ ${RowGeneric.sortedFields(row).map(([name, ty]) => `${name}: ${ParameterizedTy.show(ty)}`).join(', ')} }`,
   }),
   eq: (s: ParameterizedTy, t: ParameterizedTy): boolean => {
     return ParameterizedTy.show(s) === ParameterizedTy.show(t);
-  },
+  }
 };

@@ -4,7 +4,7 @@ import { Decl, Prog } from "./ast/bitter";
 import { Prog as SweetProg } from "./ast/sweet";
 import { Context } from './ast/context';
 import { infer } from "./infer/infer";
-import { ParameterizedTy, PolyTy } from "./infer/types";
+import { ParameterizedTy, PolyTy, TypeParams } from "./infer/types";
 import { formatError } from "./parse/combinators";
 import { lex } from "./parse/lex";
 import { parse } from "./parse/parse";
@@ -55,11 +55,8 @@ const showTypes = (decls: Decl[], path: string[]): string[] => {
       Module: mod => {
         types.push(...showTypes(mod.decls, [...path, mod.name]));
       },
-      NamedRecord: ({ name, fields, typeParams }) => {
-        types.push(
-          'type ' + pathName + name + '<' + typeParams.join(', ') + '>' +
-          ' = {\n' + fields.map(f => '  ' + f.name + ': ' + ParameterizedTy.show(f.ty)).join(',\n') + '\n}'
-        );
+      TypeAlias: ({ name, typeParams, alias }) => {
+        types.push(`type ${pathName}${name}${TypeParams.show(typeParams)} = ${ParameterizedTy.show(alias)}`);
       },
       _: () => { },
     });
