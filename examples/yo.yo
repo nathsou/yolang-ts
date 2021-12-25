@@ -30,16 +30,11 @@ impl Vec2 {
   } 
 }
 
-fn yo(p: Pair<u32, bool>) {
-  let u = Vec2 {
-    x: 3,
-    y: 4
-  }
+type Pair<A, B> = (A, B)
 
-  let v = Vec2 {
-    x: 7,
-    y: 11
-  }
+fn yo(p: Pair<u32, bool>) {
+  let u = Vec2 { x: 3, y: 4 }
+  let v = Vec2 { x: 7, y: 11 }
 
   (u.dot(v), p)
 }
