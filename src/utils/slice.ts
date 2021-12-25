@@ -33,4 +33,5 @@ export const Slice = {
       yield slice.elems[i];
     }
   },
+  toArray: <T>(slice: Slice<T>): T[] => slice.elems.slice(slice.start, slice.end),
 };

@@ -2,7 +2,7 @@ import { match as matchVariant, VariantOf } from "itsamatch";
 import { match, __ } from "ts-pattern";
 import { panic } from "../utils/misc";
 import { Result } from "../utils/result";
-import { Row } from "./records";
+import { RowMono } from "./records";
 import { Subst } from "./subst";
 import { MonoTy, TyVar } from "./types";
 
@@ -111,7 +111,7 @@ const rewriteRow = (
     Record: ({ row: row2 }) => matchVariant(row2, {
       empty: () => {
         errors.push(`row does not contain field ${field1}`);
-        return MonoTy.Record(Row.empty());
+        return MonoTy.Record(RowMono.empty());
       },
       extend: ({ field: field2, ty: fieldTy2, tail: row2Tail }) => {
         if (field1 === field2) {
@@ -119,7 +119,7 @@ const rewriteRow = (
           return row2Tail;
         }
 
-        return MonoTy.Record(Row.extend(
+        return MonoTy.Record(RowMono.extend(
           field2,
           fieldTy2,
           rewriteRow(row2Tail, field1, fieldTy1, subst, errors)
@@ -129,7 +129,7 @@ const rewriteRow = (
     Var: v => matchVariant(v.value, {
       Unbound: () => {
         const row2Tail = MonoTy.fresh();
-        const ty2 = MonoTy.Record(Row.extend(field1, fieldTy1, row2Tail));
+        const ty2 = MonoTy.Record(RowMono.extend(field1, fieldTy1, row2Tail));
         linkTo(v, ty2, subst);
         return row2Tail;
       },
@@ -137,7 +137,7 @@ const rewriteRow = (
     }, 'kind'),
     _: () => {
       errors.push(`expected row type, got ${MonoTy.show(row2)}`);
-      return MonoTy.Record(Row.empty());
+      return MonoTy.Record(RowMono.empty());
     },
   });
 };

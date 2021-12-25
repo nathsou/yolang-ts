@@ -3,7 +3,7 @@ import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
 import { some } from '../utils/maybe';
 import { proj } from '../utils/misc';
 import { Env } from './env';
-import { Row } from './records';
+import { RowMono } from './records';
 import { signatures } from './signatures';
 import { TypeContext } from './typeContext';
 import { MonoTy, PolyTy } from './types';
@@ -219,7 +219,7 @@ export const inferExpr = (
     },
     FieldAccess: ({ lhs, field }) => {
       const rowTail = MonoTy.fresh();
-      const partialRecordTy = MonoTy.Record(Row.extend(field, tau, rowTail));
+      const partialRecordTy = MonoTy.Record(RowMono.extend(field, tau, rowTail));
 
       inferExpr(lhs, ctx, errors);
       unify(partialRecordTy, lhs.ty);

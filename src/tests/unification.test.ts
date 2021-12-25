@@ -1,5 +1,5 @@
 import fc from "fast-check";
-import { Row } from "../infer/records";
+import { RowMono } from "../infer/records";
 import { Subst } from "../infer/subst";
 import { MonoTy } from "../infer/types";
 import { unifyMut, unifyPure } from "../infer/unification";
@@ -111,8 +111,8 @@ describe('unifyMut', () => {
   it('should unify record types correctly', () => {
     const tv1 = MonoTy.fresh();
     const tv2 = MonoTy.fresh();
-    const row1 = Row.extend('x', MonoTy.u32(), tv1);
-    const row2 = Row.extend('y', MonoTy.u32(), tv2);
+    const row1 = RowMono.extend('x', MonoTy.u32(), tv1);
+    const row2 = RowMono.extend('y', MonoTy.u32(), tv2);
     const rec1 = MonoTy.Record(row1);
     const rec2 = MonoTy.Record(row2);
 

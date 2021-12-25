@@ -5,7 +5,7 @@ import { gen, joinWith, zip } from "../utils/array";
 import { cond, matchString, panic, parenthesized } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
-import { Row } from "./records";
+import { Row, RowGeneric, RowMono } from "./records";
 
 export type TyVarId = number;
 export type TyVar = DataType<{
@@ -18,12 +18,12 @@ export type MonoTy = DataType<{
   Var: { value: TyVar },
   Const: { name: string, args: MonoTy[] },
   Fun: { args: MonoTy[], ret: MonoTy },
-  Record: { row: Row },
-  NamedRecord: { name: string, row: Row },
+  Record: { row: RowMono },
+  NamedRecord: { name: string, row: RowMono },
 }>;
 
 export const showTyVarId = (n: TyVarId): string => {
-  const l = String.fromCharCode(97 + n % 26);
+  const l = String.fromCharCode(65 + n % 26);
   return n >= 26 ? `${l}${Math.floor(n / 26)}` : l;
 };
 
@@ -34,8 +34,8 @@ export const MonoTy = {
   }, 'kind'),
   Const: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', name, args }),
   Fun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'Fun', args, ret }),
-  Record: (row: Row): MonoTy => ({ variant: 'Record', row }),
-  NamedRecord: (name: string, fields: Readonly<Row>): MonoTy => ({ variant: 'NamedRecord', name, row: fields }),
+  Record: (row: RowMono): MonoTy => ({ variant: 'Record', row }),
+  NamedRecord: (name: string, fields: Readonly<RowMono>): MonoTy => ({ variant: 'NamedRecord', name, row: fields }),
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
   u32: () => MonoTy.Const('u32'),
   bool: () => MonoTy.Const('bool'),
@@ -69,14 +69,14 @@ export const MonoTy = {
         return fvs;
       },
       Record: ({ row }) => {
-        Row.fields(row).forEach(([_, ty]) => {
+        RowMono.fields(row).forEach(([_, ty]) => {
           MonoTy.freeTypeVars(ty, fvs);
         });
 
         return fvs;
       },
       NamedRecord: ({ row: fields }) => {
-        Row.fields(fields).forEach(([_, ty]) => {
+        RowMono.fields(fields).forEach(([_, ty]) => {
           MonoTy.freeTypeVars(ty, fvs);
         });
 
@@ -107,8 +107,8 @@ export const MonoTy = {
     },
     Const: t => t.args.some(a => MonoTy.occurs(x, a)),
     Fun: t => t.args.some(a => MonoTy.occurs(x, a)) || MonoTy.occurs(x, t.ret),
-    Record: ({ row }) => Row.fields(row).some(([_, ty]) => MonoTy.occurs(x, ty)),
-    NamedRecord: ({ row: fields }) => Row.fields(fields).some(([_, ty]) => MonoTy.occurs(x, ty)),
+    Record: ({ row }) => RowMono.fields(row).some(([_, ty]) => MonoTy.occurs(x, ty)),
+    NamedRecord: ({ row: fields }) => RowMono.fields(fields).some(([_, ty]) => MonoTy.occurs(x, ty)),
   }),
   deref: (ty: MonoTy): MonoTy => {
     if (ty.variant === 'Var' && ty.value.kind === 'Link') {
@@ -120,12 +120,12 @@ export const MonoTy = {
     return ty;
   },
   substitute: (ty: MonoTy, subst: Map<TyVarId, MonoTy>): MonoTy => {
-    const substituteRow = (row: Row): Row => {
+    const substituteRow = (row: RowMono): RowMono => {
       if (row.type === 'empty') {
-        return Row.empty();
+        return RowMono.empty();
       }
 
-      return Row.extend(row.field,
+      return RowMono.extend(row.field,
         MonoTy.substitute(row.ty, subst),
         MonoTy.substitute(row.tail, subst)
       );
@@ -179,7 +179,7 @@ export const MonoTy = {
         return '{}';
       }
 
-      return `{ ${joinWith(Row.sortedFields(row), ([k, v]) => `${k}: ${MonoTy.show(v)}`, ', ')} }`;
+      return `{ ${joinWith(RowMono.sortedFields(row), ([k, v]) => `${k}: ${MonoTy.show(v)}`, ', ')} }`;
     },
     NamedRecord: ({ name }) => name,
   }),
@@ -217,7 +217,7 @@ export const MonoTy = {
         }
       )
       .with([{ variant: 'Record' }, { variant: 'Record' }], ([s, t]) =>
-        Row.strictEq(s.row, t.row))
+        RowMono.strictEq(s.row, t.row))
       .otherwise(() => false),
 };
 
@@ -259,6 +259,9 @@ export const PolyTy = {
 
     return [newVars, MonoTy.substitute(mono, subts)];
   },
+  eq: (s: PolyTy, t: PolyTy): boolean => {
+    return PolyTy.show(PolyTy.canonicalize(s)) === PolyTy.show(PolyTy.canonicalize(t));
+  },
 };
 
 export type TypeParams = string[];
@@ -287,6 +290,7 @@ export type ParameterizedTy = DataType<{
   Param: { name: string },
   Const: { name: string, args: ParameterizedTy[] },
   Fun: { args: ParameterizedTy[], ret: ParameterizedTy },
+  Record: { row: Row<ParameterizedTy> },
 }>;
 
 export const ParameterizedTy = {
@@ -294,12 +298,15 @@ export const ParameterizedTy = {
   Param: (name: string): ParameterizedTy => ({ variant: 'Param', name }),
   Const: (name: string, ...args: ParameterizedTy[]): ParameterizedTy => ({ variant: 'Const', name, args }),
   Fun: (args: ParameterizedTy[], ret: ParameterizedTy): ParameterizedTy => ({ variant: 'Fun', args, ret }),
+  Record: (row: Row<ParameterizedTy>): ParameterizedTy => ({ variant: 'Record', row }),
+  fresh: () => ParameterizedTy.Var(Context.freshTyVarIndex()),
   freeTyParams: (ty: ParameterizedTy): string[] => {
     return matchVariant(ty, {
       Var: () => [],
       Param: ({ name }) => [name],
       Const: ({ args }) => args.flatMap(ParameterizedTy.freeTyParams),
       Fun: ({ args, ret }) => [...args.flatMap(ParameterizedTy.freeTyParams), ...ParameterizedTy.freeTyParams(ret)],
+      Record: ({ row }) => RowGeneric.fields(row).flatMap(([_, ty]) => ParameterizedTy.freeTyParams(ty)),
     });
   },
   substituteTyParams: (ty: ParameterizedTy, subst: Map<string, MonoTy>): MonoTy => {
@@ -316,6 +323,9 @@ export const ParameterizedTy = {
       Fun: ({ args, ret }) => MonoTy.Fun(
         args.map(a => ParameterizedTy.substituteTyParams(a, subst)),
         ParameterizedTy.substituteTyParams(ret, subst)
+      ),
+      Record: ({ row }) => MonoTy.Record(
+        RowMono.fromFields(RowGeneric.fields(row).map(([name, ty]) => [name, ParameterizedTy.substituteTyParams(ty, subst)]))
       ),
     });
   },
@@ -339,11 +349,16 @@ export const ParameterizedTy = {
     Param: () => false,
     Const: ({ args }) => args.every(ParameterizedTy.isUnparameterized),
     Fun: ({ args, ret }) => args.every(ParameterizedTy.isUnparameterized) && ParameterizedTy.isUnparameterized(ret),
+    Record: ({ row }) => RowGeneric.fields(row).every(([_, ty]) => ParameterizedTy.isUnparameterized(ty)),
   }),
   show: (ty: ParameterizedTy): string => matchVariant(ty, {
     Param: ({ name }) => `'${name}`,
     Var: ({ id }) => showTyVarId(id),
     Const: ({ name, args }) => `${name}${TypeParams.show(args.map(ParameterizedTy.show))}`,
-    Fun: ({ args, ret }) => `(${args.map(ParameterizedTy.show).join(' -> ')}) -> ${ParameterizedTy.show(ret)}`,
+    Fun: ({ args, ret }) => `(${args.map(ParameterizedTy.show).join(', ')}) -> ${ParameterizedTy.show(ret)}`,
+    Record: ({ row }) => `{ ${RowGeneric.fields(row).map(([name, ty]) => `${name}: ${ParameterizedTy.show(ty)}`).join(', ')} }`,
   }),
+  eq: (s: ParameterizedTy, t: ParameterizedTy): boolean => {
+    return ParameterizedTy.show(s) === ParameterizedTy.show(t);
+  },
 };

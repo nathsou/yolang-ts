@@ -1,9 +1,11 @@
 import fc from 'fast-check';
+import { Context } from '../ast/context';
 import { Expr, Pattern } from '../ast/sweet';
-import { TypeParamsContext } from '../infer/types';
+import { RowGeneric } from '../infer/records';
+import { MonoTy, ParameterizedTy, TypeParamsContext } from '../infer/types';
 import { Parser } from '../parse/combinators';
 import { lex } from '../parse/lex';
-import { binary, expr, tuple, unary } from '../parse/parse';
+import { binary, expr, parameterizedTy, recordTy, tuple, unary } from '../parse/parse';
 import { Const, Token } from '../parse/token';
 import { none } from '../utils/maybe';
 import { Slice } from '../utils/slice';
@@ -16,6 +18,13 @@ const expectExpr = (parser: Parser<Expr>, input: string, expected: Expr): void =
   expect(res.isOk()).toBe(true);
   expect(errs).toHaveLength(0);
   expect(res.unwrap()).toEqual(expected);
+};
+
+const expectType = (parser: Parser<ParameterizedTy>, input: string, expected: ParameterizedTy): void => {
+  const [res, _, errs] = parser.ref(tokens(input), TypeParamsContext.make());
+  expect(res.isOk()).toBe(true);
+  expect(errs).toHaveLength(0);
+  expect(ParameterizedTy.show(res.unwrap())).toEqual(ParameterizedTy.show(expected));
 };
 
 describe('Parser', () => {
@@ -187,8 +196,35 @@ describe('Parser', () => {
     });
   });
 
+  describe('record types', () => {
+    it('should parse the empty record type', () => {
+      expectType(recordTy, '{}', ParameterizedTy.Record(RowGeneric.fromFields([])));
+    });
+
+    it('should parse record types with a single field', () => {
+      expectType(
+        recordTy,
+        '{ yo: u32, }',
+        ParameterizedTy.Record(RowGeneric.fromFields([
+          ['yo', ParameterizedTy.Const('u32')],
+        ]))
+      );
+    });
+
+    it('should parse record types without trailing commas', () => {
+      expectType(
+        recordTy,
+        '{ yo: u32 }',
+        ParameterizedTy.Record(RowGeneric.fromFields([
+          ['yo', ParameterizedTy.Const('u32')],
+        ]))
+      );
+    });
+  });
+
   it('should parse randomly generated expressions', () => {
     fc.assert(fc.property(Arb.expr(3), e => {
+      Context.clear();
       expectExpr(expr, Expr.show(e), e);
     }));
   });

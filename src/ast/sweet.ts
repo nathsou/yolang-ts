@@ -22,7 +22,7 @@ export const Argument = {
 
 export const ArgumentList = {
   show: (args: Argument[]) => parenthesized(
-    joinWith(args, Argument.show, ','),
+    joinWith(args, Argument.show, ', '),
     args.length !== 1 || true || (
       args[0].mutable ||
       args[0].annotation.isSome() ||

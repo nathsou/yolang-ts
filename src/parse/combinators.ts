@@ -27,6 +27,7 @@ export const initParser = <T>(l: Parser<T>, r: Parser<T>): void => {
 };
 
 export const formatError = (error: ParserError, tokens: TokenWithPos[]): string => {
+  console.log(error);
   const { pos } = tokens[error.pos];
   return `${error.message} at ${pos.line}:${pos.column}`;
 };
@@ -51,11 +52,14 @@ export const satisfy = (pred: (t: Token) => boolean): Parser<Token> => {
 
 export const satisfyBy = <T>(f: (t: Token) => Maybe<T>): Parser<T> => {
   return ref(tokens => Slice.head(tokens).match({
-    Some: h => [
-      f(h).match({ Some: x => ok(x), None: () => error({ message: fail, pos: tokens.start }) }),
-      Slice.tail(tokens),
-      []
-    ],
+    Some: h => {
+      const res = f(h);
+      return [
+        res.match({ Some: x => ok(x), None: () => error({ message: fail, pos: tokens.start }) }),
+        res.isSome() ? Slice.tail(tokens) : tokens,
+        []
+      ];
+    },
     None: () => [error({ message: fail, pos: tokens.start }), tokens, []],
   }));
 };
@@ -326,7 +330,7 @@ export const withContext = <T>(f: (ctx: TypeParamsContext) => Parser<T>): Parser
   });
 };
 
-export const nestedBy = (left: Symbol, right: Symbol, msg = '') => <T>(p: Parser<T>): Parser<T> => {
+export const nestedBy = (left: Symbol, right: Symbol) => <T>(p: Parser<T>): Parser<T> => {
   return map(
     seq(
       symbol(left),
@@ -344,6 +348,13 @@ export const ignoreErrorsOnFail = <T>(p: Parser<T>): Parser<T> => {
       Ok: t => [ok(t), rem, errs],
       Error: e => e.message === fail ? [error(e), rem, []] : [error(e), rem, errs],
     });
+  });
+};
+
+export const effect = <T>(p: Parser<T>, action: (data: T, tokens: Slice<Token>) => void): Parser<T> => {
+  return map(p, (data, tokens) => {
+    action(data, tokens);
+    return data;
   });
 };
 

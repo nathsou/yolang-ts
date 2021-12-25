@@ -1,7 +1,7 @@
 import { match as matchVariant } from 'itsamatch';
 import { match, select } from 'ts-pattern';
 import { Argument, Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
-import { Row } from '../infer/records';
+import { RowGeneric } from '../infer/records';
 import { MonoTy, ParameterizedTy, TypeParamsContext } from '../infer/types';
 import { takeWhile } from '../utils/array';
 import { none, some } from '../utils/maybe';
@@ -9,7 +9,7 @@ import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, angleBrackets, chainLeft, commas, conditionalError, consumeAll, curlyBrackets, expect, expectOrDefault, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized, withContext } from './combinators';
+import { alt, angleBrackets, chainLeft, commas, conditionalError, consumeAll, curlyBrackets, effect, expect, expectOrDefault, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized, withContext } from './combinators';
 import { Const, Token } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -69,7 +69,7 @@ const unexpected = mapParserResult(
 // TYPES
 const monoTy = uninitialized<MonoTy>();
 
-const parameterizedTy = uninitialized<ParameterizedTy>();
+export const parameterizedTy = uninitialized<ParameterizedTy>();
 const parenthesizedTy = map(parens(parameterizedTy), ty => ty);
 const unitTy = map(seq(symbol('('), symbol(')')), () => ParameterizedTy.Const('()'));
 const boolTy = map(ident2('bool'), () => ParameterizedTy.Const('bool'));
@@ -102,19 +102,19 @@ const tupleTy = map(
   ([h, _, tl]) => ParameterizedTy.Const('tuple', h, ...tl)
 );
 
-// TODO: support type parameters
-const recordTy = map(
-  curlyBrackets(many(seq(
+export const recordTy = map(
+  curlyBrackets(optionalOrDefault(commas(seq(
     ident,
     symbol(':'),
-    monoTy,
-  ))),
-  fields => MonoTy.Record(Row.fromFields(fields.map(([name, _, ty]) => [name, ty])))
+    expectOrDefault(parameterizedTy, `Expected type in record type after ':'`, ParameterizedTy.Const('()')),
+  )), [])),
+  fields => ParameterizedTy.Record(RowGeneric.fromFields(fields.map(([name, _, ty]) => [name, ty])))
 );
 
 const allExceptFunTy = alt(
   constTy,
   tupleTy,
+  recordTy,
   namedTy,
   parenthesizedTy,
 );
@@ -571,12 +571,11 @@ const funcDecl = map(seq(
 
 const inherentImplDecl = withContext(ctx => map(seq(
   keyword('impl'),
-  map(optionalOrDefault(typeParams, []), params => {
+  effect(optionalOrDefault(typeParams, []), params => {
     TypeParamsContext.declare(ctx, ...params);
-    return params;
   }),
-  parameterizedTy,
-  curlyBrackets(many(decl))
+  expectOrDefault(parameterizedTy, `Expected type after 'impl' keyword`, ParameterizedTy.Const('()')),
+  expectOrDefault(curlyBrackets(many(decl)), `Expected declarations`, []),
 ),
   ([_, tyParams, ty, decls]) => Decl.Impl(ty, tyParams, decls)
 ));
@@ -601,9 +600,8 @@ const typeDecl = withContext(ctx => {
   return map(seq(
     keyword('type'),
     expectOrDefault(upperIdent, `Expected identifier after 'type' keyword`, '<?>'),
-    map(optionalOrDefault(typeParams, []), params => {
+    effect(optionalOrDefault(typeParams, []), params => {
       TypeParamsContext.declare(ctx, ...params);
-      return params;
     }),
     expectOrDefault(symbol('='), `Expected '=' after type name`, Token.Symbol('=')),
     alt(

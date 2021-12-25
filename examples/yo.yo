@@ -1,10 +1,10 @@
 
-impl u32 {
-  fn squared(self) {
-    self * self
-  }
+impl { yo: u32 } {
+  fn yo(self) {
+    self.yo
+  } 
 }
 
-fn yo(a) {
-  a.squared()
+fn yo(r) {
+  r.yo()
 }
