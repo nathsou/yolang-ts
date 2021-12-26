@@ -233,8 +233,12 @@ export const MonoTy = {
           return false;
         }
       )
-      .with([{ variant: 'Record' }, { variant: 'Record' }], ([s, t]) =>
-        RowMono.strictEq(s.row, t.row))
+      .with([{ variant: 'Record' }, { variant: 'Record' }], ([s, t]) => {
+        return RowMono.strictEq(s.row, t.row);
+      })
+      .with([{ variant: 'Tuple' }, { variant: 'Tuple' }], ([s, t]) => {
+        return TupleMono.eq(s.tuple, t.tuple);
+      })
       .otherwise(() => false),
 };
 

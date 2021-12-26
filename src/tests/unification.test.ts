@@ -1,6 +1,7 @@
 import fc from "fast-check";
 import { RowMono } from "../infer/records";
 import { Subst } from "../infer/subst";
+import { TupleMono } from "../infer/tuples";
 import { TypeContext } from "../infer/typeContext";
 import { MonoTy } from "../infer/types";
 import { unifyMut, unifyPure } from "../infer/unification";
@@ -169,8 +170,8 @@ describe('unifyPure', () => {
     const tv1 = MonoTy.Var({ kind: 'Unbound', id: 0 });
     const tv2 = MonoTy.Var({ kind: 'Unbound', id: 1 });
 
-    const ty1 = MonoTy.tuple([tv1, tv2]);
-    const ty2 = MonoTy.tuple([MonoTy.bool(), MonoTy.u32()]);
+    const ty1 = MonoTy.Tuple(TupleMono.fromArray([tv1, tv2]));
+    const ty2 = MonoTy.Tuple(TupleMono.fromArray([MonoTy.bool(), MonoTy.u32()]));
 
     const res = unifyPure(ty1, ty2, TypeContext.make());
 

@@ -1,5 +1,5 @@
 import { DataType, match as matchVariant } from "itsamatch";
-import { joinWith } from "../utils/array";
+import { joinWith, zip } from "../utils/array";
 import { Maybe, none, some } from "../utils/maybe";
 import { MonoTy, ParameterizedTy, TyVar } from "./types";
 
@@ -11,7 +11,12 @@ export type Tuple<T> = DataType<{
 export type TupleMono = Tuple<MonoTy>;
 export type TupleGeneric = Tuple<ParameterizedTy>;
 
-const createTuple = <T>(from: (data: T) => Maybe<Tuple<T>>) => {
+type Ty<T> = {
+  from: (data: T) => Maybe<Tuple<T>>,
+  eq: (a: T, b: T) => boolean,
+};
+
+const createTuple = <T>({ from, eq }: Ty<T>) => {
   const Tuple = {
     Empty: <U>(extension: Maybe<U> = none): Tuple<U> => ({ kind: 'EmptyTuple', extension }),
     Extend: <U>(head: U, tail: Tuple<U>): Tuple<U> => ({ kind: 'ExtendTuple', head, tail }),
@@ -49,6 +54,16 @@ const createTuple = <T>(from: (data: T) => Maybe<Tuple<T>>) => {
 
       return Tuple.Extend(f(tuple.head), Tuple.map(tuple.tail, f));
     },
+    eq: (a: Tuple<T>, b: Tuple<T>): boolean => {
+      const as = Tuple.toArray(a);
+      const bs = Tuple.toArray(b);
+
+      if (as.length !== bs.length) {
+        return false;
+      }
+
+      return zip(as, bs).every(([a, b]) => eq(a, b));
+    },
     show: (tuple: Tuple<T>, showData: (data: T) => string) => `(${joinWith(Tuple.toArray(tuple), showData, ', ')})`,
     from,
   };
@@ -56,20 +71,26 @@ const createTuple = <T>(from: (data: T) => Maybe<Tuple<T>>) => {
   return Tuple;
 };
 
-export const TupleMono = createTuple<MonoTy>((ty: MonoTy): Maybe<Tuple<MonoTy>> => {
-  return matchVariant(ty, {
-    Tuple: ({ tuple }) => some(tuple),
-    Var: v => matchVariant(v.value, {
-      Link: link => TupleMono.from(link.to),
-      Unbound: () => none,
-    }, 'kind'),
-    _: () => none,
-  });
+export const TupleMono = createTuple<MonoTy>({
+  from: (ty: MonoTy): Maybe<Tuple<MonoTy>> => {
+    return matchVariant(ty, {
+      Tuple: ({ tuple }) => some(tuple),
+      Var: v => matchVariant(v.value, {
+        Link: link => TupleMono.from(link.to),
+        Unbound: () => none,
+      }, 'kind'),
+      _: () => none,
+    });
+  },
+  eq: (a, b) => MonoTy.eq(a, b),
 });
 
-export const TupleGeneric = createTuple<ParameterizedTy>((ty: ParameterizedTy): Maybe<Tuple<ParameterizedTy>> => {
-  return matchVariant(ty, {
-    Tuple: ({ tuple }) => some(tuple),
-    _: () => none,
-  });
+export const TupleGeneric = createTuple<ParameterizedTy>({
+  from: (ty: ParameterizedTy): Maybe<Tuple<ParameterizedTy>> => {
+    return matchVariant(ty, {
+      Tuple: ({ tuple }) => some(tuple),
+      _: () => none,
+    });
+  },
+  eq: (a, b) => ParameterizedTy.eq(a, b),
 });
