@@ -1,0 +1,6 @@
+
+type Ref<T> = { a: T }
+
+fn yo(c: Ref<u32>) {
+  c.a
+}

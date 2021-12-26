@@ -1,5 +1,6 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { Impl } from "../infer/impls";
+import { TupleMono } from "../infer/tuples";
 import { MonoTy, ParameterizedTy, PolyTy, TypeParams } from "../infer/types";
 import { Const } from "../parse/token";
 import { Maybe, none } from "../utils/maybe";
@@ -74,7 +75,7 @@ export const Pattern = {
   type: (pattern: Pattern): MonoTy => matchVariant(pattern, {
     Const: ({ value }) => Const.type(value),
     Variable: ({ name }) => name.ty,
-    Tuple: ({ elements }) => MonoTy.tuple(elements.map(Pattern.type)),
+    Tuple: ({ elements }) => MonoTy.Tuple(TupleMono.fromArray(elements.map(Pattern.type))),
     Any: (): MonoTy => MonoTy.fresh(),
     Error: (): MonoTy => MonoTy.fresh(),
   }),
@@ -87,7 +88,7 @@ export const Pattern = {
   }),
 };
 
-type Argument = { name: Name, mutable: boolean, annotation: Maybe<MonoTy> };
+type Argument = { name: Name, mutable: boolean, annotation: Maybe<ParameterizedTy> };
 
 export type Expr = DataType<WithSweetRefAndType<{
   Const: { value: Const },
@@ -195,13 +196,13 @@ export const Expr = {
 };
 
 export type Stmt = DataType<{
-  Let: { name: Name, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy> },
+  Let: { name: Name, expr: Expr, mutable: boolean, annotation: Maybe<ParameterizedTy> },
   Expr: { expr: Expr },
   Error: { message: string },
 }>;
 
 export const Stmt = {
-  Let: (name: Name, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
+  Let: (name: Name, expr: Expr, mutable: boolean, annotation: Maybe<ParameterizedTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetStmt, nameEnv: NameEnv, errors: BitterConversionError[]): Stmt => {
@@ -223,7 +224,8 @@ type Field = { name: string, ty: ParameterizedTy };
 export type Decl = DataType<{
   Function: {
     name: Name,
-    args: { name: Name, mutable: boolean, annotation: Maybe<MonoTy> }[],
+    typeParams: TypeParams,
+    args: { name: Name, mutable: boolean, annotation: Maybe<ParameterizedTy> }[],
     body: Expr,
     funTy: PolyTy,
   },
@@ -246,7 +248,7 @@ export type Decl = DataType<{
 }>;
 
 export const Decl = {
-  Function: (name: Name, args: { name: Name, mutable: boolean, annotation: Maybe<MonoTy> }[], body: Expr): Decl => ({ variant: 'Function', name, args, body, funTy: PolyTy.fresh() }),
+  Function: (name: Name, typeParams: TypeParams, args: { name: Name, mutable: boolean, annotation: Maybe<ParameterizedTy> }[], body: Expr): Decl => ({ variant: 'Function', name, typeParams, args, body, funTy: PolyTy.fresh() }),
   Module: (name: string, decls: Decl[]): Decl => {
     const mod: VariantOf<Decl, 'Module'> = {
       variant: 'Module',
@@ -280,11 +282,12 @@ export const Decl = {
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: BitterConversionError[]): Decl =>
     matchVariant(sweet, {
-      Function: ({ name, args, body }) => {
+      Function: ({ name, typeParams, args, body }) => {
         const withoutPatterns = removeFuncArgsPatternMatching(args, body, nameEnv, errors);
 
         return Decl.Function(
           declareFuncNames ? NameEnv.declare(nameEnv, name, false) : NameEnv.resolve(nameEnv, name),
+          typeParams,
           withoutPatterns.args,
           withoutPatterns.body
         );

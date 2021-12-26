@@ -1,10 +1,9 @@
 
-impl (bool, bool) {
-  fn and(self) {
-    self.0 && self.1
-  }
+impl<A, B> (A, B) {
+  fn fst(self) { self.0 }
+  fn snd(self) { self.1 }
 }
 
 fn yo() {
-  (true, false).and()
+  ((1, true).snd(), ((), 7).fst())
 }

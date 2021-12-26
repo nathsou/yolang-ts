@@ -1,10 +1,12 @@
 import { match as matchVariant } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
+import { gen } from '../utils/array';
 import { some } from '../utils/maybe';
 import { proj } from '../utils/misc';
 import { Env } from './env';
 import { RowMono } from './records';
 import { signatures } from './signatures';
+import { TupleMono } from './tuples';
 import { TypeContext } from './typeContext';
 import { MonoTy, ParameterizedTy, PolyTy } from './types';
 import { unifyMut } from './unification';
@@ -110,7 +112,8 @@ export const inferExpr = (
       args.forEach(arg => {
         Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
         arg.annotation.do(ann => {
-          unify(arg.name.ty, ann);
+          const annInst = ParameterizedTy.instantiate(ann, bodyCtx);
+          unify(arg.name.ty, annInst);
         });
       });
 
@@ -188,7 +191,7 @@ export const inferExpr = (
       });
 
       const elemTys = elements.map(proj('ty'));
-      unify(tau, MonoTy.tuple(elemTys));
+      unify(tau, MonoTy.Tuple(TupleMono.fromArray(elemTys)));
     },
     Match: ({ expr, cases }) => {
       // match e { p1 => e1, p2 => e2, ... }
@@ -242,21 +245,12 @@ export const inferExpr = (
     TupleIndexing: ({ lhs, index }) => {
       inferExpr(lhs, ctx, errors);
 
-      const lhsTy = MonoTy.deref(lhs.ty);
+      const elemsTys = gen(index + 1, MonoTy.fresh);
+      const expectedLhsTy = MonoTy.Tuple(TupleMono.fromArray(elemsTys, true));
+      const actualLhsTy = MonoTy.deref(lhs.ty);
 
-      // type annotations may be necessary to ensure that lhs is a tuple
-      // as we cannot unify with a tuple of variable length
-      if (lhsTy.variant === 'Const' && lhsTy.name === 'tuple') {
-        const size = lhsTy.args.length;
-
-        if (index >= size) {
-          errors.push(`tuple index out of bounds in ${Expr.showSweet(expr)}`);
-        } else {
-          unify(tau, lhsTy.args[index]);
-        }
-      } else {
-        errors.push(`Expected tuple in tuple indexing expression, got: ${Expr.showSweet(lhs)}`);
-      }
+      unify(expectedLhsTy, actualLhsTy);
+      unify(tau, elemsTys[index]);
     },
     Error: ({ message }) => {
       errors.push(message);
@@ -284,7 +278,8 @@ export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: TypingError[]): 
       inferExpr(expr, ctx, errors);
 
       annotation.do(ann => {
-        errors.push(...unifyMut(expr.ty, ann, ctx));
+        const annInst = ParameterizedTy.instantiate(ann, ctx);
+        errors.push(...unifyMut(expr.ty, annInst, ctx));
       });
 
       const genTy = MonoTy.generalize(ctx.env, expr.ty);
@@ -304,13 +299,15 @@ export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: TypingError[]): 
 export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors: TypingError[]): TypingError[] => {
   matchVariant(decl, {
     Function: func => {
-      const { name, args, body } = func;
+      const { name, typeParams, args, body } = func;
       const bodyCtx = TypeContext.clone(ctx);
+      TypeContext.declareTypeParams(bodyCtx, ...typeParams);
 
       args.forEach(arg => {
         Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
         arg.annotation.do(ann => {
-          errors.push(...unifyMut(arg.name.ty, ann, ctx));
+          const annInst = ParameterizedTy.instantiate(ann, bodyCtx);
+          errors.push(...unifyMut(arg.name.ty, annInst, bodyCtx));
         });
       });
 

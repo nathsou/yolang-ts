@@ -42,6 +42,7 @@ export const TypeContext = {
     typeParams: TypeParams,
     alias: ParameterizedTy
   ): void => {
+    TypeContext.declareTypeParams(ctx, ...typeParams);
     ctx.typeAliases[name] = {
       ty: alias,
       params: typeParams,
@@ -53,11 +54,6 @@ export const TypeContext = {
     for (const decl of impl.decls) {
       if (decl.variant === 'Function') {
         pushRecord(ctx.impls, decl.name.original, imp);
-
-        if (decl.args.length > 0 && decl.args[0].name.original === 'self') {
-          const implTyInst = ParameterizedTy.instantiate(impl.ty, ctx);
-          decl.args[0].name.ty = implTyInst;
-        }
       }
     }
   },
@@ -83,13 +79,15 @@ export const TypeContext = {
 
     return mod ? some(mod) : none;
   },
-  findImplMethod: (ctx: TypeContext, funcName: string, ty: MonoTy): Maybe<[Impl, Subst, MonoTy]> => {
+  findImplMethod: (ctx: TypeContext, funcName: string, ty: MonoTy): Maybe<[Impl, Subst, MonoTy, TypeContext]> => {
     if (funcName in ctx.impls) {
       for (const impl of ctx.impls[funcName]) {
-        const implTyInst = ParameterizedTy.instantiate(impl.ty, ctx);
-        const res = unifyPure(ty, implTyInst, ctx);
+        const newCtx = TypeContext.clone(ctx);
+        TypeContext.declareTypeParams(newCtx, ...impl.typeParams);
+        const implTyInst = ParameterizedTy.instantiate(impl.ty, newCtx);
+        const res = unifyPure(ty, implTyInst, newCtx);
         if (res.isOk()) {
-          return some([impl, res.unwrap(), implTyInst]);
+          return some([impl, res.unwrap(), implTyInst, newCtx]);
         }
       }
     }

@@ -4,6 +4,7 @@ import { panic } from "../utils/misc";
 import { Result } from "../utils/result";
 import { RowMono } from "./records";
 import { Subst } from "./subst";
+import { TupleMono } from "./tuples";
 import { TypeContext } from "./typeContext";
 import { MonoTy, ParameterizedTy, TyVar } from "./types";
 
@@ -55,14 +56,39 @@ const unifyMany = (
       .with([__, { variant: 'Var' }], ([s, t]) => {
         pushEqs([t, s]);
       })
-      // Decompose
       .with([{ variant: 'Const' }, { variant: 'Const' }], ([s, t]) => {
+        if (s.name in ctx.typeAliases) {
+          const genericTy = ctx.typeAliases[s.name].ty;
+          const monoTy = ParameterizedTy.instantiate(genericTy, ctx);
+          pushEqs([monoTy, t]);
+        }
+
+        if (t.name in ctx.typeAliases) {
+          const genericTy = ctx.typeAliases[t.name].ty;
+          const monoTy = ParameterizedTy.instantiate(genericTy, ctx);
+          pushEqs([s, monoTy]);
+        }
+
         if (s.name === t.name && s.args.length === t.args.length) {
           for (let i = 0; i < s.args.length; i++) {
             pushEqs([s.args[i], t.args[i]]);
           }
         } else {
           errors.push(`cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`);
+        }
+      })
+      .with([{ variant: 'Const' }, __], ([s, t]) => {
+        if (s.name in ctx.typeAliases) {
+          const genericTy = ctx.typeAliases[s.name].ty;
+          const monoTy = ParameterizedTy.instantiate(genericTy, ctx);
+          pushEqs([monoTy, t]);
+        }
+      })
+      .with([__, { variant: 'Const' }], ([s, t]) => {
+        if (t.name in ctx.typeAliases) {
+          const genericTy = ctx.typeAliases[t.name].ty;
+          const monoTy = ParameterizedTy.instantiate(genericTy, ctx);
+          pushEqs([s, monoTy]);
         }
       })
       .with([{ variant: 'Fun' }, { variant: 'Fun' }], ([s, t]) => {
@@ -96,23 +122,8 @@ const unifyMany = (
 
         pushEqs([s.row.tail, row2Tail]);
       })
-      .with([{ variant: 'Const' }, __], ([s, t]) => {
-        if (s.name in ctx.typeAliases) {
-          const genericTy = ctx.typeAliases[s.name].ty;
-          const monoTy = ParameterizedTy.instantiate(genericTy, ctx);
-          pushEqs([monoTy, t]);
-        } else {
-          errors.push(`No type alias named '${s.name}' found`);
-        }
-      })
-      .with([__, { variant: 'Const' }], ([s, t]) => {
-        if (t.name in ctx.typeAliases) {
-          const genericTy = ctx.typeAliases[t.name].ty;
-          const monoTy = ParameterizedTy.instantiate(genericTy, ctx);
-          pushEqs([s, monoTy]);
-        } else {
-          errors.push(`No type alias named '${t.name}' found`);
-        }
+      .with([{ variant: 'Tuple' }, { variant: 'Tuple' }], ([s, t]) => {
+        unifyTuples(s.tuple, t.tuple, ctx, subst, errors);
       })
       .otherwise(([s, t]) => {
         errors.push(`cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`);
@@ -120,6 +131,36 @@ const unifyMany = (
   }
 
   return errors;
+};
+
+const unifyTuples = (
+  a: TupleMono,
+  b: TupleMono,
+  ctx: TypeContext,
+  subst: Subst | undefined,
+  errors: string[]
+): void => {
+  if (a.kind === 'EmptyTuple' && a.extension.isSome()) {
+    errors.push(...unifyMany([[a.extension.unwrap(), MonoTy.Tuple(b)]], ctx, subst));
+    return;
+  }
+
+  if (b.kind === 'EmptyTuple' && b.extension.isSome()) {
+    errors.push(...unifyMany([[b.extension.unwrap(), MonoTy.Tuple(a)]], ctx, subst));
+    return;
+  }
+
+  if (a.kind === 'EmptyTuple' && b.kind === 'EmptyTuple') {
+    return;
+  }
+
+  if (a.kind === 'ExtendTuple' && b.kind === 'ExtendTuple') {
+    errors.push(...unifyMany([[a.head, b.head]], ctx, subst));
+    unifyTuples(a.tail, b.tail, ctx, subst, errors);
+    return;
+  }
+
+  errors.push(`cannot unify tuples of different lenghts`);
 };
 
 // https://github.com/tomprimozic/type-systems/blob/master/extensible_rows/infer.ml

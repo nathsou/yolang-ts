@@ -12,11 +12,11 @@ export type UnaryOperator = '-' | '!';
 export type BinaryOperator = '+' | '-' | '*' | '/' | '%' | '==' | '!=' | '<' | '>' | '<=' | '>=' | '&&' | '||';
 export type CompoundAssignmentOperator = '+=' | '-=' | '*=' | '/=' | '%=' | '&&=' | '||=';
 
-export type Argument = { pattern: Pattern, mutable: boolean, annotation: Maybe<MonoTy> };
+export type Argument = { pattern: Pattern, mutable: boolean, annotation: Maybe<ParameterizedTy> };
 
 export const Argument = {
   show: ({ pattern, mutable, annotation }: Argument) => {
-    return `${mutable ? 'mut ' : ''}${Pattern.show(pattern)}${annotation.mapWithDefault(t => `: ${MonoTy.show(t)}`, '')}`;
+    return `${mutable ? 'mut ' : ''}${Pattern.show(pattern)}${annotation.mapWithDefault(t => `: ${ParameterizedTy.show(t)}`, '')}`;
   },
 };
 
@@ -131,25 +131,25 @@ export type Stmt = DataType<{
     name: string,
     expr: Expr,
     mutable: boolean,
-    annotation: Maybe<MonoTy>
+    annotation: Maybe<ParameterizedTy>
   },
   Expr: { expr: Expr },
   Error: { message: string },
 }>;
 
 export const Stmt = {
-  Let: (name: string, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
+  Let: (name: string, expr: Expr, mutable: boolean, annotation: Maybe<ParameterizedTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
   show: (stmt: Stmt): string => matchVariant(stmt, {
-    Let: ({ name, expr, mutable, annotation }) => `${mutable ? 'mut' : 'let'} ${name}${annotation.mapWithDefault(ty => ': ' + MonoTy.show(ty), '')} = ${Expr.show(expr)}`,
+    Let: ({ name, expr, mutable, annotation }) => `${mutable ? 'mut' : 'let'} ${name}${annotation.mapWithDefault(ty => ': ' + ParameterizedTy.show(ty), '')} = ${Expr.show(expr)}`,
     Expr: ({ expr }) => Expr.show(expr),
     Error: ({ message }) => `<Error: ${message}>`,
   }),
 };
 
 export type Decl = DataType<{
-  Function: { name: string, args: Argument[], body: Expr },
+  Function: { name: string, typeParams: TypeParams, args: Argument[], body: Expr },
   Module: { name: string, decls: Decl[] },
   TypeAlias: { name: string, typeParams: TypeParams, alias: ParameterizedTy },
   Impl: { ty: ParameterizedTy, typeParams: TypeParams, decls: Decl[] },
@@ -157,13 +157,13 @@ export type Decl = DataType<{
 }>;
 
 export const Decl = {
-  Function: (name: string, args: Argument[], body: Expr): Decl => ({ variant: 'Function', name, args, body }),
+  Function: (name: string, typeParams: TypeParams, args: Argument[], body: Expr): Decl => ({ variant: 'Function', name, typeParams, args, body }),
   Module: (name: string, decls: Decl[]): Decl => ({ variant: 'Module', name, decls }),
   TypeAlias: (name: string, typeParams: TypeParams, alias: ParameterizedTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
   Impl: (ty: ParameterizedTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   show: (decl: Decl): string => matchVariant(decl, {
-    Function: ({ name, args, body }) => `fn ${name}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
+    Function: ({ name, typeParams, args, body }) => `fn ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
     Module: ({ name, decls }) => `module ${name} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${ParameterizedTy.show(alias)}`,
     Impl: ({ ty, typeParams, decls }) => `impl${TypeParams.show(typeParams)} ${ParameterizedTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,

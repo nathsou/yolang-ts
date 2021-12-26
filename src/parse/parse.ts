@@ -2,6 +2,7 @@ import { match as matchVariant } from 'itsamatch';
 import { match, select } from 'ts-pattern';
 import { Argument, Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
 import { RowGeneric } from '../infer/records';
+import { TupleGeneric } from '../infer/tuples';
 import { MonoTy, ParameterizedTy, TypeParamsContext } from '../infer/types';
 import { takeWhile } from '../utils/array';
 import { none, some } from '../utils/maybe';
@@ -99,7 +100,7 @@ const tupleTy = map(
     symbol(','),
     expectOrDefault(commas(parameterizedTy), `Expected type in tuple type after ','`, []),
   )),
-  ([h, _, tl]) => ParameterizedTy.Const('tuple', h, ...tl)
+  ([h, _, tl]) => ParameterizedTy.Tuple(TupleGeneric.fromArray([h, ...tl]))
 );
 
 export const recordTy = map(
@@ -144,7 +145,7 @@ const typeParams = angleBrackets(commas(upperIdent));
 
 const typeAnnotation = map(seq(
   symbol(':'),
-  expectOrDefault(monoTy, `Expected type after ':'`, MonoTy.unit()),
+  expectOrDefault(parameterizedTy, `Expected type after ':'`, ParameterizedTy.Const('()')),
 ), snd);
 
 const argument = alt<Argument>(
@@ -594,10 +595,11 @@ initParser(
 const funcDecl = map(seq(
   keyword('fn'),
   expectOrDefault(ident, `Expected identifier after 'fn' keyword`, '<?>'),
+  optionalOrDefault(typeParams, []),
   expectOrDefault(argumentList, 'Expected arguments after function name', []),
   expectOrDefault(block, 'Expected block after function arguments', Expr.Error),
 ),
-  ([_, name, args, body]) => Decl.Function(name, args, body)
+  ([_, name, typeParams, args, body]) => Decl.Function(name, typeParams, args, body)
 );
 
 const inherentImplDecl = withContext(ctx => map(seq(

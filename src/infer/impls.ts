@@ -1,6 +1,6 @@
 import { VariantOf } from "itsamatch";
 import { Decl } from "../ast/bitter";
-import { MonoTy, ParameterizedTy, TypeParams } from "./types";
+import { ParameterizedTy, TypeParams } from "./types";
 
 export type Impl = {
   ty: ParameterizedTy,
