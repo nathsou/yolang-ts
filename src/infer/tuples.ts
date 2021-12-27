@@ -49,7 +49,7 @@ const createTuple = <T>({ from, eq }: Ty<T>) => {
     },
     map: <U>(tuple: Tuple<T>, f: (t: T) => U): Tuple<U> => {
       if (tuple.kind === 'EmptyTuple') {
-        return Tuple.Empty();
+        return Tuple.Empty(tuple.extension.map(f));
       }
 
       return Tuple.Extend(f(tuple.head), Tuple.map(tuple.tail, f));
@@ -64,7 +64,14 @@ const createTuple = <T>({ from, eq }: Ty<T>) => {
 
       return zip(as, bs).every(([a, b]) => eq(a, b));
     },
-    show: (tuple: Tuple<T>, showData: (data: T) => string) => `(${joinWith(Tuple.toArray(tuple), showData, ', ')})`,
+    isExtensible: (tuple: Tuple<T>): boolean => {
+      if (tuple.kind === 'EmptyTuple') {
+        return tuple.extension.isSome();
+      }
+
+      return Tuple.isExtensible(tuple.tail);
+    },
+    show: (tuple: Tuple<T>, showData: (data: T) => string) => `(${joinWith(Tuple.toArray(tuple), showData, ', ')}${Tuple.isExtensible(tuple) ? ', ...' : ''})`,
     from,
   };
 

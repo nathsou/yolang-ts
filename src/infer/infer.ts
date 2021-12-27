@@ -243,14 +243,17 @@ export const inferExpr = (
       unify(tau, expectedTy);
     },
     TupleIndexing: ({ lhs, index }) => {
-      inferExpr(lhs, ctx, errors);
+      if (index > 1000) {
+        errors.push(`Indexing a tuple with more than 1000 elements is not allowed`);
+      } else {
+        inferExpr(lhs, ctx, errors);
+        const elemsTys = gen(index + 1, MonoTy.fresh);
+        const expectedLhsTy = MonoTy.Tuple(TupleMono.fromArray(elemsTys, true));
+        const actualLhsTy = lhs.ty;
 
-      const elemsTys = gen(index + 1, MonoTy.fresh);
-      const expectedLhsTy = MonoTy.Tuple(TupleMono.fromArray(elemsTys, true));
-      const actualLhsTy = MonoTy.deref(lhs.ty);
-
-      unify(expectedLhsTy, actualLhsTy);
-      unify(tau, elemsTys[index]);
+        unify(expectedLhsTy, actualLhsTy);
+        unify(tau, elemsTys[index]);
+      }
     },
     Error: ({ message }) => {
       errors.push(message);

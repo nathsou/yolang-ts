@@ -1,9 +1,4 @@
 
-impl<A, B> (A, B) {
-  fn fst(self) { self.0 }
-  fn snd(self) { self.1 }
-}
-
-fn yo() {
-  ((1, true).snd(), ((), 7).fst())
+fn yo(t) {
+  t.3.7
 }

@@ -190,7 +190,7 @@ export const MonoTy = {
 
       return `${parenthesized(joinWith(args, MonoTy.show, ', '), showParens)} -> ${MonoTy.show(ret)}`;
     },
-    Tuple: ({ tuple }) => `(${joinWith(TupleMono.toArray(tuple), MonoTy.show, ', ')})`,
+    Tuple: ({ tuple }) => TupleMono.show(tuple, MonoTy.show),
     Record: ({ row }) => {
       if (row.type === 'empty') {
         return '{}';
@@ -270,15 +270,15 @@ export const PolyTy = {
   },
   canonicalize: (poly: PolyTy): PolyTy => {
     const [vars, mono] = poly;
-    const subts = new Map<TyVarId, MonoTy>();
+    const subst = new Map<TyVarId, MonoTy>();
 
     const newVars = gen(vars.length, i => i);
 
     for (const [v1, v2] of zip(vars, newVars)) {
-      subts.set(v1, MonoTy.Var({ kind: 'Unbound', id: v2 }));
+      subst.set(v1, MonoTy.Var({ kind: 'Unbound', id: v2 }));
     }
 
-    return [newVars, MonoTy.substitute(mono, subts)];
+    return [newVars, MonoTy.substitute(mono, subst)];
   },
   eq: (s: PolyTy, t: PolyTy): boolean => {
     return PolyTy.show(PolyTy.canonicalize(s)) === PolyTy.show(PolyTy.canonicalize(t));
@@ -385,7 +385,7 @@ export const ParameterizedTy = {
     Var: ({ id }) => showTyVarId(id),
     Const: ({ name, args }) => `${name}${TypeParams.show(args.map(ParameterizedTy.show))}`,
     Fun: ({ args, ret }) => `(${args.map(ParameterizedTy.show).join(', ')}) -> ${ParameterizedTy.show(ret)}`,
-    Tuple: ({ tuple }) => `(${TupleGeneric.toArray(tuple).map(ParameterizedTy.show).join(', ')})`,
+    Tuple: ({ tuple }) => TupleGeneric.show(tuple, ParameterizedTy.show),
     Record: ({ row }) => `{ ${RowGeneric.sortedFields(row).map(([name, ty]) => `${name}: ${ParameterizedTy.show(ty)}`).join(', ')} }`,
   }),
   eq: (s: ParameterizedTy, t: ParameterizedTy): boolean => {

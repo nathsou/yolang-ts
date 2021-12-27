@@ -146,7 +146,7 @@ const unifyTuples = (
   }
 
   if (b.kind === 'EmptyTuple' && b.extension.isSome()) {
-    errors.push(...unifyMany([[b.extension.unwrap(), MonoTy.Tuple(a)]], ctx, subst));
+    errors.push(...unifyMany([[MonoTy.Tuple(a), b.extension.unwrap()]], ctx, subst));
     return;
   }
 
