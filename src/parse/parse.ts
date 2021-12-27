@@ -456,6 +456,21 @@ const ifThenElse = alt(
   equality
 );
 
+const letIn = alt(
+  map(seq(
+    keyword('let'),
+    pattern,
+    optional(typeAnnotation),
+    symbol('='),
+    expr,
+    keyword('in'),
+    expectOrDefault(expr, `Expected expression after 'in' in let expression`, Expr.Error),
+  ),
+    ([_let, pattern, ann, _eq, val, _in, body]) => Expr.LetIn(pattern, ann, val, body)
+  ),
+  ifThenElse
+);
+
 const assignment = alt(
   map(
     seq(
@@ -471,7 +486,7 @@ const assignment = alt(
       }
     }
   ),
-  ifThenElse
+  letIn
 );
 
 const matchCase: Parser<{ pattern: Pattern, body: Expr }> = map(
@@ -489,9 +504,10 @@ const matchExpr = alt(
     seq(
       keyword('match'),
       expectOrDefault(expr, `Expected expression after 'match'`, Expr.Error),
+      optional(typeAnnotation),
       curlyBrackets(many(matchCase)),
     ),
-    ([_, expr, cases]) => Expr.Match(expr, cases)
+    ([_, expr, ann, cases]) => Expr.Match(expr, ann, cases)
   ),
   assignment
 );
@@ -565,27 +581,26 @@ initParser(pattern, alt(anyPat, constPat, varPat, tupleOrParenthesizedPat));
 
 // STATEMENTS
 
-const exprStmt = map(expr, Stmt.Expr);
+const letStmt = map(seq(
+  alt(keyword('let'), keyword('mut')),
+  expectOrDefault(ident, `Expected identifier after 'let' or 'mut' keyword`, '<?>'),
+  optional(typeAnnotation),
+  expect(symbol('='), `Expected '=' after identifier`),
+  expectOrDefault(expr, `Expected expression after '='`, Expr.Error),
+),
+  ([kw, name, ann, _, expr]) => Stmt.Let(name, expr, Token.eq(kw, Token.Keyword('mut')), ann)
+);
 
-const letStmt = alt(
-  map(
-    seq(
-      alt(keyword('let'), keyword('mut')),
-      expectOrDefault(ident, `Expected identifier after 'let' or 'mut' keyword`, '<?>'),
-      optional(typeAnnotation),
-      expect(symbol('='), `Expected '=' after identifier`),
-      expectOrDefault(expr, `Expected expression after '='`, Expr.Error),
-    ),
-    ([kw, name, ann, _, expr]) => Stmt.Let(name, expr, Token.eq(kw, Token.Keyword('mut')), ann)
-  ),
-  exprStmt
+const exprStmt = alt(
+  map(expr, Stmt.Expr),
+  letStmt
 );
 
 initParser(
   stmt,
   map(
-    // seq(letStmt, expectOrDefault(symbol(';'), 'Expected semicolon after statement', Token.symbol(';'))),
-    seq(letStmt, optional(symbol(';'))),
+    // seq(exprStmt, expectOrDefault(symbol(';'), 'Expected semicolon after statement', Token.symbol(';'))),
+    seq(exprStmt, optional(symbol(';'))),
     ([stmt]) => stmt
   )
 );

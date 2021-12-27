@@ -47,10 +47,11 @@ export type Expr = DataType<{
   ModuleAccess: { path: string[], member: string },
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
-  Match: { expr: Expr, cases: { pattern: Pattern, body: Expr }[] },
+  Match: { expr: Expr, annotation: Maybe<ParameterizedTy>, cases: { pattern: Pattern, body: Expr }[] },
   Parenthesized: { expr: Expr },
   NamedRecord: { name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
+  LetIn: { pattern: Pattern, annotation: Maybe<ParameterizedTy>, value: Expr, body: Expr },
 }>;
 
 export const Expr = {
@@ -69,10 +70,11 @@ export const Expr = {
   ModuleAccess: (path: string[], member: string): Expr => ({ variant: 'ModuleAccess', path, member }),
   FieldAccess: (lhs: Expr, field: string): Expr => ({ variant: 'FieldAccess', lhs, field }),
   Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
-  Match: (expr: Expr, cases: { pattern: Pattern, body: Expr }[]): Expr => ({ variant: 'Match', expr, cases }),
+  Match: (expr: Expr, annotation: Maybe<ParameterizedTy>, cases: { pattern: Pattern, body: Expr }[]): Expr => ({ variant: 'Match', annotation, expr, cases }),
   Parenthesized: (expr: Expr): Expr => ({ variant: 'Parenthesized', expr }),
   NamedRecord: (name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[]): Expr => ({ variant: 'NamedRecord', name, typeParams, fields }),
   TupleIndexing: (lhs: Expr, index: number): Expr => ({ variant: 'TupleIndexing', lhs, index }),
+  LetIn: (pattern: Pattern, annotation: Maybe<ParameterizedTy>, value: Expr, body: Expr): Expr => ({ variant: 'LetIn', pattern, annotation, value, body }),
   show: (expr: Expr): string => matchVariant(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
@@ -93,6 +95,7 @@ export const Expr = {
     Parenthesized: ({ expr }) => `(${Expr.show(expr)})`,
     NamedRecord: ({ name, typeParams, fields }) => `${name}<${joinWith(typeParams, ParameterizedTy.show, ', ')}> {\n${joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, ', ')}\n}`,
     TupleIndexing: ({ lhs, index }) => `${Expr.show(lhs)}.${index}`,
+    LetIn: ({ pattern, value, body }) => `let ${Pattern.show(pattern)} = ${Expr.show(value)} in ${Expr.show(body)}`,
   }),
 };
 

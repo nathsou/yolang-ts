@@ -193,10 +193,15 @@ export const inferExpr = (
       const elemTys = elements.map(proj('ty'));
       unify(tau, MonoTy.Tuple(TupleMono.fromArray(elemTys)));
     },
-    Match: ({ expr, cases }) => {
+    Match: ({ expr, annotation, cases }) => {
       // match e { p1 => e1, p2 => e2, ... }
       const retTy = MonoTy.fresh();
       const argTy = expr.ty;
+
+      annotation.do(ann => {
+        const inst = ParameterizedTy.instantiate(ann, ctx);
+        unify(argTy, inst);
+      });
 
       inferExpr(expr, ctx, errors);
 
@@ -209,7 +214,8 @@ export const inferExpr = (
           const bodyCtx = TypeContext.clone(ctx);
 
           for (const v of Pattern.vars(pattern)) {
-            Env.addMono(bodyCtx.env, v.original, v.ty);
+            const genTy = MonoTy.generalize(ctx.env, v.ty);
+            Env.addPoly(bodyCtx.env, v.original, genTy);
           }
 
           inferExpr(body, bodyCtx, errors);
