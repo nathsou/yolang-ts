@@ -77,10 +77,13 @@ export const map = <T, U>(p: Parser<T>, f: (t: T, tokens: Slice<Token>) => U): P
   });
 };
 
-export const flatMap = <T, U>(p: Parser<T>, f: (t: T, tokens: Slice<Token>) => Result<U, ParserError>): Parser<U> => {
+export const flatMap = <T, U>(p: Parser<T>, f: (t: T, tokens: Slice<Token>) => Parser<U>): Parser<U> => {
   return ref((tokens, ctx) => {
     const [t, rem, errs] = p.ref(tokens, ctx);
-    return [t.flatMap(x => f(x, rem)), rem, errs];
+    return t.match({
+      Ok: t => f(t, rem).ref(rem, ctx),
+      Error: err => [error({ message: fail, pos: rem.start }), rem, [...errs, err]],
+    });
   });
 };
 
@@ -115,6 +118,7 @@ export const seq = <T extends readonly Parser<any>[]>(...parsers: T): Parser<[..
     return [ok(tuple), tokens, errors];
   });
 };
+
 export const alt = <T>(...parsers: Parser<T>[]): Parser<T> => {
   return ref((tokens, ctx) => {
     const errors: ParserError[] = [];

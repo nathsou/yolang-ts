@@ -313,11 +313,12 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
       TypeContext.declareTypeParams(bodyCtx, ...typeParams);
 
       args.forEach(arg => {
-        Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
         arg.annotation.do(ann => {
           const annInst = ParameterizedTy.instantiate(ann, bodyCtx);
           errors.push(...unifyMut(arg.name.ty, annInst, bodyCtx));
         });
+
+        Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
       });
 
       inferExpr(body, bodyCtx, errors);

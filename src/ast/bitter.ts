@@ -190,7 +190,6 @@ export const Expr = {
         go(expr),
         annotation,
         cases.map(c => {
-          console.log('hello', SweetPattern.show(c.pattern));
           const bodyEnv = NameEnv.clone(nameEnv);
           return {
             pattern: Pattern.fromSweet(c.pattern, bodyEnv),

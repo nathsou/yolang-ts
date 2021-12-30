@@ -1,5 +1,6 @@
 import { match as matchVariant, VariantOf } from "itsamatch";
 import { match, __ } from "ts-pattern";
+import { zip } from "../utils/array";
 import { panic } from "../utils/misc";
 import { Result } from "../utils/result";
 import { RowMono } from "./records";
@@ -35,6 +36,18 @@ const unifyMany = (
     eqs.push(...newEqs.map(([s, t]) => [MonoTy.deref(s), MonoTy.deref(t)] as [MonoTy, MonoTy]));
   };
 
+  const instantiateGenericTyConst = (name: string, args: MonoTy[]): MonoTy => {
+    const genericTy = ctx.typeAliases[name];
+    const subst = new Map<string, MonoTy>();
+
+    for (const [t, a] of zip(genericTy.params, args)) {
+      subst.set(t, a);
+    }
+
+    const r = ParameterizedTy.substituteTyParams(genericTy.ty, subst);
+    return r;
+  };
+
   while (eqs.length > 0) {
     const [s, t] = eqs.pop()!;
 
@@ -58,15 +71,11 @@ const unifyMany = (
       })
       .with([{ variant: 'Const' }, { variant: 'Const' }], ([s, t]) => {
         if (s.name in ctx.typeAliases) {
-          const genericTy = ctx.typeAliases[s.name].ty;
-          const monoTy = ParameterizedTy.instantiate(genericTy, ctx);
-          pushEqs([monoTy, t]);
+          pushEqs([instantiateGenericTyConst(s.name, s.args), t]);
         }
 
         if (t.name in ctx.typeAliases) {
-          const genericTy = ctx.typeAliases[t.name].ty;
-          const monoTy = ParameterizedTy.instantiate(genericTy, ctx);
-          pushEqs([s, monoTy]);
+          pushEqs([s, instantiateGenericTyConst(t.name, t.args)]);
         }
 
         if (s.name === t.name && s.args.length === t.args.length) {
@@ -79,16 +88,12 @@ const unifyMany = (
       })
       .with([{ variant: 'Const' }, __], ([s, t]) => {
         if (s.name in ctx.typeAliases) {
-          const genericTy = ctx.typeAliases[s.name].ty;
-          const monoTy = ParameterizedTy.instantiate(genericTy, ctx);
-          pushEqs([monoTy, t]);
+          pushEqs([instantiateGenericTyConst(s.name, s.args), t]);
         }
       })
       .with([__, { variant: 'Const' }], ([s, t]) => {
         if (t.name in ctx.typeAliases) {
-          const genericTy = ctx.typeAliases[t.name].ty;
-          const monoTy = ParameterizedTy.instantiate(genericTy, ctx);
-          pushEqs([s, monoTy]);
+          pushEqs([s, instantiateGenericTyConst(t.name, t.args)]);
         }
       })
       .with([{ variant: 'Fun' }, { variant: 'Fun' }], ([s, t]) => {

@@ -24,13 +24,13 @@ const createRow = <T>({ fresh, eq, Record, from }: Ty<T>) => {
     fromObject: (obj: Record<string, T>): Row<T> => {
       return Row.fromFields(Object.entries(obj));
     },
-    fromFields: (fields: [string, T][]): Row<T> => {
+    fromFields: (fields: [string, T][], extensible = true): Row<T> => {
       if (fields.length === 0) {
         return Row.empty();
       }
 
       const [[firstField, firstTy], ...tail] = fields;
-      let row = Row.extend(firstField, firstTy, fresh());
+      let row = Row.extend(firstField, firstTy, extensible ? fresh() : Record(Row.empty()));
 
       for (let [field, ty] of tail) {
         row = Row.extend(field, ty, Record(row));

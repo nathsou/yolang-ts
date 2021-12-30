@@ -3,14 +3,14 @@ import { match, select } from 'ts-pattern';
 import { Argument, Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
 import { RowGeneric } from '../infer/records';
 import { TupleGeneric } from '../infer/tuples';
-import { MonoTy, ParameterizedTy, TypeParamsContext } from '../infer/types';
+import { ParameterizedTy, TypeParams, TypeParamsContext } from '../infer/types';
 import { takeWhile } from '../utils/array';
 import { none, some } from '../utils/maybe';
 import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, angleBrackets, chainLeft, commas, conditionalError, consumeAll, curlyBrackets, effect, expect, expectOrDefault, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized, withContext } from './combinators';
+import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized, withContext } from './combinators';
 import { Const, Token } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -68,8 +68,6 @@ const unexpected = mapParserResult(
 );
 
 // TYPES
-const monoTy = uninitialized<MonoTy>();
-
 export const parameterizedTy = uninitialized<ParameterizedTy>();
 const parenthesizedTy = map(parens(parameterizedTy), ty => ty);
 const unitTy = map(seq(symbol('('), symbol(')')), () => ParameterizedTy.Const('()'));
@@ -109,7 +107,7 @@ export const recordTy = map(
     symbol(':'),
     expectOrDefault(parameterizedTy, `Expected type in record type after ':'`, ParameterizedTy.Const('()')),
   )), [])),
-  fields => ParameterizedTy.Record(RowGeneric.fromFields(fields.map(([name, _, ty]) => [name, ty])))
+  fields => ParameterizedTy.Record(RowGeneric.fromFields(fields.map(([name, _, ty]) => [name, ty]), false))
 );
 
 const allExceptFunTy = alt(
@@ -136,12 +134,18 @@ initParser(parameterizedTy, alt(
   allExceptFunTy,
 ));
 
-initParser(monoTy, map(
-  conditionalError(parameterizedTy, ParameterizedTy.isUnparameterized, 'Expected unparameterized type'),
-  ty => ParameterizedTy.toPoly(ty, [])[1]
-));
+const typeParams: Parser<TypeParams> = angleBrackets(commas(upperIdent));
 
-const typeParams = angleBrackets(commas(upperIdent));
+const scopedTypeParams = <T>(p: Parser<T>): Parser<[TypeParams, T]> =>
+  withContext(ctx =>
+    flatMap(optionalOrDefault(typeParams, []), params => {
+      return ref((tokens: Slice<Token>) => {
+        const subCtx = TypeParamsContext.clone(ctx);
+        TypeParamsContext.declare(subCtx, ...params);
+        return map<T, [TypeParams, T]>(p, t => [params, t]).ref(tokens, subCtx);
+      });
+    })
+  );
 
 const typeAnnotation = map(seq(
   symbol(':'),
@@ -610,22 +614,22 @@ initParser(
 const funcDecl = map(seq(
   keyword('fn'),
   expectOrDefault(ident, `Expected identifier after 'fn' keyword`, '<?>'),
-  optionalOrDefault(typeParams, []),
-  expectOrDefault(argumentList, 'Expected arguments after function name', []),
-  expectOrDefault(block, 'Expected block after function arguments', Expr.Error),
+  scopedTypeParams(seq(
+    expectOrDefault(argumentList, 'Expected arguments after function name', []),
+    expectOrDefault(block, 'Expected block after function arguments', Expr.Error),
+  ))
 ),
-  ([_, name, typeParams, args, body]) => Decl.Function(name, typeParams, args, body)
+  ([_, name, [typeParams, [args, body]]]) => Decl.Function(name, typeParams, args, body)
 );
 
 const inherentImplDecl = withContext(ctx => map(seq(
   keyword('impl'),
-  effect(optionalOrDefault(typeParams, []), params => {
-    TypeParamsContext.declare(ctx, ...params);
-  }),
-  expectOrDefault(parameterizedTy, `Expected type after 'impl' keyword`, ParameterizedTy.Const('()')),
-  expectOrDefault(curlyBrackets(many(decl)), `Expected declarations`, []),
+  scopedTypeParams(seq(
+    expectOrDefault(parameterizedTy, `Expected type after 'impl' keyword`, ParameterizedTy.Const('()')),
+    expectOrDefault(curlyBrackets(many(decl)), `Expected declarations`, []),
+  ))
 ),
-  ([_, tyParams, ty, decls]) => Decl.Impl(ty, tyParams, decls)
+  ([_, [tyParams, [ty, decls]]]) => Decl.Impl(ty, tyParams, decls)
 ));
 
 const moduleDecl = map(seq(
@@ -636,27 +640,22 @@ const moduleDecl = map(seq(
   ([_, name, decls]) => Decl.Module(name, decls)
 );
 
-const typeAliasDecl = withContext(ctx => {
-  return map(seq(
-    keyword('type'),
-    expectOrDefault(upperIdent, `Expected identifier after 'type' keyword`, '<?>'),
-    effect(optionalOrDefault(typeParams, []), params => {
-      TypeParamsContext.declare(ctx, ...params);
-    }),
+const typeAliasDecl = map(seq(
+  keyword('type'),
+  expectOrDefault(upperIdent, `Expected identifier after 'type' keyword`, '<?>'),
+  scopedTypeParams(seq(
     expectOrDefault(symbol('='), `Expected '=' after type name`, Token.Symbol('=')),
     parameterizedTy,
-  ),
-    ([_t, name, params, _eq, rhs]) => Decl.TypeAlias(name, params, rhs)
-  );
-});
+  ))
+),
+  ([_t, name, [params, [_eq, rhs]]]) => Decl.TypeAlias(name, params, rhs)
+);
 
-initParser(decl, withContext(ctx =>
-  ref(tokens => alt(
-    funcDecl,
-    typeAliasDecl,
-    moduleDecl,
-    inherentImplDecl,
-  ).ref(tokens, TypeParamsContext.clone(ctx)))
+initParser(decl, alt(
+  funcDecl,
+  typeAliasDecl,
+  moduleDecl,
+  inherentImplDecl,
 ));
 
 export const parse = (tokens: Slice<Token>): [Prog, ParserError[]] => {

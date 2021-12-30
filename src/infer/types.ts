@@ -297,7 +297,9 @@ export type TypeParamsContext = {
 
 export const TypeParamsContext = {
   make: (): TypeParamsContext => ({ typeParams: [] }),
-  clone: (ctx: TypeParamsContext): TypeParamsContext => ({ ...ctx }),
+  clone: (ctx: TypeParamsContext): TypeParamsContext => ({
+    typeParams: [...ctx.typeParams],
+  }),
   declare: (ctx: TypeParamsContext, ...names: string[]): void => {
     ctx.typeParams.push(...names);
   },
@@ -352,21 +354,9 @@ export const ParameterizedTy = {
         TupleGeneric.map(tuple, a => ParameterizedTy.substituteTyParams(a, subst))
       ),
       Record: ({ row }) => MonoTy.Record(
-        RowMono.fromFields(RowGeneric.fields(row).map(([name, ty]) => [name, ParameterizedTy.substituteTyParams(ty, subst)]))
+        RowMono.fromFields(RowGeneric.fields(row).map(([name, ty]) => [name, ParameterizedTy.substituteTyParams(ty, subst)]), false)
       ),
     });
-  },
-  toPoly: (ty: ParameterizedTy, params: TypeParams): PolyTy => {
-    const subst = new Map<string, MonoTy>();
-    const tyVars: TyVarId[] = [];
-
-    for (const t of params) {
-      const v = Context.freshTyVarIndex();
-      subst.set(t, MonoTy.Var(TyVar.Unbound(v)));
-      tyVars.push(v);
-    }
-
-    return PolyTy.make(tyVars, ParameterizedTy.substituteTyParams(ty, subst));
   },
   instantiate: (ty: ParameterizedTy, ctx: TypeContext): MonoTy => {
     const subst = new Map<string, MonoTy>(Object.entries(mapRecord(ctx.typeParamsEnv, MonoTy.Var)));

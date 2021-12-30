@@ -1,6 +1,6 @@
 
-type Ref<T> = { a: T }
+type Ref<T> = { ref: T }
 
-fn yo(c: Ref<u32>) {
-  c.a
+fn deref<V>(r: Ref<V>) {
+  r.ref.yolo
 }
