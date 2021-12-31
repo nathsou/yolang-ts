@@ -1,7 +1,7 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { Impl } from "../infer/impls";
-import { TupleMono } from "../infer/tuples";
-import { MonoTy, ParameterizedTy, PolyTy, TypeParams } from "../infer/types";
+import { Tuple } from "../infer/tuples";
+import { MonoTy, PolyTy, TypeParams } from "../infer/types";
 import { Const } from "../parse/token";
 import { Maybe, none } from "../utils/maybe";
 import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
@@ -75,7 +75,7 @@ export const Pattern = {
   type: (pattern: Pattern): MonoTy => matchVariant(pattern, {
     Const: ({ value }) => Const.type(value),
     Variable: ({ name }) => name.ty,
-    Tuple: ({ elements }) => MonoTy.Tuple(TupleMono.fromArray(elements.map(Pattern.type))),
+    Tuple: ({ elements }) => MonoTy.Tuple(Tuple.fromArray(elements.map(Pattern.type))),
     Any: (): MonoTy => MonoTy.fresh(),
     Error: (): MonoTy => MonoTy.fresh(),
   }),
@@ -88,7 +88,7 @@ export const Pattern = {
   }),
 };
 
-type Argument = { name: Name, mutable: boolean, annotation: Maybe<ParameterizedTy> };
+type Argument = { name: Name, mutable: boolean, annotation: Maybe<MonoTy> };
 
 export type Expr = DataType<WithSweetRefAndType<{
   Const: { value: Const },
@@ -105,8 +105,8 @@ export type Expr = DataType<WithSweetRefAndType<{
   ModuleAccess: { path: string[], member: string },
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
-  Match: { expr: Expr, annotation: Maybe<ParameterizedTy>, cases: { pattern: Pattern, body: Expr }[] },
-  NamedRecord: { name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[] },
+  Match: { expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, body: Expr }[] },
+  NamedRecord: { name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
 }>>;
 
@@ -131,8 +131,8 @@ export const Expr = {
   ModuleAccess: (path: string[], member: string, sweet: SweetExpr): Expr => typed({ variant: 'ModuleAccess', path, member }, sweet),
   FieldAccess: (lhs: Expr, field: string, sweet: SweetExpr): Expr => typed({ variant: 'FieldAccess', lhs, field }, sweet),
   Tuple: (elements: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Tuple', elements }, sweet),
-  Match: (expr: Expr, annotation: Maybe<ParameterizedTy>, cases: { pattern: Pattern, body: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Match', expr, annotation, cases }, sweet),
-  NamedRecord: (name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'NamedRecord', name, typeParams, fields }, sweet),
+  Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, body: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Match', expr, annotation, cases }, sweet),
+  NamedRecord: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'NamedRecord', name, typeParams, fields }, sweet),
   TupleIndexing: (lhs: Expr, index: number, sweet: SweetExpr): Expr => typed({ variant: 'TupleIndexing', lhs, index }, sweet),
   fromSweet: (sweet: SweetExpr, nameEnv: NameEnv, errors: BitterConversionError[]): Expr => {
     const go = (expr: SweetExpr, env = nameEnv) => Expr.fromSweet(expr, env, errors);
@@ -216,13 +216,13 @@ export const Expr = {
 };
 
 export type Stmt = DataType<{
-  Let: { name: Name, expr: Expr, mutable: boolean, annotation: Maybe<ParameterizedTy> },
+  Let: { name: Name, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy> },
   Expr: { expr: Expr },
   Error: { message: string },
 }>;
 
 export const Stmt = {
-  Let: (name: Name, expr: Expr, mutable: boolean, annotation: Maybe<ParameterizedTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
+  Let: (name: Name, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetStmt, nameEnv: NameEnv, errors: BitterConversionError[]): Stmt => {
@@ -243,7 +243,7 @@ export type Decl = DataType<{
   Function: {
     name: Name,
     typeParams: TypeParams,
-    args: { name: Name, mutable: boolean, annotation: Maybe<ParameterizedTy> }[],
+    args: { name: Name, mutable: boolean, annotation: Maybe<MonoTy> }[],
     body: Expr,
     funTy: PolyTy,
   },
@@ -255,10 +255,10 @@ export type Decl = DataType<{
   TypeAlias: {
     name: string,
     typeParams: TypeParams,
-    alias: ParameterizedTy,
+    alias: MonoTy,
   },
   Impl: {
-    ty: ParameterizedTy,
+    ty: MonoTy,
     typeParams: TypeParams,
     decls: Decl[],
   },
@@ -266,7 +266,7 @@ export type Decl = DataType<{
 }>;
 
 export const Decl = {
-  Function: (name: Name, typeParams: TypeParams, args: { name: Name, mutable: boolean, annotation: Maybe<ParameterizedTy> }[], body: Expr): Decl => ({ variant: 'Function', name, typeParams, args, body, funTy: PolyTy.fresh() }),
+  Function: (name: Name, typeParams: TypeParams, args: { name: Name, mutable: boolean, annotation: Maybe<MonoTy> }[], body: Expr): Decl => ({ variant: 'Function', name, typeParams, args, body, funTy: PolyTy.fresh() }),
   Module: (name: string, decls: Decl[]): Decl => {
     const mod: VariantOf<Decl, 'Module'> = {
       variant: 'Module',
@@ -295,8 +295,8 @@ export const Decl = {
 
     return mod;
   },
-  TypeAlias: (name: string, typeParams: TypeParams, alias: ParameterizedTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
-  Impl: (ty: ParameterizedTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
+  TypeAlias: (name: string, typeParams: TypeParams, alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
+  Impl: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: BitterConversionError[]): Decl =>
     matchVariant(sweet, {

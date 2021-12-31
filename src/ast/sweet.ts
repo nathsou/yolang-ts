@@ -1,5 +1,5 @@
 import { DataType, match as matchVariant } from 'itsamatch';
-import { ParameterizedTy, TypeParams } from '../infer/types';
+import { MonoTy, TypeParams } from '../infer/types';
 import { Const } from '../parse/token';
 import { joinWith } from '../utils/array';
 import { Maybe } from '../utils/maybe';
@@ -12,11 +12,11 @@ export type UnaryOperator = '-' | '!';
 export type BinaryOperator = '+' | '-' | '*' | '/' | '%' | '==' | '!=' | '<' | '>' | '<=' | '>=' | '&&' | '||';
 export type CompoundAssignmentOperator = '+=' | '-=' | '*=' | '/=' | '%=' | '&&=' | '||=';
 
-export type Argument = { pattern: Pattern, mutable: boolean, annotation: Maybe<ParameterizedTy> };
+export type Argument = { pattern: Pattern, mutable: boolean, annotation: Maybe<MonoTy> };
 
 export const Argument = {
   show: ({ pattern, mutable, annotation }: Argument) => {
-    return `${mutable ? 'mut ' : ''}${Pattern.show(pattern)}${annotation.mapWithDefault(t => `: ${ParameterizedTy.show(t)}`, '')}`;
+    return `${mutable ? 'mut ' : ''}${Pattern.show(pattern)}${annotation.mapWithDefault(t => `: ${MonoTy.show(t)}`, '')}`;
   },
 };
 
@@ -47,11 +47,11 @@ export type Expr = DataType<{
   ModuleAccess: { path: string[], member: string },
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
-  Match: { expr: Expr, annotation: Maybe<ParameterizedTy>, cases: { pattern: Pattern, body: Expr }[] },
+  Match: { expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, body: Expr }[] },
   Parenthesized: { expr: Expr },
-  NamedRecord: { name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[] },
+  NamedRecord: { name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
-  LetIn: { pattern: Pattern, annotation: Maybe<ParameterizedTy>, value: Expr, body: Expr },
+  LetIn: { pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr },
 }>;
 
 export const Expr = {
@@ -70,11 +70,11 @@ export const Expr = {
   ModuleAccess: (path: string[], member: string): Expr => ({ variant: 'ModuleAccess', path, member }),
   FieldAccess: (lhs: Expr, field: string): Expr => ({ variant: 'FieldAccess', lhs, field }),
   Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
-  Match: (expr: Expr, annotation: Maybe<ParameterizedTy>, cases: { pattern: Pattern, body: Expr }[]): Expr => ({ variant: 'Match', annotation, expr, cases }),
+  Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, body: Expr }[]): Expr => ({ variant: 'Match', annotation, expr, cases }),
   Parenthesized: (expr: Expr): Expr => ({ variant: 'Parenthesized', expr }),
-  NamedRecord: (name: string, typeParams: ParameterizedTy[], fields: { name: string, value: Expr }[]): Expr => ({ variant: 'NamedRecord', name, typeParams, fields }),
+  NamedRecord: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[]): Expr => ({ variant: 'NamedRecord', name, typeParams, fields }),
   TupleIndexing: (lhs: Expr, index: number): Expr => ({ variant: 'TupleIndexing', lhs, index }),
-  LetIn: (pattern: Pattern, annotation: Maybe<ParameterizedTy>, value: Expr, body: Expr): Expr => ({ variant: 'LetIn', pattern, annotation, value, body }),
+  LetIn: (pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr): Expr => ({ variant: 'LetIn', pattern, annotation, value, body }),
   show: (expr: Expr): string => matchVariant(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
@@ -93,7 +93,7 @@ export const Expr = {
     Tuple: ({ elements }) => `(${joinWith(elements, Expr.show, ', ')})`,
     Match: ({ expr, cases }) => `match ${Expr.show(expr)} {\n${joinWith(cases, ({ pattern, body }) => `  ${Pattern.show(pattern)} => ${Expr.show(body)}\n`, '\n')}\n}`,
     Parenthesized: ({ expr }) => `(${Expr.show(expr)})`,
-    NamedRecord: ({ name, typeParams, fields }) => `${name}<${joinWith(typeParams, ParameterizedTy.show, ', ')}> {\n${joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, ', ')}\n}`,
+    NamedRecord: ({ name, typeParams, fields }) => `${name}<${joinWith(typeParams, MonoTy.show, ', ')}> {\n${joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, ', ')}\n}`,
     TupleIndexing: ({ lhs, index }) => `${Expr.show(lhs)}.${index}`,
     LetIn: ({ pattern, value, body }) => `let ${Pattern.show(pattern)} = ${Expr.show(value)} in ${Expr.show(body)}`,
   }),
@@ -134,18 +134,18 @@ export type Stmt = DataType<{
     name: string,
     expr: Expr,
     mutable: boolean,
-    annotation: Maybe<ParameterizedTy>
+    annotation: Maybe<MonoTy>
   },
   Expr: { expr: Expr },
   Error: { message: string },
 }>;
 
 export const Stmt = {
-  Let: (name: string, expr: Expr, mutable: boolean, annotation: Maybe<ParameterizedTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
+  Let: (name: string, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
   show: (stmt: Stmt): string => matchVariant(stmt, {
-    Let: ({ name, expr, mutable, annotation }) => `${mutable ? 'mut' : 'let'} ${name}${annotation.mapWithDefault(ty => ': ' + ParameterizedTy.show(ty), '')} = ${Expr.show(expr)}`,
+    Let: ({ name, expr, mutable, annotation }) => `${mutable ? 'mut' : 'let'} ${name}${annotation.mapWithDefault(ty => ': ' + MonoTy.show(ty), '')} = ${Expr.show(expr)}`,
     Expr: ({ expr }) => Expr.show(expr),
     Error: ({ message }) => `<Error: ${message}>`,
   }),
@@ -154,22 +154,22 @@ export const Stmt = {
 export type Decl = DataType<{
   Function: { name: string, typeParams: TypeParams, args: Argument[], body: Expr },
   Module: { name: string, decls: Decl[] },
-  TypeAlias: { name: string, typeParams: TypeParams, alias: ParameterizedTy },
-  Impl: { ty: ParameterizedTy, typeParams: TypeParams, decls: Decl[] },
+  TypeAlias: { name: string, typeParams: TypeParams, alias: MonoTy },
+  Impl: { ty: MonoTy, typeParams: TypeParams, decls: Decl[] },
   Error: { message: string },
 }>;
 
 export const Decl = {
   Function: (name: string, typeParams: TypeParams, args: Argument[], body: Expr): Decl => ({ variant: 'Function', name, typeParams, args, body }),
   Module: (name: string, decls: Decl[]): Decl => ({ variant: 'Module', name, decls }),
-  TypeAlias: (name: string, typeParams: TypeParams, alias: ParameterizedTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
-  Impl: (ty: ParameterizedTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
+  TypeAlias: (name: string, typeParams: TypeParams, alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
+  Impl: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   show: (decl: Decl): string => matchVariant(decl, {
     Function: ({ name, typeParams, args, body }) => `fn ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
     Module: ({ name, decls }) => `module ${name} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
-    TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${ParameterizedTy.show(alias)}`,
-    Impl: ({ ty, typeParams, decls }) => `impl${TypeParams.show(typeParams)} ${ParameterizedTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
+    TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)}`,
+    Impl: ({ ty, typeParams, decls }) => `impl${TypeParams.show(typeParams)} ${MonoTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     Error: ({ message }) => `<Error: ${message}> `,
   }),
 };

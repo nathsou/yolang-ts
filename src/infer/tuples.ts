@@ -1,103 +1,76 @@
 import { DataType, match as matchVariant } from "itsamatch";
 import { joinWith, zip } from "../utils/array";
 import { Maybe, none, some } from "../utils/maybe";
-import { MonoTy, ParameterizedTy, TyVar } from "./types";
+import { MonoTy, TyVar } from "./types";
 
-export type Tuple<T> = DataType<{
-  EmptyTuple: { extension: Maybe<T> },
-  ExtendTuple: { head: T, tail: Tuple<T> },
+export type Tuple = DataType<{
+  EmptyTuple: { extension: Maybe<MonoTy> },
+  ExtendTuple: { head: MonoTy, tail: Tuple },
 }, 'kind'>;
 
-export type TupleMono = Tuple<MonoTy>;
-export type TupleGeneric = Tuple<ParameterizedTy>;
+export const Tuple = {
+  Empty: (extension: Maybe<MonoTy> = none): Tuple => ({ kind: 'EmptyTuple', extension }),
+  Extend: (head: MonoTy, tail: Tuple): Tuple => ({ kind: 'ExtendTuple', head, tail }),
+  fromArray: (arr: MonoTy[], extensible = false): Tuple => {
+    if (arr.length === 0) {
+      return Tuple.Empty(extensible ? some(MonoTy.Var(TyVar.fresh())) : none);
+    }
 
-type Ty<T> = {
-  from: (data: T) => Maybe<Tuple<T>>,
-  eq: (a: T, b: T) => boolean,
-};
-
-const createTuple = <T>({ from, eq }: Ty<T>) => {
-  const Tuple = {
-    Empty: <U>(extension: Maybe<U> = none): Tuple<U> => ({ kind: 'EmptyTuple', extension }),
-    Extend: <U>(head: U, tail: Tuple<U>): Tuple<U> => ({ kind: 'ExtendTuple', head, tail }),
-    fromArray: (arr: T[], extensible = false): Tuple<T> => {
-      if (arr.length === 0) {
-        return Tuple.Empty(extensible ? some(MonoTy.Var(TyVar.fresh())) : none);
-      }
-
-      const [head, ...tail] = arr;
-      return Tuple.Extend(head, Tuple.fromArray(tail, extensible));
-    },
-    toArray: (tuple: Tuple<T>): T[] => {
-      if (tuple.kind === 'EmptyTuple') {
-        return tuple.extension.match({
-          Some: ty => from(ty).match({
-            Some: t => Tuple.toArray(t),
-            None: () => [],
-          }),
+    const [head, ...tail] = arr;
+    return Tuple.Extend(head, Tuple.fromArray(tail, extensible));
+  },
+  toArray: (tuple: Tuple): MonoTy[] => {
+    if (tuple.kind === 'EmptyTuple') {
+      return tuple.extension.match({
+        Some: ty => Tuple.from(ty).match({
+          Some: t => Tuple.toArray(t),
           None: () => [],
-        });
-      }
+        }),
+        None: () => [],
+      });
+    }
 
-      return [tuple.head, ...Tuple.toArray(tuple.tail)];
-    },
-    iter: function* (tuple: Tuple<T>): IterableIterator<T> {
-      if (tuple.kind === 'ExtendTuple') {
-        yield tuple.head;
-        yield* Tuple.iter(tuple.tail);
-      }
-    },
-    map: <U>(tuple: Tuple<T>, f: (t: T) => U): Tuple<U> => {
-      if (tuple.kind === 'EmptyTuple') {
-        return Tuple.Empty(tuple.extension.map(f));
-      }
+    return [tuple.head, ...Tuple.toArray(tuple.tail)];
+  },
+  iter: function* (tuple: Tuple): IterableIterator<MonoTy> {
+    if (tuple.kind === 'ExtendTuple') {
+      yield tuple.head;
+      yield* Tuple.iter(tuple.tail);
+    }
+  },
+  map: (tuple: Tuple, f: (t: MonoTy) => MonoTy): Tuple => {
+    if (tuple.kind === 'EmptyTuple') {
+      return Tuple.Empty(tuple.extension.map(f));
+    }
 
-      return Tuple.Extend(f(tuple.head), Tuple.map(tuple.tail, f));
-    },
-    eq: (a: Tuple<T>, b: Tuple<T>): boolean => {
-      const as = Tuple.toArray(a);
-      const bs = Tuple.toArray(b);
+    return Tuple.Extend(f(tuple.head), Tuple.map(tuple.tail, f));
+  },
+  eq: (a: Tuple, b: Tuple): boolean => {
+    const as = Tuple.toArray(a);
+    const bs = Tuple.toArray(b);
 
-      if (as.length !== bs.length) {
-        return false;
-      }
+    if (as.length !== bs.length) {
+      return false;
+    }
 
-      return zip(as, bs).every(([a, b]) => eq(a, b));
-    },
-    isExtensible: (tuple: Tuple<T>): boolean => {
-      if (tuple.kind === 'EmptyTuple') {
-        return tuple.extension.isSome();
-      }
+    return zip(as, bs).every(([a, b]) => MonoTy.eq(a, b));
+  },
+  isExtensible: (tuple: Tuple): boolean => {
+    if (tuple.kind === 'EmptyTuple') {
+      return tuple.extension.isSome();
+    }
 
-      return Tuple.isExtensible(tuple.tail);
-    },
-    show: (tuple: Tuple<T>, showData: (data: T) => string) => `(${joinWith(Tuple.toArray(tuple), showData, ', ')}${Tuple.isExtensible(tuple) ? ', ...' : ''})`,
-    from,
-  };
-
-  return Tuple;
-};
-
-export const TupleMono = createTuple<MonoTy>({
-  from: (ty: MonoTy): Maybe<Tuple<MonoTy>> => {
+    return Tuple.isExtensible(tuple.tail);
+  },
+  show: (tuple: Tuple) => `(${joinWith(Tuple.toArray(tuple), MonoTy.show)}${Tuple.isExtensible(tuple) ? ', ...' : ''})`,
+  from: (ty: MonoTy): Maybe<Tuple> => {
     return matchVariant(ty, {
       Tuple: ({ tuple }) => some(tuple),
       Var: v => matchVariant(v.value, {
-        Link: link => TupleMono.from(link.to),
+        Link: link => Tuple.from(link.to),
         Unbound: () => none,
       }, 'kind'),
       _: () => none,
     });
   },
-  eq: (a, b) => MonoTy.eq(a, b),
-});
-
-export const TupleGeneric = createTuple<ParameterizedTy>({
-  from: (ty: ParameterizedTy): Maybe<Tuple<ParameterizedTy>> => {
-    return matchVariant(ty, {
-      Tuple: ({ tuple }) => some(tuple),
-      _: () => none,
-    });
-  },
-  eq: (a, b) => ParameterizedTy.eq(a, b),
-});
+};

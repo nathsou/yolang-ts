@@ -1,8 +1,8 @@
 import fc from 'fast-check';
 import { Context } from '../ast/context';
 import { Expr, Pattern } from '../ast/sweet';
-import { RowGeneric } from '../infer/records';
-import { ParameterizedTy, TypeParamsContext } from '../infer/types';
+import { Row } from '../infer/records';
+import { MonoTy, TypeParamsContext } from '../infer/types';
 import { Parser } from '../parse/combinators';
 import { lex } from '../parse/lex';
 import { binary, expr, recordTy, tuple, unary } from '../parse/parse';
@@ -20,11 +20,11 @@ const expectExpr = (parser: Parser<Expr>, input: string, expected: Expr): void =
   expect(res.unwrap()).toEqual(expected);
 };
 
-const expectType = (parser: Parser<ParameterizedTy>, input: string, expected: ParameterizedTy): void => {
+const expectType = (parser: Parser<MonoTy>, input: string, expected: MonoTy): void => {
   const [res, _, errs] = parser.ref(tokens(input), TypeParamsContext.make());
   expect(res.isOk()).toBe(true);
   expect(errs).toHaveLength(0);
-  expect(ParameterizedTy.show(res.unwrap())).toEqual(ParameterizedTy.show(expected));
+  expect(MonoTy.show(res.unwrap())).toEqual(MonoTy.show(expected));
 };
 
 describe('Parser', () => {
@@ -198,15 +198,15 @@ describe('Parser', () => {
 
   describe('record types', () => {
     it('should parse the empty record type', () => {
-      expectType(recordTy, '{}', ParameterizedTy.Record(RowGeneric.fromFields([])));
+      expectType(recordTy, '{}', MonoTy.Record(Row.fromFields([])));
     });
 
     it('should parse record types with a single field', () => {
       expectType(
         recordTy,
         '{ yo: u32, }',
-        ParameterizedTy.Record(RowGeneric.fromFields([
-          ['yo', ParameterizedTy.Const('u32')],
+        MonoTy.Record(Row.fromFields([
+          ['yo', MonoTy.Const('u32')],
         ]))
       );
     });
@@ -215,8 +215,8 @@ describe('Parser', () => {
       expectType(
         recordTy,
         '{ yo: u32 }',
-        ParameterizedTy.Record(RowGeneric.fromFields([
-          ['yo', ParameterizedTy.Const('u32')],
+        MonoTy.Record(Row.fromFields([
+          ['yo', MonoTy.Const('u32')],
         ]))
       );
     });

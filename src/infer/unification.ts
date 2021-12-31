@@ -3,11 +3,11 @@ import { match, __ } from "ts-pattern";
 import { zip } from "../utils/array";
 import { panic } from "../utils/misc";
 import { Result } from "../utils/result";
-import { RowMono } from "./records";
+import { Row } from "./records";
 import { Subst } from "./subst";
-import { TupleMono } from "./tuples";
+import { Tuple } from "./tuples";
 import { TypeContext } from "./typeContext";
-import { MonoTy, ParameterizedTy, TyVar } from "./types";
+import { MonoTy, TyVar } from "./types";
 
 export type UnificationError = string;
 
@@ -44,8 +44,7 @@ const unifyMany = (
       subst.set(t, a);
     }
 
-    const r = ParameterizedTy.substituteTyParams(genericTy.ty, subst);
-    return r;
+    return MonoTy.substituteTyParams(genericTy.ty, subst);
   };
 
   while (eqs.length > 0) {
@@ -130,6 +129,11 @@ const unifyMany = (
       .with([{ variant: 'Tuple' }, { variant: 'Tuple' }], ([s, t]) => {
         unifyTuples(s.tuple, t.tuple, ctx, subst, errors);
       })
+      .with([{ variant: 'Param' }, { variant: 'Param' }], ([s, t]) => {
+        if (s.name !== t.name) {
+          t.name = s.name;
+        }
+      })
       .otherwise(([s, t]) => {
         errors.push(`cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`);
       });
@@ -139,8 +143,8 @@ const unifyMany = (
 };
 
 const unifyTuples = (
-  a: TupleMono,
-  b: TupleMono,
+  a: Tuple,
+  b: Tuple,
   ctx: TypeContext,
   subst: Subst | undefined,
   errors: string[]
@@ -181,7 +185,7 @@ const rewriteRow = (
     Record: ({ row: row2 }) => matchVariant(row2, {
       empty: () => {
         errors.push(`row does not contain field ${field1}`);
-        return MonoTy.Record(RowMono.empty());
+        return MonoTy.Record(Row.empty());
       },
       extend: ({ field: field2, ty: fieldTy2, tail: row2Tail }) => {
         if (field1 === field2) {
@@ -189,7 +193,7 @@ const rewriteRow = (
           return row2Tail;
         }
 
-        return MonoTy.Record(RowMono.extend(
+        return MonoTy.Record(Row.extend(
           field2,
           fieldTy2,
           rewriteRow(row2Tail, field1, fieldTy1, ctx, subst, errors)
@@ -199,7 +203,7 @@ const rewriteRow = (
     Var: v => matchVariant(v.value, {
       Unbound: () => {
         const row2Tail = MonoTy.fresh();
-        const ty2 = MonoTy.Record(RowMono.extend(field1, fieldTy1, row2Tail));
+        const ty2 = MonoTy.Record(Row.extend(field1, fieldTy1, row2Tail));
         linkTo(v, ty2, subst);
         return row2Tail;
       },
@@ -207,7 +211,7 @@ const rewriteRow = (
     }, 'kind'),
     _: () => {
       errors.push(`expected row type, got ${MonoTy.show(row2)}`);
-      return MonoTy.Record(RowMono.empty());
+      return MonoTy.Record(Row.empty());
     },
   });
 };

@@ -1,6 +1,6 @@
 import fc, { Arbitrary } from 'fast-check';
-import { RowMono } from '../../infer/records';
-import { TupleMono } from '../../infer/tuples';
+import { Row } from '../../infer/records';
+import { Tuple } from '../../infer/tuples';
 import { MonoTy } from '../../infer/types';
 import { uniq } from '../../utils/array';
 import { lowerIdent } from './common.arb';
@@ -22,11 +22,11 @@ export const ty = (maxDepth = 3) => fc.letrec(tie => ({
     { arbitrary: tie('const'), weight: 3 },
     { arbitrary: varTy, weight: 1 },
   ),
-  tuple: fc.array(tie('ty'), { minLength: 2 }).map(elems => MonoTy.Tuple(TupleMono.fromArray(elems as MonoTy[]))),
+  tuple: fc.array(tie('ty'), { minLength: 2 }).map(elems => MonoTy.Tuple(Tuple.fromArray(elems as MonoTy[]))),
   record: fc.array(lowerIdent)
     .map(uniq)
     .chain(fields => fc.tuple(...fields.map(field => fc.tuple(fc.constant(field), tie('ty') as Arbitrary<MonoTy>))))
-    .map(fields => MonoTy.Record(RowMono.fromFields(fields))),
+    .map(fields => MonoTy.Record(Row.fromFields(fields))),
   function: fc.tuple(fc.array(tie('ty')), tie('ty')).map(([args, ret]) => MonoTy.Fun(args as MonoTy[], ret as MonoTy)),
   ty: fc.frequency(
     { maxDepth },

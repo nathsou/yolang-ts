@@ -1,10 +1,10 @@
 import { readFileSync } from 'fs';
 import { match as matchVariant } from "itsamatch";
 import { Decl, Prog } from "./ast/bitter";
-import { Prog as SweetProg } from "./ast/sweet";
 import { Context } from './ast/context';
+import { Prog as SweetProg } from "./ast/sweet";
 import { infer } from "./infer/infer";
-import { ParameterizedTy, PolyTy, TypeParams } from "./infer/types";
+import { MonoTy, PolyTy, TypeParams } from "./infer/types";
 import { formatError } from "./parse/combinators";
 import { lex } from "./parse/lex";
 import { parse } from "./parse/parse";
@@ -36,9 +36,9 @@ const typeCheck = (source: string): [Prog, string[]] => {
 const run = (source: string): Prog => {
   const [prog, errors] = typeCheck(source);
 
-  if (errors.length > 0) {
-    console.log(errors.join("\n"));
-  }
+  errors.forEach(err => {
+    console.log('\x1b[31m%s\x1b[0m', err);
+  });
 
   return prog;
 };
@@ -56,7 +56,7 @@ const showTypes = (decls: Decl[], path: string[]): string[] => {
         types.push(...showTypes(mod.decls, [...path, mod.name]));
       },
       TypeAlias: ({ name, typeParams, alias }) => {
-        types.push(`type ${pathName}${name}${TypeParams.show(typeParams)} = ${ParameterizedTy.show(alias)}`);
+        types.push(`type ${pathName}${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)}`);
       },
       _: () => { },
     });

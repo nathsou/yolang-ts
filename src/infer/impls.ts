@@ -1,9 +1,9 @@
 import { VariantOf } from "itsamatch";
 import { Decl } from "../ast/bitter";
-import { ParameterizedTy, TypeParams } from "./types";
+import { MonoTy, TypeParams } from "./types";
 
 export type Impl = {
-  ty: ParameterizedTy,
+  ty: MonoTy,
   typeParams: TypeParams,
   methods: Record<string, VariantOf<Decl, 'Function'>>,
   staticFuncs: Record<string, VariantOf<Decl, 'Function'>>,

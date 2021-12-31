@@ -4,11 +4,11 @@ import { gen } from '../utils/array';
 import { some } from '../utils/maybe';
 import { proj } from '../utils/misc';
 import { Env } from './env';
-import { RowMono } from './records';
+import { Row } from './records';
 import { signatures } from './signatures';
-import { TupleMono } from './tuples';
+import { Tuple } from './tuples';
 import { TypeContext } from './typeContext';
-import { MonoTy, ParameterizedTy, PolyTy } from './types';
+import { MonoTy, PolyTy } from './types';
 import { unifyMut } from './unification';
 
 export type TypingError = string;
@@ -112,8 +112,7 @@ export const inferExpr = (
       args.forEach(arg => {
         Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
         arg.annotation.do(ann => {
-          const annInst = ParameterizedTy.instantiate(ann, bodyCtx);
-          unify(arg.name.ty, annInst);
+          unify(arg.name.ty, ann);
         });
       });
 
@@ -191,7 +190,7 @@ export const inferExpr = (
       });
 
       const elemTys = elements.map(proj('ty'));
-      unify(tau, MonoTy.Tuple(TupleMono.fromArray(elemTys)));
+      unify(tau, MonoTy.Tuple(Tuple.fromArray(elemTys)));
     },
     Match: ({ expr, annotation, cases }) => {
       // match e { p1 => e1, p2 => e2, ... }
@@ -199,8 +198,7 @@ export const inferExpr = (
       const argTy = expr.ty;
 
       annotation.do(ann => {
-        const inst = ParameterizedTy.instantiate(ann, ctx);
-        unify(argTy, inst);
+        unify(argTy, ann);
       });
 
       inferExpr(expr, ctx, errors);
@@ -228,21 +226,20 @@ export const inferExpr = (
     },
     FieldAccess: ({ lhs, field }) => {
       const rowTail = MonoTy.fresh();
-      const partialRecordTy = MonoTy.Record(RowMono.extend(field, tau, rowTail));
+      const partialRecordTy = MonoTy.Record(Row.extend(field, tau, rowTail));
 
       inferExpr(lhs, ctx, errors);
       unify(partialRecordTy, lhs.ty);
     },
     NamedRecord: ({ name, typeParams, fields }) => {
-      const tyParmsInst = typeParams.map(ty => ParameterizedTy.instantiate(ty, ctx));
-      const expectedTy = MonoTy.Const(name, ...tyParmsInst);
+      const expectedTy = MonoTy.Const(name, ...typeParams);
 
       fields.forEach(({ value }) => {
         inferExpr(value, ctx, errors);
       });
 
       const actualTy = MonoTy.Record(
-        RowMono.fromFields(fields.map(f => [f.name, f.value.ty]))
+        Row.fromFields(fields.map(f => [f.name, f.value.ty]))
       );
 
       unify(expectedTy, actualTy);
@@ -254,7 +251,7 @@ export const inferExpr = (
       } else {
         inferExpr(lhs, ctx, errors);
         const elemsTys = gen(index + 1, MonoTy.fresh);
-        const expectedLhsTy = MonoTy.Tuple(TupleMono.fromArray(elemsTys, true));
+        const expectedLhsTy = MonoTy.Tuple(Tuple.fromArray(elemsTys, true));
         const actualLhsTy = lhs.ty;
 
         unify(expectedLhsTy, actualLhsTy);
@@ -287,8 +284,7 @@ export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: TypingError[]): 
       inferExpr(expr, ctx, errors);
 
       annotation.do(ann => {
-        const annInst = ParameterizedTy.instantiate(ann, ctx);
-        errors.push(...unifyMut(expr.ty, annInst, ctx));
+        errors.push(...unifyMut(expr.ty, ann, ctx));
       });
 
       const genTy = MonoTy.generalize(ctx.env, expr.ty);
@@ -314,8 +310,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
 
       args.forEach(arg => {
         arg.annotation.do(ann => {
-          const annInst = ParameterizedTy.instantiate(ann, bodyCtx);
-          errors.push(...unifyMut(arg.name.ty, annInst, bodyCtx));
+          errors.push(...unifyMut(arg.name.ty, ann, bodyCtx));
         });
 
         Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);

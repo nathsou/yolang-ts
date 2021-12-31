@@ -1,7 +1,7 @@
 import fc from "fast-check";
-import { RowMono } from "../infer/records";
+import { Row } from "../infer/records";
 import { Subst } from "../infer/subst";
-import { TupleMono } from "../infer/tuples";
+import { Tuple } from "../infer/tuples";
 import { TypeContext } from "../infer/typeContext";
 import { MonoTy } from "../infer/types";
 import { unifyMut, unifyPure } from "../infer/unification";
@@ -115,8 +115,8 @@ describe('unifyMut', () => {
   it('should unify record types correctly', () => {
     const tv1 = MonoTy.fresh();
     const tv2 = MonoTy.fresh();
-    const row1 = RowMono.extend('x', MonoTy.u32(), tv1);
-    const row2 = RowMono.extend('y', MonoTy.u32(), tv2);
+    const row1 = Row.extend('x', MonoTy.u32(), tv1);
+    const row2 = Row.extend('y', MonoTy.u32(), tv2);
     const rec1 = MonoTy.Record(row1);
     const rec2 = MonoTy.Record(row2);
 
@@ -170,8 +170,8 @@ describe('unifyPure', () => {
     const tv1 = MonoTy.Var({ kind: 'Unbound', id: 0 });
     const tv2 = MonoTy.Var({ kind: 'Unbound', id: 1 });
 
-    const ty1 = MonoTy.Tuple(TupleMono.fromArray([tv1, tv2]));
-    const ty2 = MonoTy.Tuple(TupleMono.fromArray([MonoTy.bool(), MonoTy.u32()]));
+    const ty1 = MonoTy.Tuple(Tuple.fromArray([tv1, tv2]));
+    const ty2 = MonoTy.Tuple(Tuple.fromArray([MonoTy.bool(), MonoTy.u32()]));
 
     const res = unifyPure(ty1, ty2, TypeContext.make());
 

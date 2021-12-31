@@ -1,9 +1,9 @@
 import { match as matchVariant } from 'itsamatch';
 import { match, select } from 'ts-pattern';
 import { Argument, Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
-import { RowGeneric } from '../infer/records';
-import { TupleGeneric } from '../infer/tuples';
-import { ParameterizedTy, TypeParams, TypeParamsContext } from '../infer/types';
+import { Row } from '../infer/records';
+import { Tuple } from '../infer/tuples';
+import { MonoTy, TypeParams, TypeParamsContext } from '../infer/types';
 import { takeWhile } from '../utils/array';
 import { none, some } from '../utils/maybe';
 import { compose, ref, snd } from '../utils/misc';
@@ -68,46 +68,46 @@ const unexpected = mapParserResult(
 );
 
 // TYPES
-export const parameterizedTy = uninitialized<ParameterizedTy>();
-const parenthesizedTy = map(parens(parameterizedTy), ty => ty);
-const unitTy = map(seq(symbol('('), symbol(')')), () => ParameterizedTy.Const('()'));
-const boolTy = map(ident2('bool'), () => ParameterizedTy.Const('bool'));
-const u32Ty = map(ident2('u32'), () => ParameterizedTy.Const('u32'));
+export const monoTy = uninitialized<MonoTy>();
+const parenthesizedTy = map(parens(monoTy), ty => ty);
+const unitTy = map(seq(symbol('('), symbol(')')), () => MonoTy.Const('()'));
+const boolTy = map(ident2('bool'), () => MonoTy.Const('bool'));
+const u32Ty = map(ident2('u32'), () => MonoTy.Const('u32'));
 const constTy = alt(unitTy, boolTy, u32Ty);
 const namedTy = withContext(ctx => map(
   seq(
     upperIdent,
-    optionalOrDefault(angleBrackets(optionalOrDefault(commas(parameterizedTy), [])), []),
+    optionalOrDefault(angleBrackets(optionalOrDefault(commas(monoTy), [])), []),
   ),
   ([name, args]) => {
     if (args.length === 0) {
       if (TypeParamsContext.has(ctx, name)) {
-        return ParameterizedTy.Param(name);
+        return MonoTy.Param(name);
       } else {
-        return ParameterizedTy.Const(name);
+        return MonoTy.Const(name);
       }
     } else {
-      return ParameterizedTy.Const(name, ...args);
+      return MonoTy.Const(name, ...args);
     }
   }
 ));
 
 const tupleTy = map(
   parens(seq(
-    parameterizedTy,
+    monoTy,
     symbol(','),
-    expectOrDefault(commas(parameterizedTy), `Expected type in tuple type after ','`, []),
+    expectOrDefault(commas(monoTy), `Expected type in tuple type after ','`, []),
   )),
-  ([h, _, tl]) => ParameterizedTy.Tuple(TupleGeneric.fromArray([h, ...tl]))
+  ([h, _, tl]) => MonoTy.Tuple(Tuple.fromArray([h, ...tl]))
 );
 
 export const recordTy = map(
   curlyBrackets(optionalOrDefault(commas(seq(
     ident,
     symbol(':'),
-    expectOrDefault(parameterizedTy, `Expected type in record type after ':'`, ParameterizedTy.Const('()')),
+    expectOrDefault(monoTy, `Expected type in record type after ':'`, MonoTy.Const('()')),
   )), [])),
-  fields => ParameterizedTy.Record(RowGeneric.fromFields(fields.map(([name, _, ty]) => [name, ty]), false))
+  fields => MonoTy.Record(Row.fromFields(fields.map(([name, _, ty]) => [name, ty]), false))
 );
 
 const allExceptFunTy = alt(
@@ -120,16 +120,16 @@ const allExceptFunTy = alt(
 
 const funTy = map(seq(
   alt(
-    map(parens(optional(commas(parameterizedTy))), args => args.orDefault([])),
+    map(parens(optional(commas(monoTy))), args => args.orDefault([])),
     map(allExceptFunTy, ty => [ty])
   ),
   symbol('->'),
-  parameterizedTy,
+  monoTy,
 ),
-  ([args, _, ret]) => ParameterizedTy.Fun(args, ret)
+  ([args, _, ret]) => MonoTy.Fun(args, ret)
 );
 
-initParser(parameterizedTy, alt(
+initParser(monoTy, alt(
   funTy,
   allExceptFunTy,
 ));
@@ -147,9 +147,9 @@ const scopedTypeParams = <T>(p: Parser<T>): Parser<[TypeParams, T]> =>
     })
   );
 
-const typeAnnotation = map(seq(
+const typeAnnotation: Parser<MonoTy> = map(seq(
   symbol(':'),
-  expectOrDefault(parameterizedTy, `Expected type after ':'`, ParameterizedTy.Const('()')),
+  expectOrDefault(monoTy, `Expected type after ':'`, MonoTy.Const('()')),
 ), snd);
 
 const argument = alt<Argument>(
@@ -320,7 +320,7 @@ const recordField = map(seq(
 const namedRecord = alt(
   map(seq(
     upperIdent,
-    optionalOrDefault(angleBrackets(optionalOrDefault(commas(parameterizedTy), [])), []),
+    optionalOrDefault(angleBrackets(optionalOrDefault(commas(monoTy), [])), []),
     expectOrDefault(curlyBrackets(optionalOrDefault(commas(recordField), [])), `Expected '{' in named record expression`, []),
   ),
     ([name, params, fields]) => Expr.NamedRecord(name, params, fields)
@@ -625,7 +625,7 @@ const funcDecl = map(seq(
 const inherentImplDecl = withContext(ctx => map(seq(
   keyword('impl'),
   scopedTypeParams(seq(
-    expectOrDefault(parameterizedTy, `Expected type after 'impl' keyword`, ParameterizedTy.Const('()')),
+    expectOrDefault(monoTy, `Expected type after 'impl' keyword`, MonoTy.Const('()')),
     expectOrDefault(curlyBrackets(many(decl)), `Expected declarations`, []),
   ))
 ),
@@ -645,7 +645,7 @@ const typeAliasDecl = map(seq(
   expectOrDefault(upperIdent, `Expected identifier after 'type' keyword`, '<?>'),
   scopedTypeParams(seq(
     expectOrDefault(symbol('='), `Expected '=' after type name`, Token.Symbol('=')),
-    parameterizedTy,
+    monoTy,
   ))
 ),
   ([_t, name, [params, [_eq, rhs]]]) => Decl.TypeAlias(name, params, rhs)

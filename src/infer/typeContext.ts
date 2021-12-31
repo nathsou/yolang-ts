@@ -1,20 +1,19 @@
-import { match as matchVariant, VariantOf } from "itsamatch";
+import { VariantOf } from "itsamatch";
 import { Decl } from "../ast/bitter";
 import { Context } from "../ast/context";
 import { Maybe, none, some } from "../utils/maybe";
 import { pushRecord } from "../utils/misc";
 import { Env } from "./env";
 import { Impl } from "./impls";
-import { RowGeneric } from "./records";
 import { Subst } from "./subst";
-import { MonoTy, ParameterizedTy, TypeParams, TyVar } from "./types";
+import { MonoTy, TypeParams, TyVar } from "./types";
 import { unifyPure } from "./unification";
 
 export type TypeContext = {
   env: Env,
   typeParamsEnv: Record<string, TyVar>,
   modules: Record<string, VariantOf<Decl, 'Module'>>,
-  typeAliases: Record<string, { ty: ParameterizedTy, params: TypeParams }>,
+  typeAliases: Record<string, { ty: MonoTy, params: TypeParams }>,
   impls: Record<string, Impl[]>,
 };
 
@@ -40,7 +39,7 @@ export const TypeContext = {
     ctx: TypeContext,
     name: string,
     typeParams: TypeParams,
-    alias: ParameterizedTy
+    alias: MonoTy
   ): void => {
     TypeContext.declareTypeParams(ctx, ...typeParams);
     ctx.typeAliases[name] = {
@@ -84,10 +83,9 @@ export const TypeContext = {
       for (const impl of ctx.impls[funcName]) {
         const newCtx = TypeContext.clone(ctx);
         TypeContext.declareTypeParams(newCtx, ...impl.typeParams);
-        const implTyInst = ParameterizedTy.instantiate(impl.ty, newCtx);
-        const res = unifyPure(ty, implTyInst, newCtx);
+        const res = unifyPure(ty, impl.ty, newCtx);
         if (res.isOk()) {
-          return some([impl, res.unwrap(), implTyInst, newCtx]);
+          return some([impl, res.unwrap(), impl.ty, newCtx]);
         }
       }
     }
