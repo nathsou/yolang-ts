@@ -72,3 +72,7 @@ export const takeWhile = <T>(elems: Iterable<T>, pred: (elem: T) => boolean): T[
 export const uniq = <T>(elems: T[]): T[] => {
   return [...new Set(elems)];
 };
+
+export const last = <T>(elems: T[]): T => {
+  return elems[elems.length - 1];
+};

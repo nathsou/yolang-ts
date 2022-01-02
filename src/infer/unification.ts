@@ -1,5 +1,6 @@
-import { match as matchVariant, VariantOf } from "itsamatch";
+import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { match, __ } from "ts-pattern";
+import { Error } from "../errors/errors";
 import { zip } from "../utils/array";
 import { panic } from "../utils/misc";
 import { Result } from "../utils/result";
@@ -9,7 +10,12 @@ import { Tuple } from "./tuples";
 import { TypeContext } from "./typeContext";
 import { MonoTy, TyVar } from "./types";
 
-export type UnificationError = string;
+export type UnificationError = DataType<{
+  RecursiveType: { s: MonoTy, t: MonoTy },
+  Ununifiable: { s: MonoTy, t: MonoTy },
+  UnknownRecordField: { row: Row, field: string },
+  DifferentLengthTuples: { s: Tuple, t: Tuple },
+}, 'type'>;
 
 const linkTo = (v: VariantOf<MonoTy, 'Var'>, to: MonoTy, subst?: Subst) => {
   if (subst) {
@@ -30,8 +36,8 @@ const unifyMany = (
   eqs: [MonoTy, MonoTy][],
   ctx: TypeContext,
   subst?: Subst
-): UnificationError[] => {
-  const errors: UnificationError[] = [];
+): Error[] => {
+  const errors: Error[] = [];
   const pushEqs = (...newEqs: [MonoTy, MonoTy][]): void => {
     eqs.push(...newEqs.map(([s, t]) => [MonoTy.deref(s), MonoTy.deref(t)] as [MonoTy, MonoTy]));
   };
@@ -56,7 +62,7 @@ const unifyMany = (
       // Eliminate
       .with([{ variant: 'Var', value: { kind: 'Unbound' } }, __], ([s, t]) => {
         if (MonoTy.occurs(s.value.id, t)) {
-          errors.push(`occurs check failed: ${MonoTy.show(s)}, ${MonoTy.show(t)}`);
+          errors.push(Error.Unification({ type: 'RecursiveType', s, t }));
         } else {
           linkTo(s, t, subst);
         }
@@ -82,7 +88,7 @@ const unifyMany = (
             pushEqs([s.args[i], t.args[i]]);
           }
         } else {
-          errors.push(`cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`);
+          errors.push(Error.Unification({ type: 'Ununifiable', s, t }));
         }
       })
       .with([{ variant: 'Const' }, __], ([s, t]) => {
@@ -103,7 +109,7 @@ const unifyMany = (
 
           pushEqs([s.ret, t.ret]);
         } else {
-          errors.push(`cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`);
+          errors.push(Error.Unification({ type: 'Ununifiable', s, t }));
         }
       })
       .with([
@@ -119,7 +125,7 @@ const unifyMany = (
         const isTailUnboundVar = s.row.tail.variant === 'Var' && s.row.tail.value.kind === 'Unbound';
         const row2Tail = rewriteRow(t, s.row.field, s.row.ty, ctx, subst, errors);
         if (isTailUnboundVar && s.row.tail.variant === 'Var' && s.row.tail.value.kind === 'Link') {
-          errors.push('recursive row type');
+          errors.push(Error.Unification({ type: 'RecursiveType', s, t }));
           // prevent infinite loop
           return errors;
         }
@@ -127,7 +133,9 @@ const unifyMany = (
         pushEqs([s.row.tail, row2Tail]);
       })
       .with([{ variant: 'Tuple' }, { variant: 'Tuple' }], ([s, t]) => {
-        unifyTuples(s.tuple, t.tuple, ctx, subst, errors);
+        if (!unifyTuples(s.tuple, t.tuple, ctx, subst, errors)) {
+          errors.push(Error.Unification({ type: 'DifferentLengthTuples', s: s.tuple, t: t.tuple }));
+        }
       })
       .with([{ variant: 'Param' }, { variant: 'Param' }], ([s, t]) => {
         if (s.name !== t.name) {
@@ -135,7 +143,7 @@ const unifyMany = (
         }
       })
       .otherwise(([s, t]) => {
-        errors.push(`cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`);
+        errors.push(Error.Unification({ type: 'Ununifiable', s, t }));
       });
   }
 
@@ -147,29 +155,29 @@ const unifyTuples = (
   b: Tuple,
   ctx: TypeContext,
   subst: Subst | undefined,
-  errors: string[]
-): void => {
+  errors: Error[]
+): boolean => {
   if (a.kind === 'EmptyTuple' && a.extension.isSome()) {
     errors.push(...unifyMany([[a.extension.unwrap(), MonoTy.Tuple(b)]], ctx, subst));
-    return;
+    return true;
   }
 
   if (b.kind === 'EmptyTuple' && b.extension.isSome()) {
     errors.push(...unifyMany([[MonoTy.Tuple(a), b.extension.unwrap()]], ctx, subst));
-    return;
+    return true;
   }
 
   if (a.kind === 'EmptyTuple' && b.kind === 'EmptyTuple') {
-    return;
+    return true;
   }
 
   if (a.kind === 'ExtendTuple' && b.kind === 'ExtendTuple') {
     errors.push(...unifyMany([[a.head, b.head]], ctx, subst));
     unifyTuples(a.tail, b.tail, ctx, subst, errors);
-    return;
+    return true;
   }
 
-  errors.push(`cannot unify tuples of different lenghts`);
+  return false;
 };
 
 // https://github.com/tomprimozic/type-systems/blob/master/extensible_rows/infer.ml
@@ -179,12 +187,12 @@ const rewriteRow = (
   fieldTy1: MonoTy,
   ctx: TypeContext,
   subst: Subst | undefined,
-  errors: string[],
+  errors: Error[],
 ): MonoTy => {
   return matchVariant(row2, {
     Record: ({ row: row2 }) => matchVariant(row2, {
       empty: () => {
-        errors.push(`row does not contain field ${field1}`);
+        errors.push(Error.Unification({ type: 'UnknownRecordField', field: field1, row: row2 }));
         return MonoTy.Record(Row.empty());
       },
       extend: ({ field: field2, ty: fieldTy2, tail: row2Tail }) => {
@@ -210,17 +218,16 @@ const rewriteRow = (
       Link: ({ to }) => rewriteRow(to, field1, fieldTy1, ctx, subst, errors),
     }, 'kind'),
     _: () => {
-      errors.push(`expected row type, got ${MonoTy.show(row2)}`);
-      return MonoTy.Record(Row.empty());
+      return panic(`expected row type, got ${MonoTy.show(row2)}`);
     },
   });
 };
 
-export const unifyMut = (s: MonoTy, t: MonoTy, ctx: TypeContext): UnificationError[] => {
+export const unifyMut = (s: MonoTy, t: MonoTy, ctx: TypeContext): Error[] => {
   return unifyMany([[MonoTy.deref(s), MonoTy.deref(t)]], ctx);
 };
 
-export const unifyPure = (s: MonoTy, t: MonoTy, ctx: TypeContext): Result<Subst, UnificationError[]> => {
+export const unifyPure = (s: MonoTy, t: MonoTy, ctx: TypeContext): Result<Subst, Error[]> => {
   const subst = Subst.make();
   const errors = unifyMany([[s, t]], ctx, subst);
   return Result.wrap([subst, errors]);

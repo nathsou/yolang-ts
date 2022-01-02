@@ -97,6 +97,31 @@ export const Expr = {
     TupleIndexing: ({ lhs, index }) => `${Expr.show(lhs)}.${index}`,
     LetIn: ({ pattern, value, body }) => `let ${Pattern.show(pattern)} = ${Expr.show(value)} in ${Expr.show(body)}`,
   }),
+  rewrite: (expr: Expr, f: (expr: Expr) => Expr): Expr => {
+    const go = (e: Expr) => Expr.rewrite(e, f);
+    return f(matchVariant(expr, {
+      Const: ({ value: expr }) => Expr.Const(expr),
+      Variable: ({ name }) => Expr.Variable(name),
+      Call: ({ lhs, args }) => Expr.Call(f(lhs), args.map(go)),
+      UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, go(expr)),
+      BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(go(lhs), op, go(rhs)),
+      Error: ({ message }) => Expr.Error(message),
+      Closure: ({ args, body }) => Expr.Closure(args, go(body)),
+      Block: ({ statements: stmts }) => Expr.Block(stmts.map(s => Stmt.rewrite(s, f))),
+      IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(f)),
+      Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs)),
+      CompoundAssignment: ({ lhs, op, rhs }) => Expr.CompoundAssignment(go(lhs), op, go(rhs)),
+      MethodCall: ({ receiver, method, args }) => Expr.MethodCall(go(receiver), method, args.map(go)),
+      ModuleAccess: ({ path, member }) => Expr.ModuleAccess(path, member),
+      FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field),
+      Tuple: ({ elements }) => Expr.Tuple(elements.map(go)),
+      Match: ({ expr, annotation, cases }) => Expr.Match(go(expr), annotation, cases.map(({ pattern, body }) => ({ pattern, body: go(body) }))),
+      Parenthesized: ({ expr }) => Expr.Parenthesized(go(expr)),
+      NamedRecord: ({ name, typeParams, fields }) => Expr.NamedRecord(name, typeParams, fields.map(({ name, value }) => ({ name, value: go(value) }))),
+      TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index),
+      LetIn: ({ pattern, annotation, value, body }) => Expr.LetIn(pattern, annotation, go(value), go(body)),
+    }))
+  },
 };
 
 export type Pattern = DataType<{
@@ -149,6 +174,11 @@ export const Stmt = {
     Expr: ({ expr }) => Expr.show(expr),
     Error: ({ message }) => `<Error: ${message}>`,
   }),
+  rewrite: (stmt: Stmt, f: (expr: Expr) => Expr): Stmt => matchVariant(stmt, {
+    Let: ({ name, expr, mutable, annotation }) => Stmt.Let(name, Expr.rewrite(expr, f), mutable, annotation),
+    Expr: ({ expr }) => Stmt.Expr(Expr.rewrite(expr, f)),
+    Error: ({ message }) => Stmt.Error(message),
+  }),
 };
 
 export type Decl = DataType<{
@@ -172,10 +202,19 @@ export const Decl = {
     Impl: ({ ty, typeParams, decls }) => `impl${TypeParams.show(typeParams)} ${MonoTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     Error: ({ message }) => `<Error: ${message}> `,
   }),
+  rewrite: (decl: Decl, f: (expr: Expr) => Expr): Decl => matchVariant(decl, {
+    Function: ({ name, typeParams, args, body }) => Decl.Function(name, typeParams, args, Expr.rewrite(body, f)),
+    Module: ({ name, decls }) => Decl.Module(name, decls.map(d => Decl.rewrite(d, f))),
+    TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias(name, typeParams, alias),
+    Impl: ({ ty, typeParams, decls }) => Decl.Impl(ty, typeParams, decls.map(d => Decl.rewrite(d, f))),
+    Error: ({ message }) => Decl.Error(message),
+  }),
 };
 
 export type Prog = Decl[];
 
 export const Prog = {
   show: (prog: Prog): string => joinWith(prog, Decl.show, '\n\n'),
+  rewrite: (prog: Prog, f: (expr: Expr) => Expr): Prog => prog.map(d => Decl.rewrite(d, f)),
+  traverse: (prog: Prog, f: (expr: Expr) => void): Prog => prog.map(d => Decl.rewrite(d, expr => { f(expr); return expr; })),
 };

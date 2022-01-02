@@ -1,5 +1,6 @@
-import { match as matchVariant } from 'itsamatch';
+import { DataType, match as matchVariant } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
+import { Error } from '../errors/errors';
 import { gen } from '../utils/array';
 import { some } from '../utils/maybe';
 import { proj } from '../utils/misc';
@@ -11,15 +12,25 @@ import { TypeContext } from './typeContext';
 import { MonoTy, PolyTy } from './types';
 import { unifyMut } from './unification';
 
-export type TypingError = string;
+export type TypingError = DataType<{
+  UnboundVariable: { name: string },
+  ImmutableVariable: { name: string },
+  UnassignableExpression: { expr: Expr },
+  UnknownMethod: { method: string, ty: MonoTy },
+  UnknownModule: { path: string[] },
+  UnknownModuleMember: { path: string[], member: string },
+  TEMP_OnlyFunctionModuleAccessAllowed: { path: string[], member: string },
+  TupleIndexTooBig: { index: number },
+  ParsingError: { message: string },
+}, 'type'>;
 
 export const inferExpr = (
   expr: Expr,
   ctx: TypeContext,
-  errors: TypingError[]
-): TypingError[] => {
+  errors: Error[]
+): Error[] => {
   const unify = (s: MonoTy, t: MonoTy): void => {
-    errors.push(...unifyMut(s, t, ctx).map(err => err + ' in ' + Expr.showSweet(expr)));
+    errors.push(...unifyMut(s, t, ctx));
   };
 
   const { env } = ctx;
@@ -34,7 +45,7 @@ export const inferExpr = (
           unify(instTy, tau);
         },
         None: () => {
-          errors.push(`variable '${name.original}' is not in scope`);
+          errors.push(Error.Typing({ type: 'UnboundVariable', name: name.original }));
         },
       });
     },
@@ -100,10 +111,10 @@ export const inferExpr = (
       // mutability check
       if (lhs.variant === 'Variable') {
         if (!lhs.name.mutable) {
-          errors.push(`variable '${lhs.name.original}' is not mutable`);
+          errors.push(Error.Typing({ type: 'ImmutableVariable', name: lhs.name.original }));
         }
       } else {
-        errors.push(`cannot assign to ${Expr.showSweet(lhs)}`);
+        errors.push(Error.Typing({ type: 'UnassignableExpression', expr: lhs }));
       }
     },
     Closure: ({ args, body }) => {
@@ -136,7 +147,7 @@ export const inferExpr = (
         Some: ([impl, _subst, implInstTy]) => {
           const isMethod = method in impl.methods;
           if (!isMethod) {
-            errors.push(`no method '${method}' found for type ${MonoTy.show(receiver.ty)}`);
+            errors.push(Error.Typing({ type: 'UnknownMethod', method, ty: receiver.ty }));
           } else {
             expr.impl = some(impl);
 
@@ -157,7 +168,7 @@ export const inferExpr = (
           }
         },
         None: () => {
-          errors.push(`no method '${method}' found for type ${MonoTy.show(receiver.ty)}`);
+          errors.push(Error.Typing({ type: 'UnknownMethod', method, ty: receiver.ty }));
         },
       });
     },
@@ -172,15 +183,15 @@ export const inferExpr = (
                 unify(instTy, tau);
               },
               _: () => {
-                errors.push(`member '${path.join('.')}.${member}' is not a function`);
+                errors.push(Error.Typing({ type: 'TEMP_OnlyFunctionModuleAccessAllowed', path, member }));
               },
             });
           } else {
-            errors.push(`'${member}' is not a member of module '${path.join('.')}'`);
+            errors.push(Error.Typing({ type: 'UnknownModuleMember', path, member }));
           }
         },
         None: () => {
-          errors.push(`module '${path.join('.')}' is not in scope`);
+          errors.push(Error.Typing({ type: 'UnknownModule', path }));
         },
       });
     },
@@ -247,7 +258,7 @@ export const inferExpr = (
     },
     TupleIndexing: ({ lhs, index }) => {
       if (index > 1000) {
-        errors.push(`Indexing a tuple with more than 1000 elements is not allowed`);
+        errors.push(Error.Typing({ type: 'TupleIndexTooBig', index }));
       } else {
         inferExpr(lhs, ctx, errors);
         const elemsTys = gen(index + 1, MonoTy.fresh);
@@ -259,16 +270,16 @@ export const inferExpr = (
       }
     },
     Error: ({ message }) => {
-      errors.push(message);
+      errors.push(Error.Typing({ type: 'ParsingError', message }));
     },
   });
 
   return errors;
 };
 
-export const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors: TypingError[]): TypingError[] => {
+export const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors: Error[]): Error[] => {
   const unify = (s: MonoTy, t: MonoTy): void => {
-    errors.push(...unifyMut(s, t, ctx).map(err => err + ' in ' + Expr.showSweet(expr)));
+    errors.push(...unifyMut(s, t, ctx));
   };
 
   const tau = expr.ty;
@@ -278,7 +289,7 @@ export const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors:
   return errors;
 };
 
-export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: TypingError[]): TypingError[] => {
+export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): Error[] => {
   matchVariant(stmt, {
     Let: ({ name, expr, annotation }) => {
       inferExpr(expr, ctx, errors);
@@ -294,14 +305,14 @@ export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: TypingError[]): 
       inferExpr(expr, ctx, errors);
     },
     Error: ({ message }) => {
-      errors.push(message);
+      errors.push(Error.Typing({ type: 'ParsingError', message }));
     },
   });
 
   return errors;
 };
 
-export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors: TypingError[]): TypingError[] => {
+export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors: Error[]): Error[] => {
   matchVariant(decl, {
     Function: func => {
       const { name, typeParams, args, body } = func;
@@ -368,15 +379,15 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
       }
     },
     Error: ({ message }) => {
-      errors.push(message);
+      errors.push(Error.Typing({ type: 'ParsingError', message }));
     },
   });
 
   return errors;
 };
 
-export const infer = (prog: Prog): TypingError[] => {
-  const errors: TypingError[] = [];
+export const infer = (prog: Prog): Error[] => {
+  const errors: Error[] = [];
   const topModule = Decl.Module('top', prog);
   const ctx = TypeContext.make();
 

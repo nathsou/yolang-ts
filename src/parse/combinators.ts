@@ -235,11 +235,11 @@ export const expect = <T>(
   p: Parser<T>,
   message: ParserError['message'],
   recovery?: ParserError['recovery'],
-): Parser<Maybe<T>> => {
+): Parser<T> => {
   return ref((tokens, ctx) => {
     const [t, rem, errs] = p.ref(tokens, ctx);
     return t.match({
-      Ok: t => [ok(some(t)), rem, errs],
+      Ok: t => [ok(t), rem, errs],
       Error: e => {
         const [_, rem2, errs2] = recover({
           message,
@@ -247,7 +247,7 @@ export const expect = <T>(
           recovery: recovery ?? e.recovery
         }).ref(tokens, ctx);
 
-        return [ok(none), rem2, errs2];
+        return [error({ message: fail, pos: tokens.start }), rem2, errs2];
       },
     });
   });
@@ -256,15 +256,19 @@ export const expect = <T>(
 export const expectOrDefault = <T>(
   p: Parser<T>,
   message: ParserError['message'],
-  defaultValue: T | ((message: string) => T),
-  recovery?: ParserError['recovery']
+  defaultValue: T | ((message: string) => T)
 ): Parser<T> => {
-  const defaultVal: T = typeof defaultValue === 'function' ? (defaultValue as any)(message) : defaultValue;
-
-  return map(
-    expect(p, message, recovery),
-    maybe => maybe.orDefault(defaultVal)
-  );
+  return ref((tokens, ctx) => {
+    const [t, rem, errs] = p.ref(tokens, ctx);
+    return t.match({
+      Ok: t => [ok(t), rem, errs],
+      Error: () => [
+        ok(typeof defaultValue === 'function' ? (defaultValue as any)(message) : defaultValue),
+        rem,
+        errs
+      ]
+    });
+  });
 };
 
 export const conditionalError = <T>(parser: Parser<T>, pred: (data: T) => boolean, message: ParserError['message']): Parser<T> => {
@@ -342,16 +346,6 @@ export const nestedBy = (left: Symbol, right: Symbol) => <T>(p: Parser<T>): Pars
     ),
     ([, t,]) => t
   );
-};
-
-export const ignoreErrorsOnFail = <T>(p: Parser<T>): Parser<T> => {
-  return ref((tokens, ctx) => {
-    const [t, rem, errs] = p.ref(tokens, ctx);
-    return t.match({
-      Ok: t => [ok(t), rem, errs],
-      Error: e => e.message === fail ? [error(e), rem, []] : [error(e), rem, errs],
-    });
-  });
 };
 
 export const effect = <T>(p: Parser<T>, action: (data: T, tokens: Slice<Token>) => void): Parser<T> => {

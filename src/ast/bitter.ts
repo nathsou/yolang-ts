@@ -1,4 +1,5 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
+import { Error } from "../errors/errors";
 import { Impl } from "../infer/impls";
 import { Tuple } from "../infer/tuples";
 import { MonoTy, PolyTy, TypeParams } from "../infer/types";
@@ -43,7 +44,7 @@ const NameEnv = {
 
     // TODO: return a dummy value
     // so that this error gets handled in the inferencer
-    throw new Error(`Name '${name}' not found`);
+    throw `Name '${name}' not found`;
   },
 };
 
@@ -134,7 +135,7 @@ export const Expr = {
   Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, body: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Match', expr, annotation, cases }, sweet),
   NamedRecord: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'NamedRecord', name, typeParams, fields }, sweet),
   TupleIndexing: (lhs: Expr, index: number, sweet: SweetExpr): Expr => typed({ variant: 'TupleIndexing', lhs, index }, sweet),
-  fromSweet: (sweet: SweetExpr, nameEnv: NameEnv, errors: BitterConversionError[]): Expr => {
+  fromSweet: (sweet: SweetExpr, nameEnv: NameEnv, errors: Error[]): Expr => {
     const go = (expr: SweetExpr, env = nameEnv) => Expr.fromSweet(expr, env, errors);
 
     return matchVariant(sweet, {
@@ -225,7 +226,7 @@ export const Stmt = {
   Let: (name: Name, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
-  fromSweet: (sweet: SweetStmt, nameEnv: NameEnv, errors: BitterConversionError[]): Stmt => {
+  fromSweet: (sweet: SweetStmt, nameEnv: NameEnv, errors: Error[]): Stmt => {
     return matchVariant(sweet, {
       Let: ({ name, expr, mutable, annotation }) => Stmt.Let(
         NameEnv.declare(nameEnv, name, mutable),
@@ -298,7 +299,7 @@ export const Decl = {
   TypeAlias: (name: string, typeParams: TypeParams, alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
   Impl: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
-  fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: BitterConversionError[]): Decl =>
+  fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: Error[]): Decl =>
     matchVariant(sweet, {
       Function: ({ name, typeParams, args, body }) => {
         const withoutPatterns = removeFuncArgsPatternMatching(args, body, nameEnv, errors);
@@ -342,10 +343,12 @@ export const Decl = {
 
 export type Prog = Decl[];
 
-type BitterConversionError = string;
+export type BitterConversionError = {
+  message: string,
+};
 
 export const Prog = {
-  fromSweet: (prog: SweetProg): [prog: Prog, errors: BitterConversionError[]] => {
+  fromSweet: (prog: SweetProg): [prog: Prog, errors: Error[]] => {
     const nameEnv = NameEnv.make();
 
     // declare all function names beforehand
@@ -356,7 +359,7 @@ export const Prog = {
       }
     }
 
-    const errors: BitterConversionError[] = [];
+    const errors: Error[] = [];
 
     const bitterProg = prog.map(decl => Decl.fromSweet(
       decl,
@@ -373,11 +376,13 @@ export const removeFuncArgsPatternMatching = (
   args: SweetArgument[],
   body: SweetExpr,
   nameEnv: NameEnv,
-  errors: string[],
+  errors: Error[],
 ): { args: Argument[], body: Expr } => {
   const firstRefuttableArg = args.find(({ pattern }) => !SweetPattern.isIrrefutable(pattern));
   if (firstRefuttableArg !== undefined) {
-    errors.push(`patterns in function arguments must be irrefutable, but ${SweetPattern.show(firstRefuttableArg.pattern)} is not`);
+    errors.push(Error.BitterConversion({
+      message: `patterns in function arguments must be irrefutable, but ${SweetPattern.show(firstRefuttableArg.pattern)} is not`,
+    }));
   }
 
   // we don't have to do anything if all the patterns are variables or _

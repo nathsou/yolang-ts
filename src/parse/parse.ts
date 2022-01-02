@@ -269,8 +269,38 @@ export const primary = alt(
   // unexpected
 );
 
+// e.g Main.Yolo.yo
+const moduleAccess = alt(
+  map(
+    map(
+      seq(
+        upperIdent,
+        expect(symbol('.'), `Expected '.' after module name`),
+        expectOrDefault(sepBy(symbol('.'))(ident), `Expected identifier after '.'`, []),
+      ),
+      ([name, _, members]) => [name, ...members],
+    ),
+    path => {
+      const modulePath = takeWhile(path, p => p[0].toUpperCase() === p[0]);
+
+      if (modulePath.length === 0) {
+        throw new Error(`Expected module path`);
+      }
+
+      const members = path.slice(modulePath.length);
+
+      if (members.length !== 1) {
+        throw new Error(`Expected single member`);
+      }
+
+      return Expr.ModuleAccess(modulePath, members[0]);
+    }
+  ),
+  primary
+);
+
 const app = leftAssoc(
-  primary,
+  moduleAccess,
   parens(map(optional(commas(expr)), args => args.orDefault([]))),
   (lhs, rhs) => Expr.Call(lhs, rhs)
 );
@@ -321,46 +351,16 @@ const namedRecord = alt(
   map(seq(
     upperIdent,
     optionalOrDefault(angleBrackets(optionalOrDefault(commas(monoTy), [])), []),
-    expectOrDefault(curlyBrackets(optionalOrDefault(commas(recordField), [])), `Expected '{' in named record expression`, []),
+    curlyBrackets(optionalOrDefault(commas(recordField), [])),
   ),
     ([name, params, fields]) => Expr.NamedRecord(name, params, fields)
   ),
   tuple
 );
 
-// e.g Main.Yolo.yo
-const moduleAccess = alt(
-  map(
-    map(
-      seq(
-        upperIdent,
-        symbol('.'),
-        expectOrDefault(sepBy(symbol('.'))(ident), `Expected identifier after '.'`, []),
-      ),
-      ([name, _, members]) => [name, ...members],
-    ),
-    path => {
-      const modulePath = takeWhile(path, p => p[0].toUpperCase() === p[0]);
-
-      if (modulePath.length === 0) {
-        throw new Error(`Expected module path`);
-      }
-
-      const members = path.slice(modulePath.length);
-
-      if (members.length !== 1) {
-        throw new Error(`Expected single member`);
-      }
-
-      return Expr.ModuleAccess(modulePath, members[0]);
-    }
-  ),
-  namedRecord
-);
-
 // field access or method call or tuple indexing
 const fieldAccess = chainLeft(
-  moduleAccess,
+  namedRecord,
   symbol('.'),
   seq(
     expectOrDefault(alt<{ variant: 'ident', name: string } | { variant: 'int', value: number }>(
@@ -396,50 +396,35 @@ const multiplicative = chainLeft(
   unary,
   multiplicativeOp,
   expect(unary, 'Expected expression after multiplicative operator'),
-  (a, op, b) => b.mapWithDefault(
-    b => Expr.BinaryOp(a, op, b),
-    Expr.Error(`Expected expression after '${op}' operator`)
-  )
+  (a, op, b) => Expr.BinaryOp(a, op, b)
 );
 
 const additive = chainLeft(
   multiplicative,
   additiveOp,
   expect(multiplicative, 'Expected expression after additive operator'),
-  (a, op, b) => b.mapWithDefault(
-    b => Expr.BinaryOp(a, op, b),
-    Expr.Error(`Expected expression after '${op}' operator`)
-  )
+  (a, op, b) => Expr.BinaryOp(a, op, b)
 );
 
 const relational = chainLeft(
   additive,
   relationalOp,
   expect(additive, 'Expected expression after relational operator'),
-  (a, op, b) => b.mapWithDefault(
-    b => Expr.BinaryOp(a, op, b),
-    Expr.Error(`Expected expression after '${op}' operator`)
-  )
+  (a, op, b) => Expr.BinaryOp(a, op, b)
 );
 
 const logical = chainLeft(
   relational,
   logicalOp,
   expect(relational, 'Expected expression after logical operator'),
-  (a, op, b) => b.mapWithDefault(
-    b => Expr.BinaryOp(a, op, b),
-    Expr.Error(`Expected expression after '${op}' operator`)
-  )
+  (a, op, b) => Expr.BinaryOp(a, op, b)
 );
 
 const equality = chainLeft(
   logical,
   equalityOp,
   expect(logical, 'Expected expression after equality operator'),
-  (a, op, b) => b.mapWithDefault(
-    b => Expr.BinaryOp(a, op, b),
-    Expr.Error(`Expected expression after '${op}' operator`)
-  )
+  (a, op, b) => Expr.BinaryOp(a, op, b)
 );
 
 export const binary = equality;

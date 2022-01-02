@@ -2,5 +2,5 @@
 type Ref<T> = { ref: T }
 
 fn deref<U>(r: Ref<U>) {
-  r.ref.yolo
+  r.ref
 }

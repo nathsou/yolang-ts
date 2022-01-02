@@ -1,30 +1,23 @@
-import { readFileSync } from 'fs';
 import { match as matchVariant } from "itsamatch";
 import { Decl, Prog } from "./ast/bitter";
 import { Context } from './ast/context';
 import { Prog as SweetProg } from "./ast/sweet";
+import { Error } from './errors/errors';
 import { infer } from "./infer/infer";
 import { MonoTy, PolyTy, TypeParams } from "./infer/types";
-import { formatError } from "./parse/combinators";
-import { lex } from "./parse/lex";
-import { parse } from "./parse/parse";
-import { Slice } from "./utils/slice";
+import { createNodeFileSystem } from './resolve/nodefs';
+import { resolve } from './resolve/resolve';
 
 // pipeline:
 // <string> -> parse -> <sweet> -> desugar & resolve modules -> <bitter> -> infer ->
 // monomorphize -> inject reference counting -> emit code
 
-const typeCheck = (source: string): [Prog, string[]] => {
+const typeCheck = (sweetProg: SweetProg): [Prog, Error[]] => {
   Context.clear();
+  console.log(SweetProg.show(sweetProg) + '\n');
+  const errors: Error[] = [];
 
-  const errors: string[] = [];
-  const tokens = lex(source);
-  const [decls, parsingErrors] = parse(Slice.from(tokens));
-  errors.push(...parsingErrors.map(err => formatError(err, tokens)));
-
-  console.log(SweetProg.show(decls) + '\n');
-
-  const [prog, bitterErrors] = Prog.fromSweet(decls);
+  const [prog, bitterErrors] = Prog.fromSweet(sweetProg);
   errors.push(...bitterErrors);
 
   const typingErrors = infer(prog);
@@ -33,11 +26,13 @@ const typeCheck = (source: string): [Prog, string[]] => {
   return [prog, errors];
 };
 
-const run = (source: string): Prog => {
-  const [prog, errors] = typeCheck(source);
+const run = async (source: string): Promise<Prog> => {
+  const nfs = await createNodeFileSystem();
+  const [sweetProg, errs1] = await resolve(source, nfs);
+  const [prog, errs2] = typeCheck(sweetProg);
 
-  errors.forEach(err => {
-    console.log('\x1b[31m%s\x1b[0m', err);
+  [...errs1, ...errs2].forEach(err => {
+    console.log('\x1b[31m%s\x1b[0m', JSON.stringify(err, null, 2));
   });
 
   return prog;
@@ -67,11 +62,12 @@ const showTypes = (decls: Decl[], path: string[]): string[] => {
 
 const [, , source] = process.argv;
 
-if (source) {
-  const contents = readFileSync(source, 'utf8');
-  const prog = run(contents);
-  console.log(showTypes(prog, []).join('\n\n'));
-} else {
-  console.info('Usage: yo <source.yo>');
-  process.exit(0);
-}
+(async () => {
+  if (source) {
+    const prog = await run(source);
+    console.log(showTypes(prog, []).join('\n\n'));
+  } else {
+    console.info('Usage: yo <source.yo>');
+    process.exit(0);
+  }
+})();

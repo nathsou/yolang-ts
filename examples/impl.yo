@@ -38,5 +38,5 @@ fn yo() {
   let u = Vec2 { x: 3, y: 4 }
   let v = Vec2 { x: 7, y: 11 }
 
-  u.dot(v)
+  u.plus(v)
 }
