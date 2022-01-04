@@ -76,3 +76,16 @@ export const uniq = <T>(elems: T[]): T[] => {
 export const last = <T>(elems: T[]): T => {
   return elems[elems.length - 1];
 };
+
+export const filterMap = <T, U>(elems: T[], f: (elem: T) => Maybe<U>): U[] => {
+  const result: U[] = [];
+
+  for (const elem of elems) {
+    const mapped = f(elem);
+    if (mapped.isSome()) {
+      result.push(mapped.unwrap());
+    }
+  }
+
+  return result;
+};

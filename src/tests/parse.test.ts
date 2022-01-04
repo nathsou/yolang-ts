@@ -201,16 +201,6 @@ describe('Parser', () => {
       expectType(recordTy, '{}', MonoTy.Record(Row.fromFields([])));
     });
 
-    it('should parse record types with a single field', () => {
-      expectType(
-        recordTy,
-        '{ yo: u32, }',
-        MonoTy.Record(Row.fromFields([
-          ['yo', MonoTy.Const('u32')],
-        ]))
-      );
-    });
-
     it('should parse record types without trailing commas', () => {
       expectType(
         recordTy,

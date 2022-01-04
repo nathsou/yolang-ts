@@ -100,6 +100,7 @@ type MapP<Ts extends readonly any[]> =
 
 export const seq = <T extends readonly Parser<any>[]>(...parsers: T): Parser<[...MapP<T>]> => {
   return ref((tokens, ctx) => {
+    const originalTokens = tokens;
     const errors: ParserError[] = [];
     const tuple = [];
 
@@ -109,7 +110,7 @@ export const seq = <T extends readonly Parser<any>[]>(...parsers: T): Parser<[..
       tokens = rem;
 
       if (t.isError()) {
-        return [t, tokens, errors];
+        return [t, originalTokens, errors];
       }
 
       tuple.push(t.unwrap());

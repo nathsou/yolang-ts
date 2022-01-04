@@ -4,13 +4,12 @@ import { Argument, Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
 import { Row } from '../infer/records';
 import { Tuple } from '../infer/tuples';
 import { MonoTy, TypeParams, TypeParamsContext } from '../infer/types';
-import { takeWhile } from '../utils/array';
 import { none, some } from '../utils/maybe';
 import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized, withContext } from './combinators';
+import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, effect, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized, withContext } from './combinators';
 import { Const, Token } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -269,32 +268,17 @@ export const primary = alt(
   // unexpected
 );
 
+const modulePath = sepBy(symbol('.'))(upperIdent);
+
 // e.g Main.Yolo.yo
 const moduleAccess = alt(
   map(
-    map(
-      seq(
-        upperIdent,
-        expect(symbol('.'), `Expected '.' after module name`),
-        expectOrDefault(sepBy(symbol('.'))(ident), `Expected identifier after '.'`, []),
-      ),
-      ([name, _, members]) => [name, ...members],
+    seq(
+      modulePath,
+      expect(symbol('.'), `Expected '.' after module path`),
+      expectOrDefault(ident, `Expected identifier after '.'`, '<?>'),
     ),
-    path => {
-      const modulePath = takeWhile(path, p => p[0].toUpperCase() === p[0]);
-
-      if (modulePath.length === 0) {
-        throw new Error(`Expected module path`);
-      }
-
-      const members = path.slice(modulePath.length);
-
-      if (members.length !== 1) {
-        throw new Error(`Expected single member`);
-      }
-
-      return Expr.ModuleAccess(modulePath, members[0]);
-    }
+    ([path, _, member]) => Expr.ModuleAccess(path, member),
   ),
   primary
 );

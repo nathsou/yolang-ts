@@ -1,10 +1,10 @@
 
+fn main() {
+  (Hey.hey(), Yo.yo())
+}
+
 module Hey {
   fn hey() {
     17
   }
-}
-
-fn main() {
-  (Yo.yo(), Hey.hey())
 }

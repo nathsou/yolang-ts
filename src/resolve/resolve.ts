@@ -3,7 +3,8 @@ import { Decl, Prog } from "../ast/sweet";
 import { Error } from "../errors/errors";
 import { lex } from "../parse/lex";
 import { parse } from "../parse/parse";
-import { last } from "../utils/array";
+import { filterMap, last } from "../utils/array";
+import { Maybe, none, some } from "../utils/maybe";
 import { Slice } from "../utils/slice";
 import { FileSystem } from "./fileSystem";
 
@@ -44,13 +45,13 @@ const reachableModules = async (
           path: dir,
           existingPath: modules.get(name)!.path,
         }));
+      } else {
+        modules.set(name, {
+          path: fullPath,
+          name,
+          resolved: false
+        });
       }
-
-      modules.set(name, {
-        path: fullPath,
-        name,
-        resolved: false
-      });
     } else {
       await reachableModules(fullPath, fs, errors, modules);
     }
@@ -93,7 +94,10 @@ const resolveAux = async (
 
   const [decls, errs] = parse(tokens);
   errors.push(...errs.map(Error.Parser));
-  const localTopLevelModules = decls.filter(decl => decl.variant === 'Module') as VariantOf<Decl, 'Module'>[];
+  const localTopLevelModules = new Set(filterMap(decls, d => matchVariant(d, {
+    Module: ({ name }) => some(name),
+    _: (): Maybe<string> => none,
+  })));
 
   const prog: Prog = [Decl.Module(mod.name, decls)];
 
@@ -104,7 +108,7 @@ const resolveAux = async (
   Prog.traverse(decls, expr => matchVariant(expr, {
     ModuleAccess: ({ path }) => {
       const modName = moduleName(path[0]);
-      if (localTopLevelModules.some(m => m.name === modName)) {
+      if (localTopLevelModules.has(modName)) {
         return;
       }
 
