@@ -24,7 +24,7 @@ export const TyVar = {
 export type MonoTy = DataType<{
   Var: { value: TyVar },
   Param: { name: string },
-  Const: { name: string, args: MonoTy[] },
+  Const: { path: string[], name: string, args: MonoTy[] },
   Fun: { args: MonoTy[], ret: MonoTy },
   Tuple: { tuple: Tuple },
   Record: { row: Row },
@@ -42,7 +42,8 @@ export const MonoTy = {
     Link: ({ to }): MonoTy => ({ variant: 'Var', value: { kind: 'Link', to: MonoTy.deref(to) } }),
   }, 'kind'),
   Param: (name: string): MonoTy => ({ variant: 'Param', name }),
-  Const: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', name, args }),
+  Const: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', path: [], name, args }),
+  ConstWithPath: (path: string[], name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', path, name, args }),
   Fun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'Fun', args, ret }),
   Tuple: (tuple: Tuple): MonoTy => ({ variant: 'Tuple', tuple }),
   Record: (row: Row): MonoTy => ({ variant: 'Record', row }),
@@ -214,7 +215,7 @@ export const MonoTy = {
       Link: ({ to }) => MonoTy.show(to),
     }, 'kind'),
     Param: ({ name }) => `'${name}`,
-    Const: ({ name, args }) => cond(args.length === 0, {
+    Const: ({ path, name, args }) => (path.length > 0 ? `${path.join('.')}.` : '') + cond(args.length === 0, {
       then: () => name,
       else: () => matchString(name, {
         'tuple': () => `(${joinWith(args, MonoTy.show, ', ')})`,
@@ -255,7 +256,12 @@ export const MonoTy = {
       .with(
         [{ variant: 'Const' }, { variant: 'Const' }],
         ([s, t]) => {
-          if (s.name === t.name && s.args.length === t.args.length) {
+          if (
+            s.name === t.name &&
+            s.args.length === t.args.length &&
+            s.path.length === t.path.length &&
+            zip(s.path, t.path).every(([s, t]) => s === t)
+          ) {
             return s.args.every((arg, i) => MonoTy.eq(arg, t.args[i]));
           }
 

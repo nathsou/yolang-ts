@@ -15,15 +15,17 @@ export type TypeContext = {
   modules: Record<string, VariantOf<Decl, 'Module'>>,
   typeAliases: Record<string, { ty: MonoTy, params: TypeParams }>,
   impls: Record<string, Impl[]>,
+  topLevelDecls: Decl[],
 };
 
 export const TypeContext = {
-  make: (): TypeContext => ({
+  make: (topLevelDecls: Decl[]): TypeContext => ({
     env: Env.make(),
     typeParamsEnv: {},
     modules: {},
     typeAliases: {},
     impls: {},
+    topLevelDecls,
   }),
   clone: (ctx: TypeContext): TypeContext => ({
     env: Env.clone(ctx.env),
@@ -31,6 +33,7 @@ export const TypeContext = {
     typeAliases: { ...ctx.typeAliases },
     impls: { ...ctx.impls },
     typeParamsEnv: {},
+    topLevelDecls: [...ctx.topLevelDecls],
   }),
   declareModule: (ctx: TypeContext, mod: VariantOf<Decl, 'Module'>): void => {
     ctx.modules[mod.name] = mod;
@@ -92,4 +95,33 @@ export const TypeContext = {
 
     return none;
   },
+  findTypeAlias: (ctx: TypeContext, path: string[], name: string): Maybe<[MonoTy, TypeParams]> => {
+    const aux = (path: string[], decls: Decl[]): Maybe<[MonoTy, TypeParams]> => {
+      if (path.length === 0) {
+        const typeAlias = decls.find(d => d.variant === 'TypeAlias' && d.name === name);
+        if (typeAlias) {
+          const { alias, typeParams } = (typeAlias as VariantOf<Decl, 'TypeAlias'>);
+          return some([alias, typeParams]);
+        }
+      }
+
+      const [head, ...tail] = path;
+
+      const mod = decls.find(decl => decl.variant === 'Module' && decl.name === head);
+      if (mod) {
+        return aux(tail, (mod as VariantOf<Decl, 'Module'>).decls);
+      }
+
+      return none;
+    };
+
+    const mod = ctx.modules[path[0]];
+
+    if (mod) {
+      return aux(path.slice(1), mod.decls);
+    } else {
+      return none;
+    }
+  },
+
 };

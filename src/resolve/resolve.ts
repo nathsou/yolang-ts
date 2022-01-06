@@ -1,6 +1,9 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { Decl, Prog } from "../ast/sweet";
 import { Error } from "../errors/errors";
+import { Row } from "../infer/records";
+import { Tuple } from "../infer/tuples";
+import { MonoTy } from "../infer/types";
 import { lex } from "../parse/lex";
 import { parse } from "../parse/parse";
 import { filterMap, last } from "../utils/array";
@@ -9,7 +12,7 @@ import { Slice } from "../utils/slice";
 import { FileSystem } from "./fileSystem";
 
 export type ResolutionError = DataType<{
-  ModuleNotFound: { name: string, path: string },
+  ModuleNotFound: { name: string },
   ModuleAlreadyExists: { name: string, path: string, existingPath: string },
 }, 'type'>;
 
@@ -72,7 +75,6 @@ export const resolve = async (path: string, fs: FileSystem): Promise<[Prog, Erro
       [Error.Resolution({
         type: 'ModuleNotFound',
         name: entryModName,
-        path,
       })]
     ];
   } else {
@@ -83,6 +85,33 @@ export const resolve = async (path: string, fs: FileSystem): Promise<[Prog, Erro
   }
 };
 
+const collectUsedPaths = (ty: MonoTy): string[] => {
+  const usedPaths = new Set<string>();
+  const registerPath = (path: string[]) => {
+    if (path.length > 0) {
+      usedPaths.add(moduleName(path[0]));
+    }
+  };
+
+  const aux = (ty: MonoTy): void => matchVariant(ty, {
+    Const: ({ path }) => { registerPath(path); },
+    Tuple: ({ tuple }) => Tuple.toArray(tuple).forEach(aux),
+    Record: ({ row }) => Row.fields(row).forEach(([_, ty]) => aux(ty)),
+    NamedRecord: ({ row }) => Row.fields(row).forEach(([_, ty]) => aux(ty)),
+    Fun: ({ args, ret }) => {
+      args.forEach(aux);
+      aux(ret);
+    },
+    Error: () => { },
+    Param: () => { },
+    Var: () => { },
+  });
+
+  aux(ty);
+  return [...usedPaths];
+};
+
+// Collect all references to modules in expressions and types
 const resolveAux = async (
   mod: ModuleRef,
   fs: FileSystem,
@@ -105,25 +134,47 @@ const resolveAux = async (
 
   const toBeResolved: ModuleRef[] = [];
 
+  const registerModule = (modName: string) => {
+    if (localTopLevelModules.has(modName)) {
+      return;
+    }
+
+    if (!modules.has(modName)) {
+      errors.push(Error.Resolution({
+        type: 'ModuleNotFound',
+        name: modName,
+      }));
+    } else {
+      const mod = modules.get(modName)!;
+      if (!mod.resolved) {
+        toBeResolved.push(mod);
+      }
+    }
+  };
+
   Prog.traverse(decls, expr => matchVariant(expr, {
     ModuleAccess: ({ path }) => {
-      const modName = moduleName(path[0]);
-      if (localTopLevelModules.has(modName)) {
-        return;
-      }
-
-      if (!modules.has(modName)) {
-        errors.push(Error.Resolution({
-          type: 'ModuleNotFound',
-          name: modName,
-          path: path[0],
-        }));
-      } else {
-        const mod = modules.get(modName)!;
-        if (!mod.resolved) {
-          toBeResolved.push(mod);
-        }
-      }
+      registerModule(moduleName(path[0]));
+    },
+    Match: ({ annotation }) => {
+      annotation.do(ann => {
+        collectUsedPaths(ann).forEach(registerModule);
+      });
+    },
+    LetIn: ({ annotation }) => {
+      annotation.do(ann => {
+        collectUsedPaths(ann).forEach(registerModule);
+      });
+    },
+    Block: ({ statements }) => {
+      statements.forEach(s => matchVariant(s, {
+        Let: ({ annotation }) => {
+          annotation.do(ann => {
+            collectUsedPaths(ann).forEach(registerModule);
+          });
+        },
+        _: () => { }
+      }));
     },
     _: () => { },
   }));

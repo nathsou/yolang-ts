@@ -1,4 +1,4 @@
-import { DataType, match as matchVariant } from 'itsamatch';
+import { DataType, match as matchVariant, VariantOf } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
 import { Error } from '../errors/errors';
 import { gen } from '../utils/array';
@@ -217,8 +217,13 @@ export const inferExpr = (
       if (cases.length === 0) {
         unify(retTy, MonoTy.unit());
       } else {
-        for (const { pattern, body } of cases) {
-          unify(argTy, Pattern.type(pattern));
+        for (const { pattern, annotation, body } of cases) {
+          const patternTy = Pattern.type(pattern);
+          unify(argTy, patternTy);
+
+          annotation.do(ann => {
+            unify(ann, patternTy);
+          });
 
           const bodyCtx = TypeContext.clone(ctx);
 
@@ -388,10 +393,11 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
 
 export const infer = (prog: Prog): Error[] => {
   const errors: Error[] = [];
-  const topModule = Decl.Module('top', prog);
-  const ctx = TypeContext.make();
+  const ctx = TypeContext.make(prog);
 
-  inferDecl(topModule, ctx, true, errors);
+  for (const decl of prog) {
+    inferDecl(decl, ctx, true, errors);
+  }
 
   return errors;
 };

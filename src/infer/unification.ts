@@ -2,7 +2,8 @@ import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { match, __ } from "ts-pattern";
 import { Error } from "../errors/errors";
 import { zip } from "../utils/array";
-import { panic } from "../utils/misc";
+import { Maybe } from "../utils/maybe";
+import { fst, panic } from "../utils/misc";
 import { Result } from "../utils/result";
 import { Row } from "./records";
 import { Subst } from "./subst";
@@ -15,6 +16,7 @@ export type UnificationError = DataType<{
   Ununifiable: { s: MonoTy, t: MonoTy },
   UnknownRecordField: { row: Row, field: string },
   DifferentLengthTuples: { s: Tuple, t: Tuple },
+  CouldNotResolveType: { ty: string },
 }, 'type'>;
 
 const linkTo = (v: VariantOf<MonoTy, 'Var'>, to: MonoTy, subst?: Subst) => {
@@ -53,6 +55,15 @@ const unifyMany = (
     return MonoTy.substituteTyParams(genericTy.ty, subst);
   };
 
+  const resolveTypeAlias = (ty: VariantOf<MonoTy, 'Const'>): Maybe<MonoTy> => {
+    const res = TypeContext.findTypeAlias(ctx, ty.path, ty.name).map(fst);
+    if (res.isNone()) {
+      errors.push(Error.Unification({ type: 'CouldNotResolveType', ty: MonoTy.show(ty) }));
+    }
+
+    return res;
+  };
+
   while (eqs.length > 0) {
     const [s, t] = eqs.pop()!;
 
@@ -75,6 +86,24 @@ const unifyMany = (
         pushEqs([t, s]);
       })
       .with([{ variant: 'Const' }, { variant: 'Const' }], ([s, t]) => {
+        if (s.path.length > 0) {
+          const resolvedS = resolveTypeAlias(s);
+          if (resolvedS.isSome()) {
+            const newS = resolvedS.unwrap();
+            pushEqs([newS, t]);
+            return;
+          }
+        }
+
+        if (t.path.length > 0) {
+          const resolvedT = resolveTypeAlias(t);
+          if (resolvedT.isSome()) {
+            const newT = resolvedT.unwrap();
+            pushEqs([s, newT]);
+            return;
+          }
+        }
+
         if (s.name in ctx.typeAliases) {
           pushEqs([instantiateGenericTyConst(s.name, s.args), t]);
         }
@@ -92,11 +121,29 @@ const unifyMany = (
         }
       })
       .with([{ variant: 'Const' }, __], ([s, t]) => {
+        if (s.path.length > 0) {
+          const resolvedS = resolveTypeAlias(s);
+          if (resolvedS.isSome()) {
+            const newS = resolvedS.unwrap();
+            pushEqs([newS, t]);
+            return;
+          }
+        }
+
         if (s.name in ctx.typeAliases) {
           pushEqs([instantiateGenericTyConst(s.name, s.args), t]);
         }
       })
       .with([__, { variant: 'Const' }], ([s, t]) => {
+        if (t.path.length > 0) {
+          const resolvedT = resolveTypeAlias(t);
+          if (resolvedT.isSome()) {
+            const newT = resolvedT.unwrap();
+            pushEqs([s, newT]);
+            return;
+          }
+        }
+
         if (t.name in ctx.typeAliases) {
           pushEqs([s, instantiateGenericTyConst(t.name, t.args)]);
         }

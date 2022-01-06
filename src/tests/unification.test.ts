@@ -7,7 +7,7 @@ import { MonoTy } from "../infer/types";
 import { unifyMut, unifyPure } from "../infer/unification";
 import { Arb } from './arbitraries/arb';
 
-const unify = (a: MonoTy, b: MonoTy) => unifyMut(a, b, TypeContext.make());
+const unify = (a: MonoTy, b: MonoTy) => unifyMut(a, b, TypeContext.make([]));
 
 describe('unifyMut', () => {
   it('should unify type variables correctly', () => {
@@ -173,7 +173,7 @@ describe('unifyPure', () => {
     const ty1 = MonoTy.Tuple(Tuple.fromArray([tv1, tv2]));
     const ty2 = MonoTy.Tuple(Tuple.fromArray([MonoTy.bool(), MonoTy.u32()]));
 
-    const res = unifyPure(ty1, ty2, TypeContext.make());
+    const res = unifyPure(ty1, ty2, TypeContext.make([]));
 
     expect(res.isOk()).toBeTruthy();
     expect(tv1).toMatchObject(MonoTy.Var({ kind: 'Unbound', id: 0 }));

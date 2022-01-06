@@ -4,12 +4,13 @@ import { Argument, Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
 import { Row } from '../infer/records';
 import { Tuple } from '../infer/tuples';
 import { MonoTy, TypeParams, TypeParamsContext } from '../infer/types';
-import { none, some } from '../utils/maybe';
-import { compose, ref, snd } from '../utils/misc';
+import { last } from '../utils/array';
+import { Maybe, none, some } from '../utils/maybe';
+import { compose, fst, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, effect, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized, withContext } from './combinators';
+import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, effect, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized, withContext } from './combinators';
 import { Const, Token } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -75,18 +76,21 @@ const u32Ty = map(ident2('u32'), () => MonoTy.Const('u32'));
 const constTy = alt(unitTy, boolTy, u32Ty);
 const namedTy = withContext(ctx => map(
   seq(
-    upperIdent,
+    alt(
+      map<[string, null], [string[], string]>(seq(upperIdent, not(symbol('.'))), ([name]) => [[], name]),
+      map<string[], [string[], string]>(modulePath, path => [path.slice(0, -1), last(path)])
+    ),
     optionalOrDefault(angleBrackets(optionalOrDefault(commas(monoTy), [])), []),
   ),
-  ([name, args]) => {
-    if (args.length === 0) {
+  ([[path, name], args]) => {
+    if (path.length === 0 && args.length === 0) {
       if (TypeParamsContext.has(ctx, name)) {
         return MonoTy.Param(name);
       } else {
         return MonoTy.Const(name);
       }
     } else {
-      return MonoTy.Const(name, ...args);
+      return MonoTy.ConstWithPath(path, name, ...args);
     }
   }
 ));
@@ -462,14 +466,15 @@ const assignment = alt(
   letIn
 );
 
-const matchCase: Parser<{ pattern: Pattern, body: Expr }> = map(
+const matchCase: Parser<{ pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }> = map(
   seq(
     pattern,
+    optional(typeAnnotation),
     symbol('=>'),
     expectOrDefault(expr, `Expected an expression after '=>'`, Expr.Block([])),
     expectOrDefault(symbol(','), `Expected ',' after pattern body`, Token.Symbol(',')),
   ),
-  ([pattern, _, body]) => ({ pattern, body })
+  ([pattern, annotation, _, body]) => ({ pattern, annotation, body })
 );
 
 const matchExpr = alt(

@@ -106,7 +106,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   ModuleAccess: { path: string[], member: string },
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
-  Match: { expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, body: Expr }[] },
+  Match: { expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[] },
   NamedRecord: { name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
 }>>;
@@ -132,7 +132,7 @@ export const Expr = {
   ModuleAccess: (path: string[], member: string, sweet: SweetExpr): Expr => typed({ variant: 'ModuleAccess', path, member }, sweet),
   FieldAccess: (lhs: Expr, field: string, sweet: SweetExpr): Expr => typed({ variant: 'FieldAccess', lhs, field }, sweet),
   Tuple: (elements: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Tuple', elements }, sweet),
-  Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, body: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Match', expr, annotation, cases }, sweet),
+  Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Match', expr, annotation, cases }, sweet),
   NamedRecord: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'NamedRecord', name, typeParams, fields }, sweet),
   TupleIndexing: (lhs: Expr, index: number, sweet: SweetExpr): Expr => typed({ variant: 'TupleIndexing', lhs, index }, sweet),
   fromSweet: (sweet: SweetExpr, nameEnv: NameEnv, errors: Error[]): Expr => {
@@ -194,6 +194,7 @@ export const Expr = {
           const bodyEnv = NameEnv.clone(nameEnv);
           return {
             pattern: Pattern.fromSweet(c.pattern, bodyEnv),
+            annotation: c.annotation,
             body: go(c.body, bodyEnv)
           };
         }),
@@ -202,12 +203,12 @@ export const Expr = {
       Parenthesized: ({ expr }) => go(expr),
       NamedRecord: ({ name, typeParams, fields }) => Expr.NamedRecord(name, typeParams, fields.map(f => ({ name: f.name, value: go(f.value) })), sweet),
       TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index, sweet),
-      LetIn: ({ pattern, value, body }) => {
+      LetIn: ({ pattern, annotation, value, body }) => {
         // let pat = v in b --> match v with { pat => body }
         return Expr.Match(
           go(value),
           none,
-          [{ pattern: Pattern.fromSweet(pattern, nameEnv), body: go(body) }],
+          [{ pattern: Pattern.fromSweet(pattern, nameEnv), annotation, body: go(body) }],
           sweet
         );
       },
@@ -410,7 +411,7 @@ export const removeFuncArgsPatternMatching = (
     SweetPattern.Tuple(args.map(({ pattern }) => pattern));
 
   const newBody = Expr.fromSweet(
-    SweetExpr.Match(matchedExpr, none, [{ pattern, body }]),
+    SweetExpr.Match(matchedExpr, none, [{ pattern, annotation: none, body }]),
     bodyEnv,
     errors
   );
