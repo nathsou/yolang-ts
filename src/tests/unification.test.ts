@@ -1,4 +1,5 @@
 import fc from "fast-check";
+import { Error } from "../errors/errors";
 import { Row } from "../infer/records";
 import { Subst } from "../infer/subst";
 import { Tuple } from "../infer/tuples";
@@ -7,7 +8,16 @@ import { MonoTy } from "../infer/types";
 import { unifyMut, unifyPure } from "../infer/unification";
 import { Arb } from './arbitraries/arb';
 
-const unify = (a: MonoTy, b: MonoTy) => unifyMut(a, b, TypeContext.make([]));
+const testContext = (() => {
+  const ctx = TypeContext.make([]);
+  TypeContext.declareTypeAlias(ctx, 'Yolo', [], MonoTy.u32());
+  TypeContext.declareTypeAlias(ctx, 'Hola', [], MonoTy.bool());
+  const pairTy = MonoTy.Tuple(Tuple.fromArray([MonoTy.Param('A'), MonoTy.Param('B')]));
+  TypeContext.declareTypeAlias(ctx, 'Pair', ['A', 'B'], pairTy);
+  return ctx;
+})();
+
+const unify = (a: MonoTy, b: MonoTy, ctx = testContext) => unifyMut(a, b, ctx);
 
 describe('unifyMut', () => {
   it('should unify type variables correctly', () => {
@@ -34,10 +44,10 @@ describe('unifyMut', () => {
     expect(errs).toHaveLength(0);
     expect(tyVar).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      to: tyConst,
+      to: MonoTy.u32(),
     }));
 
-    expect(MonoTy.deref(tyVar)).toMatchObject(tyConst);
+    expect(MonoTy.deref(tyVar)).toMatchObject(MonoTy.u32());
   });
 
   it('should not take argument order into account', () => {
@@ -49,10 +59,10 @@ describe('unifyMut', () => {
     expect(errs).toHaveLength(0);
     expect(tyVar).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      to: tyConst,
+      to: MonoTy.u32(),
     }));
 
-    expect(MonoTy.deref(tyVar)).toMatchObject(tyConst);
+    expect(MonoTy.deref(tyVar)).toMatchObject(MonoTy.u32());
   });
 
   it('should unify type constants correctly', () => {
@@ -69,12 +79,22 @@ describe('unifyMut', () => {
 
     expect(tv1).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      to: tc2,
+      to: MonoTy.bool(),
     }));
 
     expect(tv2).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      to: tc1,
+      to: MonoTy.u32(),
+    }));
+  });
+
+  it('should fail to resolve undeclared type aliases', () => {
+    const emptyCtx = TypeContext.make([]);
+    const errs = unify(MonoTy.Const('Hola'), MonoTy.Const('u32'), emptyCtx);
+    expect(errs.length).toBeGreaterThan(1);
+    expect(errs[0]).toMatchObject(Error.Unification({
+      type: 'CouldNotResolveType',
+      ty: MonoTy.Const('Hola'),
     }));
   });
 
@@ -103,12 +123,12 @@ describe('unifyMut', () => {
 
     expect(tv1).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      to: tc2,
+      to: MonoTy.bool(),
     }));
 
     expect(tv2).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      to: tc1,
+      to: MonoTy.u32(),
     }));
   });
 

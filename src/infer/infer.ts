@@ -7,7 +7,7 @@ import { proj } from '../utils/misc';
 import { Env } from './env';
 import { Row } from './records';
 import { signatures } from './signatures';
-import { Tuple } from './tuples';
+import { MAX_TUPLE_INDEX, Tuple } from './tuples';
 import { TypeContext } from './typeContext';
 import { MonoTy, PolyTy } from './types';
 import { unifyMut } from './unification';
@@ -247,8 +247,8 @@ export const inferExpr = (
       inferExpr(lhs, ctx, errors);
       unify(partialRecordTy, lhs.ty);
     },
-    NamedRecord: ({ name, typeParams, fields }) => {
-      const expectedTy = MonoTy.Const(name, ...typeParams);
+    NamedRecord: ({ path, name, typeParams, fields }) => {
+      const expectedTy = MonoTy.ConstWithPath(path, name, ...typeParams);
 
       fields.forEach(({ value }) => {
         inferExpr(value, ctx, errors);
@@ -262,7 +262,7 @@ export const inferExpr = (
       unify(tau, expectedTy);
     },
     TupleIndexing: ({ lhs, index }) => {
-      if (index > 1000) {
+      if (index > MAX_TUPLE_INDEX) {
         errors.push(Error.Typing({ type: 'TupleIndexTooBig', index }));
       } else {
         inferExpr(lhs, ctx, errors);

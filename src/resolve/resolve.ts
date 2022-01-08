@@ -1,4 +1,4 @@
-import { DataType, match as matchVariant, VariantOf } from "itsamatch";
+import { DataType, match as matchVariant } from "itsamatch";
 import { Decl, Prog } from "../ast/sweet";
 import { Error } from "../errors/errors";
 import { Row } from "../infer/records";
@@ -156,6 +156,11 @@ const resolveAux = async (
     ModuleAccess: ({ path }) => {
       registerModule(moduleName(path[0]));
     },
+    NamedRecord: ({ path }) => {
+      if (path.length > 0) {
+        registerModule(moduleName(path[0]));
+      }
+    },
     Match: ({ annotation }) => {
       annotation.do(ann => {
         collectUsedPaths(ann).forEach(registerModule);
@@ -180,8 +185,10 @@ const resolveAux = async (
   }));
 
   for (const mod of toBeResolved) {
-    const subModules = await resolveAux(mod, fs, modules, errors);
-    prog.unshift(...subModules);
+    if (!mod.resolved) {
+      const subModules = await resolveAux(mod, fs, modules, errors);
+      prog.unshift(...subModules);
+    }
   }
 
   return prog;

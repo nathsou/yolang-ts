@@ -273,6 +273,7 @@ export const primary = alt(
 );
 
 const modulePath = sepBy(symbol('.'))(upperIdent);
+const typePath = map(sepBy(symbol('.'))(upperIdent), path => [path.slice(0, -1), last(path)] as const);
 
 // e.g Main.Yolo.yo
 const moduleAccess = alt(
@@ -337,11 +338,11 @@ const recordField = map(seq(
 
 const namedRecord = alt(
   map(seq(
-    upperIdent,
+    typePath,
     optionalOrDefault(angleBrackets(optionalOrDefault(commas(monoTy), [])), []),
     curlyBrackets(optionalOrDefault(commas(recordField), [])),
   ),
-    ([name, params, fields]) => Expr.NamedRecord(name, params, fields)
+    ([[path, name], params, fields]) => Expr.NamedRecord(path, name, params, fields)
   ),
   tuple
 );

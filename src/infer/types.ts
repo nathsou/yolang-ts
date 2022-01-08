@@ -2,7 +2,7 @@ import { DataType, match as matchVariant } from "itsamatch";
 import { match } from "ts-pattern";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
-import { cond, matchString, panic, parenthesized } from "../utils/misc";
+import { cond, panic, parenthesized } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./records";
@@ -52,6 +52,8 @@ export const MonoTy = {
   u32: () => MonoTy.Const('u32'),
   bool: () => MonoTy.Const('bool'),
   unit: () => MonoTy.Const('()'),
+  primitiveTypes: new Set(['u32', 'bool', '()']),
+  isPrimitive: (ty: MonoTy): boolean => ty.variant === 'Const' && ty.path.length === 0 && MonoTy.primitiveTypes.has(ty.name),
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
     matchVariant(ty, {
       Var: ({ value }) => {
@@ -217,10 +219,7 @@ export const MonoTy = {
     Param: ({ name }) => `'${name}`,
     Const: ({ path, name, args }) => (path.length > 0 ? `${path.join('.')}.` : '') + cond(args.length === 0, {
       then: () => name,
-      else: () => matchString(name, {
-        'tuple': () => `(${joinWith(args, MonoTy.show, ', ')})`,
-        _: () => `${name}<${joinWith(args, MonoTy.show, ', ')}>`,
-      }),
+      else: () => `${name}<${joinWith(args, MonoTy.show, ', ')}>`,
     }),
     Fun: ({ args, ret }) => {
       const showParens = args.length !== 1 || (

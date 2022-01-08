@@ -2,21 +2,21 @@ import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { match, __ } from "ts-pattern";
 import { Error } from "../errors/errors";
 import { zip } from "../utils/array";
-import { Maybe } from "../utils/maybe";
-import { fst, panic } from "../utils/misc";
+import { Maybe, none, some } from "../utils/maybe";
+import { panic } from "../utils/misc";
 import { Result } from "../utils/result";
 import { Row } from "./records";
 import { Subst } from "./subst";
 import { Tuple } from "./tuples";
 import { TypeContext } from "./typeContext";
-import { MonoTy, TyVar } from "./types";
+import { MonoTy, TypeParams, TyVar } from "./types";
 
 export type UnificationError = DataType<{
   RecursiveType: { s: MonoTy, t: MonoTy },
   Ununifiable: { s: MonoTy, t: MonoTy },
   UnknownRecordField: { row: Row, field: string },
   DifferentLengthTuples: { s: Tuple, t: Tuple },
-  CouldNotResolveType: { ty: string },
+  CouldNotResolveType: { ty: MonoTy },
 }, 'type'>;
 
 const linkTo = (v: VariantOf<MonoTy, 'Var'>, to: MonoTy, subst?: Subst) => {
@@ -44,30 +44,69 @@ const unifyMany = (
     eqs.push(...newEqs.map(([s, t]) => [MonoTy.deref(s), MonoTy.deref(t)] as [MonoTy, MonoTy]));
   };
 
-  const instantiateGenericTyConst = (name: string, args: MonoTy[]): MonoTy => {
-    const genericTy = ctx.typeAliases[name];
-    const subst = new Map<string, MonoTy>();
-
-    for (const [t, a] of zip(genericTy.params, args)) {
-      subst.set(t, a);
+  const resolveTypeAlias = (ty: VariantOf<MonoTy, 'Const'>): Maybe<{ ty: MonoTy, params: TypeParams }> => {
+    if (MonoTy.isPrimitive(ty)) {
+      return none;
     }
 
-    return MonoTy.substituteTyParams(genericTy.ty, subst);
-  };
-
-  const resolveTypeAlias = (ty: VariantOf<MonoTy, 'Const'>): Maybe<MonoTy> => {
-    const res = TypeContext.findTypeAlias(ctx, ty.path, ty.name).map(fst);
+    const res = TypeContext.findTypeAlias(ctx, ty.path, ty.name).map(([ty, params]) => ({ ty, params }));
     if (res.isNone()) {
-      errors.push(Error.Unification({ type: 'CouldNotResolveType', ty: MonoTy.show(ty) }));
+      errors.push(Error.Unification({ type: 'CouldNotResolveType', ty }));
     }
 
     return res;
+  };
+
+  const instantiateGenericTyConst = (c: VariantOf<MonoTy, 'Const'>): Maybe<MonoTy> => {
+    return resolveTypeAlias(c).map(({ ty: genericTy, params }) => {
+      const subst = new Map<string, MonoTy>();
+
+      for (const [param, arg] of zip(params, c.args)) {
+        subst.set(param, arg);
+      }
+
+      return MonoTy.substituteTyParams(genericTy, subst);
+    });
   };
 
   while (eqs.length > 0) {
     const [s, t] = eqs.pop()!;
 
     match<[MonoTy, MonoTy]>([s, t])
+      .with([{ variant: 'Const' }, { variant: 'Const' }], ([s, t]) => {
+        let pushed = false;
+        instantiateGenericTyConst(s).do(s => {
+          pushed = true;
+          pushEqs([s, t]);
+        });
+
+        if (!pushed) {
+          instantiateGenericTyConst(t).do(t => {
+            pushed = true;
+            pushEqs([s, t]);
+          });
+        }
+
+        if (!pushed) {
+          if (s.name === t.name && s.args.length === t.args.length) {
+            for (let i = 0; i < s.args.length; i++) {
+              pushEqs([s.args[i], t.args[i]]);
+            }
+          } else {
+            errors.push(Error.Unification({ type: 'Ununifiable', s, t }));
+          }
+        }
+      })
+      .when(([s]) => s.variant === 'Const' && !MonoTy.isPrimitive(s), ([s, t]) => {
+        instantiateGenericTyConst(s as VariantOf<MonoTy, 'Const'>).do(s => {
+          pushEqs([s, t]);
+        });
+      })
+      .when(([, t]) => t.variant === 'Const' && !MonoTy.isPrimitive(t), ([s, t]) => {
+        instantiateGenericTyConst(t as VariantOf<MonoTy, 'Const'>).do(t => {
+          pushEqs([s, t]);
+        });
+      })
       // Delete
       .when(([s, t]) => MonoTy.eq(s, t), () => { })
       // Eliminate
@@ -80,73 +119,6 @@ const unifyMany = (
       })
       .with([{ variant: 'Var', value: { kind: 'Link' } }, __], ([s, t]) => {
         pushEqs([s, t]);
-      })
-      // Orient
-      .with([__, { variant: 'Var' }], ([s, t]) => {
-        pushEqs([t, s]);
-      })
-      .with([{ variant: 'Const' }, { variant: 'Const' }], ([s, t]) => {
-        if (s.path.length > 0) {
-          const resolvedS = resolveTypeAlias(s);
-          if (resolvedS.isSome()) {
-            const newS = resolvedS.unwrap();
-            pushEqs([newS, t]);
-            return;
-          }
-        }
-
-        if (t.path.length > 0) {
-          const resolvedT = resolveTypeAlias(t);
-          if (resolvedT.isSome()) {
-            const newT = resolvedT.unwrap();
-            pushEqs([s, newT]);
-            return;
-          }
-        }
-
-        if (s.name in ctx.typeAliases) {
-          pushEqs([instantiateGenericTyConst(s.name, s.args), t]);
-        }
-
-        if (t.name in ctx.typeAliases) {
-          pushEqs([s, instantiateGenericTyConst(t.name, t.args)]);
-        }
-
-        if (s.name === t.name && s.args.length === t.args.length) {
-          for (let i = 0; i < s.args.length; i++) {
-            pushEqs([s.args[i], t.args[i]]);
-          }
-        } else {
-          errors.push(Error.Unification({ type: 'Ununifiable', s, t }));
-        }
-      })
-      .with([{ variant: 'Const' }, __], ([s, t]) => {
-        if (s.path.length > 0) {
-          const resolvedS = resolveTypeAlias(s);
-          if (resolvedS.isSome()) {
-            const newS = resolvedS.unwrap();
-            pushEqs([newS, t]);
-            return;
-          }
-        }
-
-        if (s.name in ctx.typeAliases) {
-          pushEqs([instantiateGenericTyConst(s.name, s.args), t]);
-        }
-      })
-      .with([__, { variant: 'Const' }], ([s, t]) => {
-        if (t.path.length > 0) {
-          const resolvedT = resolveTypeAlias(t);
-          if (resolvedT.isSome()) {
-            const newT = resolvedT.unwrap();
-            pushEqs([s, newT]);
-            return;
-          }
-        }
-
-        if (t.name in ctx.typeAliases) {
-          pushEqs([s, instantiateGenericTyConst(t.name, t.args)]);
-        }
       })
       .with([{ variant: 'Fun' }, { variant: 'Fun' }], ([s, t]) => {
         if (s.args.length === t.args.length) {
@@ -188,6 +160,10 @@ const unifyMany = (
         if (s.name !== t.name) {
           t.name = s.name;
         }
+      })
+      // Orient
+      .with([__, { variant: 'Var' }], ([s, t]) => {
+        pushEqs([t, s]);
       })
       .otherwise(([s, t]) => {
         errors.push(Error.Unification({ type: 'Ununifiable', s, t }));

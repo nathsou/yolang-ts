@@ -108,6 +108,7 @@ export const TypeContext = {
       const [head, ...tail] = path;
 
       const mod = decls.find(decl => decl.variant === 'Module' && decl.name === head);
+
       if (mod) {
         return aux(tail, (mod as VariantOf<Decl, 'Module'>).decls);
       }
@@ -115,13 +116,18 @@ export const TypeContext = {
       return none;
     };
 
-    const mod = ctx.modules[path[0]];
+    if (name in ctx.typeAliases) {
+      const { ty, params } = ctx.typeAliases[name];
+      return some([ty, params]);
+    }
+
+    const moduleName = path.length > 0 ? path[0] : name;
+    const mod = ctx.modules[moduleName];
 
     if (mod) {
       return aux(path.slice(1), mod.decls);
-    } else {
-      return none;
     }
-  },
 
+    return none;
+  },
 };

@@ -1,4 +1,4 @@
 
 fn yo() {
-  let id = x -> x in (id(let (a, b) = (3, 7) in a * b), id(true))
+  let a: u32 = 7 in a
 }

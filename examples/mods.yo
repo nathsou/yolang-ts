@@ -4,5 +4,6 @@ module Yolo {
 }
 
 fn main() {
-  let (a, b): Yolo.Yop = (3, 7) in a * b
+  let (a, (b, c)): (Vec2.Vec2, Yolo.Yop) = (Vec2.Vec2 { x: 3, y: 7 }, (1, 2))
+  in a.x * (b + a.y - c)
 }

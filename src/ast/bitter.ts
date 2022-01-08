@@ -107,7 +107,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
   Match: { expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[] },
-  NamedRecord: { name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
+  NamedRecord: { path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
 }>>;
 
@@ -133,7 +133,7 @@ export const Expr = {
   FieldAccess: (lhs: Expr, field: string, sweet: SweetExpr): Expr => typed({ variant: 'FieldAccess', lhs, field }, sweet),
   Tuple: (elements: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Tuple', elements }, sweet),
   Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Match', expr, annotation, cases }, sweet),
-  NamedRecord: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'NamedRecord', name, typeParams, fields }, sweet),
+  NamedRecord: (path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'NamedRecord', path, name, typeParams, fields }, sweet),
   TupleIndexing: (lhs: Expr, index: number, sweet: SweetExpr): Expr => typed({ variant: 'TupleIndexing', lhs, index }, sweet),
   fromSweet: (sweet: SweetExpr, nameEnv: NameEnv, errors: Error[]): Expr => {
     const go = (expr: SweetExpr, env = nameEnv) => Expr.fromSweet(expr, env, errors);
@@ -201,7 +201,7 @@ export const Expr = {
         sweet
       ),
       Parenthesized: ({ expr }) => go(expr),
-      NamedRecord: ({ name, typeParams, fields }) => Expr.NamedRecord(name, typeParams, fields.map(f => ({ name: f.name, value: go(f.value) })), sweet),
+      NamedRecord: ({ path, name, typeParams, fields }) => Expr.NamedRecord(path, name, typeParams, fields.map(f => ({ name: f.name, value: go(f.value) })), sweet),
       TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index, sweet),
       LetIn: ({ pattern, annotation, value, body }) => {
         // let pat = v in b --> match v with { pat => body }

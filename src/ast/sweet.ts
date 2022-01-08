@@ -49,7 +49,7 @@ export type Expr = DataType<{
   Tuple: { elements: Expr[] },
   Match: { expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[] },
   Parenthesized: { expr: Expr },
-  NamedRecord: { name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
+  NamedRecord: { path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
   LetIn: { pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr },
 }>;
@@ -72,7 +72,7 @@ export const Expr = {
   Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
   Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[]): Expr => ({ variant: 'Match', annotation, expr, cases }),
   Parenthesized: (expr: Expr): Expr => ({ variant: 'Parenthesized', expr }),
-  NamedRecord: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[]): Expr => ({ variant: 'NamedRecord', name, typeParams, fields }),
+  NamedRecord: (path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[]): Expr => ({ variant: 'NamedRecord', path, name, typeParams, fields }),
   TupleIndexing: (lhs: Expr, index: number): Expr => ({ variant: 'TupleIndexing', lhs, index }),
   LetIn: (pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr): Expr => ({ variant: 'LetIn', pattern, annotation, value, body }),
   show: (expr: Expr): string => matchVariant(expr, {
@@ -93,7 +93,7 @@ export const Expr = {
     Tuple: ({ elements }) => `(${joinWith(elements, Expr.show, ', ')})`,
     Match: ({ expr, cases }) => `match ${Expr.show(expr)} {\n${joinWith(cases, ({ pattern, body }) => `  ${Pattern.show(pattern)} => ${Expr.show(body)}\n`, '\n')}\n}`,
     Parenthesized: ({ expr }) => `(${Expr.show(expr)})`,
-    NamedRecord: ({ name, typeParams, fields }) => `${name}<${joinWith(typeParams, MonoTy.show, ', ')}> {\n${joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, ', ')}\n}`,
+    NamedRecord: ({ path, name, typeParams, fields }) => `${path.join('.')}${path.length > 0 ? '.' : ''}${name} <${joinWith(typeParams, MonoTy.show, ', ')}> {\n${joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, ', ')}\n}`,
     TupleIndexing: ({ lhs, index }) => `${Expr.show(lhs)}.${index}`,
     LetIn: ({ pattern, value, body }) => `let ${Pattern.show(pattern)} = ${Expr.show(value)} in ${Expr.show(body)}`,
   }),
@@ -117,7 +117,7 @@ export const Expr = {
       Tuple: ({ elements }) => Expr.Tuple(elements.map(go)),
       Match: ({ expr, annotation, cases }) => Expr.Match(go(expr), annotation, cases.map(({ pattern, annotation, body }) => ({ pattern, annotation, body: go(body) }))),
       Parenthesized: ({ expr }) => Expr.Parenthesized(go(expr)),
-      NamedRecord: ({ name, typeParams, fields }) => Expr.NamedRecord(name, typeParams, fields.map(({ name, value }) => ({ name, value: go(value) }))),
+      NamedRecord: ({ path, name, typeParams, fields }) => Expr.NamedRecord(path, name, typeParams, fields.map(({ name, value }) => ({ name, value: go(value) }))),
       TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index),
       LetIn: ({ pattern, annotation, value, body }) => Expr.LetIn(pattern, annotation, go(value), go(body)),
     }))

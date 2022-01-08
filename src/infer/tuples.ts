@@ -3,6 +3,8 @@ import { joinWith, zip } from "../utils/array";
 import { Maybe, none, some } from "../utils/maybe";
 import { MonoTy, TyVar } from "./types";
 
+export const MAX_TUPLE_INDEX = 1000;
+
 export type Tuple = DataType<{
   EmptyTuple: { extension: Maybe<MonoTy> },
   ExtendTuple: { head: MonoTy, tail: Tuple },

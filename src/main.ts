@@ -32,7 +32,7 @@ const run = async (source: string): Promise<Prog> => {
   const [prog, errs2] = typeCheck(sweetProg);
 
   [...errs1, ...errs2].forEach(err => {
-    console.log('\x1b[31m%s\x1b[0m', JSON.stringify(err, null, 2));
+    console.log('\x1b[31m%s\x1b[0m', Error.show(err));
   });
 
   return prog;
