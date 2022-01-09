@@ -31,12 +31,18 @@ impl Vec2 {
     let dx = v.x - self.x
     let dy = v.y - self.y
     dx * dx + dy * dy
-  } 
+  }
+}
+
+impl Vec2 {
+  fn eq(self, v) {
+    self.x == v.x && self.y == v.y
+  }
 }
 
 fn yo() {
   let u = Vec2 { x: 3, y: 4 }
   let v = Vec2 { x: 7, y: 11 }
 
-  u.plus(v)
+  u.eq(v)
 }

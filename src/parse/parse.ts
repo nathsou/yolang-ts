@@ -402,21 +402,21 @@ const relational = chainLeft(
   (a, op, b) => Expr.BinaryOp(a, op, b)
 );
 
-const logical = chainLeft(
-  relational,
-  logicalOp,
-  expect(relational, 'Expected expression after logical operator'),
-  (a, op, b) => Expr.BinaryOp(a, op, b)
-);
-
 const equality = chainLeft(
-  logical,
+  relational,
   equalityOp,
-  expect(logical, 'Expected expression after equality operator'),
+  expect(relational, 'Expected expression after equality operator'),
   (a, op, b) => Expr.BinaryOp(a, op, b)
 );
 
-export const binary = equality;
+const logical = chainLeft(
+  equality,
+  logicalOp,
+  expect(equality, 'Expected expression after logical operator'),
+  (a, op, b) => Expr.BinaryOp(a, op, b)
+);
+
+export const binaryExpr = logical;
 
 const ifThenElse = alt(
   map(
@@ -431,7 +431,7 @@ const ifThenElse = alt(
     ),
     ([_, cond, then, else_]) => Expr.IfThenElse(cond, then, else_.map(snd))
   ),
-  equality
+  binaryExpr
 );
 
 const letIn = alt(
