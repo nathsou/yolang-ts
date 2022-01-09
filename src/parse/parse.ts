@@ -1,16 +1,16 @@
 import { match as matchVariant } from 'itsamatch';
 import { match, select } from 'ts-pattern';
-import { Argument, Decl, Expr, Pattern, Prog, Stmt } from '../ast/sweet';
+import { Argument, Decl, Expr, MethodSig, Pattern, Prog, Stmt } from '../ast/sweet';
 import { Row } from '../infer/records';
 import { Tuple } from '../infer/tuples';
 import { MonoTy, TypeParams, TypeParamsContext } from '../infer/types';
 import { last } from '../utils/array';
 import { Maybe, none, some } from '../utils/maybe';
-import { compose, fst, ref, snd } from '../utils/misc';
+import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, effect, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized, withContext } from './combinators';
+import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized, withContext } from './combinators';
 import { Const, Token } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -597,7 +597,7 @@ const funcDecl = map(seq(
   ([_, name, [typeParams, [args, body]]]) => Decl.Function(name, typeParams, args, body)
 );
 
-const inherentImplDecl = withContext(ctx => map(seq(
+const inherentImplDecl = map(seq(
   keyword('impl'),
   scopedTypeParams(seq(
     expectOrDefault(monoTy, `Expected type after 'impl' keyword`, MonoTy.Const('()')),
@@ -605,7 +605,7 @@ const inherentImplDecl = withContext(ctx => map(seq(
   ))
 ),
   ([_, [tyParams, [ty, decls]]]) => Decl.Impl(ty, tyParams, decls)
-));
+);
 
 const moduleDecl = map(seq(
   keyword('module'),
@@ -626,11 +626,35 @@ const typeAliasDecl = map(seq(
   ([_t, name, [params, [_eq, rhs]]]) => Decl.TypeAlias(name, params, rhs)
 );
 
+const methodSignature = map(seq(
+  keyword('fn'),
+  expectOrDefault(ident, `Expected identifier after 'fn' keyword`, '<?>'),
+  scopedTypeParams(seq(
+    expectOrDefault(argumentList, 'Expected arguments after function name', []),
+    expect(symbol('->'), `Expected '->' after function arguments`),
+    expect(monoTy, `Expected type after '->'`),
+  ))
+),
+  ([_, name, [typeParams, [args, _arrow, ty]]]) => MethodSig.make(name, typeParams, args, ty)
+);
+
+const traitDecl = map(
+  seq(
+    keyword('trait'),
+    expectOrDefault(upperIdent, `Expected identifier after 'trait' keyword`, '<?>'),
+    scopedTypeParams(
+      curlyBrackets(many(methodSignature)),
+    )
+  ),
+  ([_, name, [params, methods]]) => Decl.Trait(name, params, methods)
+);
+
 initParser(decl, alt(
   funcDecl,
   typeAliasDecl,
   moduleDecl,
   inherentImplDecl,
+  traitDecl,
 ));
 
 export const parse = (tokens: Slice<Token>): [Prog, ParserError[]] => {

@@ -1,4 +1,4 @@
-import { DataType, match as matchVariant } from 'itsamatch';
+import { DataType, match as matchVariant, VariantOf } from 'itsamatch';
 import { MonoTy, TypeParams } from '../infer/types';
 import { Const } from '../parse/token';
 import { joinWith } from '../utils/array';
@@ -186,20 +186,23 @@ export type Decl = DataType<{
   Module: { name: string, decls: Decl[] },
   TypeAlias: { name: string, typeParams: TypeParams, alias: MonoTy },
   Impl: { ty: MonoTy, typeParams: TypeParams, decls: Decl[] },
+  Trait: { name: string, typeParams: TypeParams, methods: MethodSig[] },
   Error: { message: string },
 }>;
 
 export const Decl = {
-  Function: (name: string, typeParams: TypeParams, args: Argument[], body: Expr): Decl => ({ variant: 'Function', name, typeParams, args, body }),
+  Function: (name: string, typeParams: TypeParams, args: Argument[], body: Expr): VariantOf<Decl, 'Function'> => ({ variant: 'Function', name, typeParams, args, body }),
   Module: (name: string, decls: Decl[]): Decl => ({ variant: 'Module', name, decls }),
   TypeAlias: (name: string, typeParams: TypeParams, alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
   Impl: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
+  Trait: (name: string, typeParams: TypeParams, methods: MethodSig[]): Decl => ({ variant: 'Trait', name, typeParams, methods }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   show: (decl: Decl): string => matchVariant(decl, {
     Function: ({ name, typeParams, args, body }) => `fn ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
     Module: ({ name, decls }) => `module ${name} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)}`,
     Impl: ({ ty, typeParams, decls }) => `impl${TypeParams.show(typeParams)} ${MonoTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
+    Trait: ({ name, typeParams, methods }) => `trait ${name}${TypeParams.show(typeParams)} {\n${joinWith(methods, m => '  ' + MethodSig.show(m), '\n')}\n}`,
     Error: ({ message }) => `<Error: ${message}> `,
   }),
   rewrite: (decl: Decl, f: (expr: Expr) => Expr): Decl => matchVariant(decl, {
@@ -207,8 +210,21 @@ export const Decl = {
     Module: ({ name, decls }) => Decl.Module(name, decls.map(d => Decl.rewrite(d, f))),
     TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias(name, typeParams, alias),
     Impl: ({ ty, typeParams, decls }) => Decl.Impl(ty, typeParams, decls.map(d => Decl.rewrite(d, f))),
+    Trait: ({ name, typeParams, methods }) => Decl.Trait(name, typeParams, methods),
     Error: ({ message }) => Decl.Error(message),
   }),
+};
+
+export type MethodSig = {
+  name: string,
+  typeParams: TypeParams,
+  args: Argument[],
+  ret: MonoTy,
+};
+
+export const MethodSig = {
+  make: (name: string, typeParams: TypeParams, args: Argument[], ret: MonoTy): MethodSig => ({ name, typeParams, args, ret }),
+  show: (method: MethodSig): string => `fn ${method.name}${TypeParams.show(method.typeParams)}(${joinWith(method.args, Argument.show, ', ')}) -> ${MonoTy.show(method.ret)}`,
 };
 
 export type Prog = Decl[];

@@ -383,6 +383,9 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
         }
       }
     },
+    Trait: () => {
+
+    },
     Error: ({ message }) => {
       errors.push(Error.Typing({ type: 'ParsingError', message }));
     },

@@ -1,28 +1,8 @@
 
-trait PartialEq<Rhs = Self> {
-  fn eq(self, other: Rhs): bool
-  fn ne(self, other: Rhs): bool {
-    !self.eq(other)
-  }
-}
-
-impl PartialEq for u32 {
-  fn eq(self, other): bool {
-    wasm { i32.eq }
-  }
-}
-
-type Vec2 = { x: u32, y: u32 }
-
-impl PartialEq for Vec2 {
-  fn eq(self, other): bool {
-    self.x == other.x && self.y == other.y
-  }
+trait PartialEq<Rhs> {
+  fn eq(self, other: Rhs) -> bool
 }
 
 fn main() {
-  let u = Vec2 { x: 3, y: 4 }
-  let v = Vec2 { x: 7, y: 11 }
-
-  u == v
+  3
 }
