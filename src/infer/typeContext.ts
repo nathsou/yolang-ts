@@ -6,6 +6,7 @@ import { pushRecord } from "../utils/misc";
 import { Env } from "./env";
 import { Impl } from "./impls";
 import { Subst } from "./subst";
+import { Trait } from "./traits";
 import { MonoTy, TypeParams, TyVar } from "./types";
 import { unifyPure } from "./unification";
 
@@ -15,6 +16,7 @@ export type TypeContext = {
   modules: Record<string, VariantOf<Decl, 'Module'>>,
   typeAliases: Record<string, { ty: MonoTy, params: TypeParams }>,
   impls: Record<string, Impl[]>,
+  traits: Record<string, Trait>,
   topLevelDecls: Decl[],
 };
 
@@ -25,14 +27,16 @@ export const TypeContext = {
     modules: {},
     typeAliases: {},
     impls: {},
+    traits: {},
     topLevelDecls,
   }),
   clone: (ctx: TypeContext): TypeContext => ({
     env: Env.clone(ctx.env),
+    typeParamsEnv: {},
     modules: { ...ctx.modules },
     typeAliases: { ...ctx.typeAliases },
     impls: { ...ctx.impls },
-    typeParamsEnv: {},
+    traits: { ...ctx.traits },
     topLevelDecls: [...ctx.topLevelDecls],
   }),
   declareModule: (ctx: TypeContext, mod: VariantOf<Decl, 'Module'>): void => {
@@ -58,6 +62,9 @@ export const TypeContext = {
         pushRecord(ctx.impls, decl.name.original, imp);
       }
     }
+  },
+  declareTrait: (ctx: TypeContext, trait: Trait): void => {
+    ctx.traits[trait.name] = trait;
   },
   declareTypeParams: (ctx: TypeContext, ...names: string[]): void => {
     for (const name of names) {

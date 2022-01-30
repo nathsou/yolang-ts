@@ -1,6 +1,6 @@
 
 trait PartialEq<Rhs> {
-  fn eq(self, other: Rhs) -> bool
+  fn eq(self: Self, other: Rhs) -> bool
 }
 
 fn main() {

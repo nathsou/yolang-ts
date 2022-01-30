@@ -252,6 +252,7 @@ export type Decl = DataType<{
   Module: { name: string, decls: Decl[], members: Record<string, Decl> },
   TypeAlias: { name: string, typeParams: TypeParams, alias: MonoTy },
   Impl: { ty: MonoTy, typeParams: TypeParams, decls: Decl[] },
+  TraitImpl: { trait: { path: string[], name: string }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[] },
   Trait: { name: string, typeParams: TypeParams, methods: MethodSig[] },
   Error: { message: string },
 }>;
@@ -278,6 +279,7 @@ export const Decl = {
           mod.members[alias.name] = alias;
         },
         Impl: () => { },
+        TraitImpl: () => { },
         Trait: trait => {
           mod.members[trait.name] = trait;
         },
@@ -289,6 +291,7 @@ export const Decl = {
   },
   TypeAlias: (name: string, typeParams: TypeParams, alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
   Impl: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
+  TraitImpl: (trait: { path: string[], name: string }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[]): Decl => ({ variant: 'TraitImpl', trait, typeParams, implementee, methods }),
   Trait: (name: string, typeParams: TypeParams, methods: MethodSig[]): Decl => ({ variant: 'Trait', name, typeParams, methods }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: Error[]): Decl =>
@@ -318,7 +321,7 @@ export const Decl = {
         );
       },
       TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias(name, typeParams, alias),
-      Impl: ({ ty, typeParams, decls }) => {
+      InherentImpl: ({ ty, typeParams, decls }) => {
         const implEnv = NameEnv.clone(nameEnv);
 
         for (const decl of decls) {
@@ -328,6 +331,17 @@ export const Decl = {
         }
 
         return Decl.Impl(ty, typeParams, decls.map(decl => Decl.fromSweet(decl, implEnv, false, errors)));
+      },
+      TraitImpl: ({ trait, typeParams, implementee, methods }) => {
+        const implEnv = NameEnv.clone(nameEnv);
+
+        for (const method of methods) {
+          if (method.variant === 'Function') {
+            NameEnv.declare(implEnv, method.name, false);
+          }
+        }
+
+        return Decl.TraitImpl(trait, typeParams, implementee, methods.map(method => Decl.fromSweet(method, implEnv, false, errors)));
       },
       Trait: ({ name, typeParams, methods }) => Decl.Trait(name, typeParams, methods),
       Error: ({ message }) => Decl.Error(message),

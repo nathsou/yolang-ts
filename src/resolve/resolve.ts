@@ -152,37 +152,46 @@ const resolveAux = async (
     }
   };
 
-  Prog.traverse(decls, expr => matchVariant(expr, {
-    ModuleAccess: ({ path }) => {
-      registerModule(moduleName(path[0]));
-    },
-    NamedRecord: ({ path }) => {
-      if (path.length > 0) {
+  Prog.traverse(decls, {
+    traverseExpr: expr => matchVariant(expr, {
+      ModuleAccess: ({ path }) => {
         registerModule(moduleName(path[0]));
-      }
+      },
+      NamedRecord: ({ path }) => {
+        if (path.length > 0) {
+          registerModule(moduleName(path[0]));
+        }
+      },
+      Match: ({ annotation }) => {
+        annotation.do(ann => {
+          collectUsedPaths(ann).forEach(registerModule);
+        });
+      },
+      LetIn: ({ annotation }) => {
+        annotation.do(ann => {
+          collectUsedPaths(ann).forEach(registerModule);
+        });
+      },
+      Block: ({ statements }) => {
+        statements.forEach(s => matchVariant(s, {
+          Let: ({ annotation }) => {
+            annotation.do(ann => {
+              collectUsedPaths(ann).forEach(registerModule);
+            });
+          },
+          _: () => { },
+        }));
+      },
+      _: () => { },
     },
-    Match: ({ annotation }) => {
-      annotation.do(ann => {
-        collectUsedPaths(ann).forEach(registerModule);
-      });
-    },
-    LetIn: ({ annotation }) => {
-      annotation.do(ann => {
-        collectUsedPaths(ann).forEach(registerModule);
-      });
-    },
-    Block: ({ statements }) => {
-      statements.forEach(s => matchVariant(s, {
-        Let: ({ annotation }) => {
-          annotation.do(ann => {
-            collectUsedPaths(ann).forEach(registerModule);
-          });
-        },
-        _: () => { }
-      }));
-    },
-    _: () => { },
-  }));
+    ),
+    traverseDecl: decl => matchVariant(decl, {
+      TraitImpl: ({ trait: { path } }) => {
+        registerModule(moduleName(path[0]));
+      },
+      _: () => { },
+    }),
+  });
 
   for (const mod of toBeResolved) {
     if (!mod.resolved) {

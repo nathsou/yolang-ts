@@ -1,4 +1,4 @@
-import { match as matchVariant } from 'itsamatch';
+import { match as matchVariant, VariantOf } from 'itsamatch';
 import { match, select } from 'ts-pattern';
 import { Argument, Decl, Expr, MethodSig, Pattern, Prog, Stmt } from '../ast/sweet';
 import { Row } from '../infer/records';
@@ -586,7 +586,7 @@ initParser(
 
 // DECLARATIONS
 
-const funcDecl = map(seq(
+const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
   keyword('fn'),
   expectOrDefault(ident, `Expected identifier after 'fn' keyword`, '<?>'),
   scopedTypeParams(seq(
@@ -605,6 +605,18 @@ const inherentImplDecl = map(seq(
   ))
 ),
   ([_, [tyParams, [ty, decls]]]) => Decl.Impl(ty, tyParams, decls)
+);
+
+const traitImplDecl = map(seq(
+  keyword('impl'),
+  scopedTypeParams(seq(
+    typePath,
+    expectOrDefault(keyword('for'), `Expected 'for' keyword after trait name`, Token.Keyword('for')),
+    expectOrDefault(monoTy, `Expected type after 'impl' keyword`, MonoTy.Const('()')),
+    expectOrDefault(curlyBrackets(many(funcDecl)), `Expected declarations`, []),
+  ))
+),
+  ([_impl, [tyParams, [[path, name], _for, ty, decls]]]) => Decl.TraitImpl({ path, name }, tyParams, ty, decls)
 );
 
 const moduleDecl = map(seq(
@@ -643,7 +655,11 @@ const traitDecl = map(
     keyword('trait'),
     expectOrDefault(upperIdent, `Expected identifier after 'trait' keyword`, '<?>'),
     scopedTypeParams(
-      curlyBrackets(many(methodSignature)),
+      withContext(ctx => {
+        // the Self type parameter is implicit
+        TypeParamsContext.declare(ctx, 'Self');
+        return curlyBrackets(many(methodSignature));
+      })
     )
   ),
   ([_, name, [params, methods]]) => Decl.Trait(name, params, methods)
@@ -653,6 +669,7 @@ initParser(decl, alt(
   funcDecl,
   typeAliasDecl,
   moduleDecl,
+  traitImplDecl,
   inherentImplDecl,
   traitDecl,
 ));

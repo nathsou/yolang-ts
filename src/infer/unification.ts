@@ -2,7 +2,7 @@ import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { match, __ } from "ts-pattern";
 import { Error } from "../errors/errors";
 import { zip } from "../utils/array";
-import { Maybe, none, some } from "../utils/maybe";
+import { Maybe, none } from "../utils/maybe";
 import { panic } from "../utils/misc";
 import { Result } from "../utils/result";
 import { Row } from "./records";

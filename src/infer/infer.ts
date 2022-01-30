@@ -1,4 +1,4 @@
-import { DataType, match as matchVariant, VariantOf } from 'itsamatch';
+import { DataType, match as matchVariant } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
 import { Error } from '../errors/errors';
 import { gen } from '../utils/array';
@@ -383,8 +383,13 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
         }
       }
     },
-    Trait: () => {
-
+    TraitImpl: () => {
+      // TODO: implement
+    },
+    Trait: trait => {
+      if (declare) {
+        TypeContext.declareTrait(ctx, trait);
+      }
     },
     Error: ({ message }) => {
       errors.push(Error.Typing({ type: 'ParsingError', message }));
