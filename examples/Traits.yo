@@ -8,12 +8,15 @@ type Point = {
   y: u32
 }
 
-impl PartialEq<Point> for Point {
+impl Traits.PartialEq<Point> for Point {
   fn eq(self, other) {
     self.x == other.x && self.y == other.y
   }
 }
 
 fn main() {
-  3
+  let p1 = Point { x: 1, y: 2 }
+  let p2 = Point { x: 3, y: 4 }
+  
+  p1.eq(p2)
 }

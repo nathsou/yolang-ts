@@ -18,6 +18,9 @@ export const Argument = {
   show: ({ pattern, mutable, annotation }: Argument) => {
     return `${mutable ? 'mut ' : ''}${Pattern.show(pattern)}${annotation.mapWithDefault(t => `: ${MonoTy.show(t)}`, '')}`;
   },
+  asMonoTy: ({ annotation }: Argument): MonoTy => {
+    return annotation.orDefault(MonoTy.fresh);
+  },
 };
 
 export const ArgumentList = {
@@ -187,7 +190,7 @@ export type Decl = DataType<{
   TypeAlias: { name: string, typeParams: TypeParams, alias: MonoTy },
   InherentImpl: { ty: MonoTy, typeParams: TypeParams, decls: Decl[] },
   Trait: { name: string, typeParams: TypeParams, methods: MethodSig[] },
-  TraitImpl: { trait: { path: string[], name: string }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[] },
+  TraitImpl: { trait: { path: string[], name: string, args: MonoTy[] }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[] },
   Error: { message: string },
 }>;
 
@@ -197,7 +200,7 @@ export const Decl = {
   TypeAlias: (name: string, typeParams: TypeParams, alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
   Impl: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'InherentImpl', ty, typeParams, decls }),
   Trait: (name: string, typeParams: TypeParams, methods: MethodSig[]): Decl => ({ variant: 'Trait', name, typeParams, methods }),
-  TraitImpl: (trait: { path: string[], name: string }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[]): Decl => ({ variant: 'TraitImpl', trait, typeParams, implementee, methods }),
+  TraitImpl: (trait: { path: string[], name: string, args: MonoTy[] }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[]): Decl => ({ variant: 'TraitImpl', trait, typeParams, implementee, methods }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   show: (decl: Decl): string => matchVariant(decl, {
     Function: ({ name, typeParams, args, body }) => `fn ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
@@ -236,6 +239,7 @@ export type MethodSig = {
 export const MethodSig = {
   make: (name: string, typeParams: TypeParams, args: Argument[], ret: MonoTy): MethodSig => ({ name, typeParams, args, ret }),
   show: (method: MethodSig): string => `fn ${method.name}${TypeParams.show(method.typeParams)}(${joinWith(method.args, Argument.show, ', ')}) -> ${MonoTy.show(method.ret)}`,
+  asMonoTy: (method: MethodSig): MonoTy => MonoTy.Fun(method.args.map(Argument.asMonoTy), method.ret),
 };
 
 export type Prog = Decl[];

@@ -1,10 +1,13 @@
 import { DataType, match as matchVariant } from 'itsamatch';
-import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
+import { Decl, Expr, Pattern, Prog, Stmt, Argument } from '../ast/bitter';
+import { MethodSig } from '../ast/sweet';
 import { Error } from '../errors/errors';
-import { gen } from '../utils/array';
+import { gen, zip } from '../utils/array';
 import { some } from '../utils/maybe';
 import { proj } from '../utils/misc';
+import { diffSet } from '../utils/set';
 import { Env } from './env';
+import { Impl } from './impls';
 import { Row } from './records';
 import { signatures } from './signatures';
 import { MAX_TUPLE_INDEX, Tuple } from './tuples';
@@ -21,6 +24,9 @@ export type TypingError = DataType<{
   UnknownModuleMember: { path: string[], member: string },
   TEMP_OnlyFunctionModuleAccessAllowed: { path: string[], member: string },
   TupleIndexTooBig: { index: number },
+  MissingTraitMethods: { trait: string, methods: string[] },
+  SuperfluousTraitMethods: { trait: string, methods: string[] },
+  WrongNumberOfTraitParams: { trait: string, expected: number, actual: number },
   ParsingError: { message: string },
 }, 'type'>;
 
@@ -318,6 +324,10 @@ export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): Error[
 };
 
 export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors: Error[]): Error[] => {
+  const unify = (s: MonoTy, t: MonoTy, context = ctx): void => {
+    errors.push(...unifyMut(s, t, context));
+  };
+
   matchVariant(decl, {
     Function: func => {
       const { name, typeParams, args, body } = func;
@@ -326,7 +336,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
 
       args.forEach(arg => {
         arg.annotation.do(ann => {
-          errors.push(...unifyMut(arg.name.ty, ann, bodyCtx));
+          unify(arg.name.ty, ann, bodyCtx);
         });
 
         Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
@@ -339,7 +349,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
         body.ty
       );
 
-      errors.push(...unifyMut(funTy, name.ty, ctx));
+      unify(funTy, name.ty);
 
       const genFunTy = MonoTy.generalize(ctx.env, funTy);
       func.funTy = genFunTy;
@@ -373,7 +383,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
     },
     Impl: impl => {
       if (declare) {
-        TypeContext.declareImpl(ctx, impl);
+        TypeContext.declareImpl(ctx, Impl.from(impl.ty, impl.typeParams, impl.decls));
 
         const implCtx = TypeContext.clone(ctx);
         TypeContext.declareTypeParams(implCtx, ...impl.typeParams);
@@ -383,8 +393,71 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
         }
       }
     },
-    TraitImpl: () => {
-      // TODO: implement
+    TraitImpl: impl => {
+      if (declare) {
+        const traitImpl = TypeContext.declareTraitImpl(ctx, impl);
+
+        traitImpl.match({
+          Some: impl => {
+            const { trait, methods, typeParams } = impl;
+            const traitMethods = trait.methods.map(m => m.name);
+            const implMethods = Object.keys(methods);
+
+            // ensure that there is a one to one correspondence between
+            // the trait and the impl
+            const missing = diffSet(new Set(traitMethods), new Set(implMethods));
+            const superfluous = diffSet(new Set(implMethods), new Set(traitMethods));
+
+            if (missing.size > 0) {
+              errors.push(Error.Typing({
+                type: 'MissingTraitMethods',
+                trait: trait.name,
+                methods: [...missing],
+              }));
+            }
+
+            if (superfluous.size > 0) {
+              errors.push(Error.Typing({
+                type: 'SuperfluousTraitMethods',
+                trait: trait.name,
+                methods: [...superfluous],
+              }));
+            }
+
+            if (missing.size === 0 && superfluous.size === 0) {
+              TypeContext.declareImpl(ctx, impl);
+              const tyParamNamesWithSelf = ['Self', ...trait.typeParams];
+              const argsWithSelf = [impl.implementee, ...impl.args];
+              const tyParamsSubst = new Map<string, MonoTy>(zip(tyParamNamesWithSelf, argsWithSelf));
+
+              if (argsWithSelf.length !== tyParamNamesWithSelf.length) {
+                errors.push(Error.Typing({
+                  type: 'WrongNumberOfTraitParams',
+                  trait: trait.name,
+                  expected: tyParamNamesWithSelf.length,
+                  actual: argsWithSelf.length,
+                }));
+              }
+
+              for (const [method, implMethod] of Object.entries(methods)) {
+                const methodSig = trait.methods.find(m => m.name === method)!;
+                const methodTy = MonoTy.substituteTyParams(MethodSig.asMonoTy(methodSig), tyParamsSubst);
+                inferDecl(implMethod, ctx, false, errors);
+                const instTy = MonoTy.substituteTyParams(PolyTy.instantiate(implMethod.funTy), tyParamsSubst);
+
+                unify(methodTy, instTy);
+              }
+            }
+          },
+          None: () => {
+            errors.push(Error.Resolution({
+              type: 'TypeNotFound',
+              path: impl.trait.path,
+              name: impl.trait.name,
+            }));
+          }
+        });
+      }
     },
     Trait: trait => {
       if (declare) {

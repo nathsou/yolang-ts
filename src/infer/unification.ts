@@ -59,12 +59,7 @@ const unifyMany = (
 
   const instantiateGenericTyConst = (c: VariantOf<MonoTy, 'Const'>): Maybe<MonoTy> => {
     return resolveTypeAlias(c).map(({ ty: genericTy, params }) => {
-      const subst = new Map<string, MonoTy>();
-
-      for (const [param, arg] of zip(params, c.args)) {
-        subst.set(param, arg);
-      }
-
+      const subst = new Map<string, MonoTy>(zip(params, c.args));
       return MonoTy.substituteTyParams(genericTy, subst);
     });
   };

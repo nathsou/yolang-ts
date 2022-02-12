@@ -4,7 +4,7 @@ import { Context } from "../ast/context";
 import { Maybe, none, some } from "../utils/maybe";
 import { pushRecord } from "../utils/misc";
 import { Env } from "./env";
-import { Impl } from "./impls";
+import { Impl, TraitImpl } from "./impls";
 import { Subst } from "./subst";
 import { Trait } from "./traits";
 import { MonoTy, TypeParams, TyVar } from "./types";
@@ -17,6 +17,7 @@ export type TypeContext = {
   typeAliases: Record<string, { ty: MonoTy, params: TypeParams }>,
   impls: Record<string, Impl[]>,
   traits: Record<string, Trait>,
+  traitImpls: Record<string, TraitImpl[]>,
   topLevelDecls: Decl[],
 };
 
@@ -28,6 +29,7 @@ export const TypeContext = {
     typeAliases: {},
     impls: {},
     traits: {},
+    traitImpls: {},
     topLevelDecls,
   }),
   clone: (ctx: TypeContext): TypeContext => ({
@@ -37,6 +39,7 @@ export const TypeContext = {
     typeAliases: { ...ctx.typeAliases },
     impls: { ...ctx.impls },
     traits: { ...ctx.traits },
+    traitImpls: { ...ctx.traitImpls },
     topLevelDecls: [...ctx.topLevelDecls],
   }),
   declareModule: (ctx: TypeContext, mod: VariantOf<Decl, 'Module'>): void => {
@@ -54,14 +57,19 @@ export const TypeContext = {
       params: typeParams,
     };
   },
-  declareImpl: (ctx: TypeContext, impl: VariantOf<Decl, 'Impl'>): void => {
-    const imp = Impl.from(impl);
-
-    for (const decl of impl.decls) {
-      if (decl.variant === 'Function') {
-        pushRecord(ctx.impls, decl.name.original, imp);
-      }
+  declareImpl: (ctx: TypeContext, impl: Impl): void => {
+    for (const name of Object.keys(impl.methods)) {
+      pushRecord(ctx.impls, name, impl);
     }
+  },
+  declareTraitImpl: (ctx: TypeContext, impl: VariantOf<Decl, 'TraitImpl'>): Maybe<TraitImpl> => {
+    const trait = TypeContext.findTrait(ctx, impl.trait.path, impl.trait.name);
+
+    return trait.map(trait => {
+      const imp = TraitImpl.from(impl, trait);
+      pushRecord(ctx.traitImpls, TraitImpl.hash(impl), imp);
+      return imp;
+    });
   },
   declareTrait: (ctx: TypeContext, trait: Trait): void => {
     ctx.traits[trait.name] = trait;
@@ -87,6 +95,22 @@ export const TypeContext = {
     }
 
     return mod ? some(mod) : none;
+  },
+  findTrait(ctx: TypeContext, path: string[], name: string): Maybe<Trait> {
+    const mod = TypeContext.resolveModule(ctx, path);
+
+    return mod.flatMap(mod => {
+      const trait = mod.decls.find(decl =>
+        decl.variant === 'Trait' &&
+        decl.name === name
+      );
+
+      if (trait) {
+        return some(trait);
+      }
+
+      return none;
+    });
   },
   findImplMethod: (ctx: TypeContext, funcName: string, ty: MonoTy): Maybe<[Impl, Subst, MonoTy, TypeContext]> => {
     if (funcName in ctx.impls) {

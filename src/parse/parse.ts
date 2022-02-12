@@ -10,7 +10,7 @@ import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized, withContext } from './combinators';
+import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, squareBrackets, symbol, uninitialized, withContext } from './combinators';
 import { Const, Token } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -610,13 +610,14 @@ const inherentImplDecl = map(seq(
 const traitImplDecl = map(seq(
   keyword('impl'),
   typePath,
+  optionalOrDefault(angleBrackets(commas(monoTy)), []),
   scopedTypeParams(seq(
     expectOrDefault(keyword('for'), `Expected 'for' keyword after trait name`, Token.Keyword('for')),
     expectOrDefault(monoTy, `Expected type after 'impl' keyword`, MonoTy.Const('()')),
     expectOrDefault(curlyBrackets(many(funcDecl)), `Expected declarations`, []),
   ))
 ),
-  ([_impl, [path, name], [tyParams, [_for, ty, decls]]]) => Decl.TraitImpl({ path, name }, tyParams, ty, decls)
+  ([_impl, [path, name], args, [tyParams, [_for, ty, decls]]]) => Decl.TraitImpl({ path, name, args }, tyParams, ty, decls)
 );
 
 const moduleDecl = map(seq(

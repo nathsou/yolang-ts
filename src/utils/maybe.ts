@@ -60,12 +60,13 @@ export class Maybe<T> {
     return other;
   }
 
-  orDefault(defaultValue: T): T {
+  orDefault(defaultValue: T | (() => T)): T {
     if (this.raw.type === 'some') {
       return this.raw.data;
     }
 
-    return defaultValue;
+    /// @ts-ignore
+    return typeof defaultValue === 'function' ? defaultValue() : defaultValue;
   }
 
   match<U>(actions: { Some: (data: T) => U, None: () => U }): U {

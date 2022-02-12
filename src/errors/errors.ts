@@ -42,10 +42,14 @@ export const Error = {
       UnknownModuleMember: ({ path, member }) => `Unknown member '${member}' in module '${path.join('.')}'`,
       TEMP_OnlyFunctionModuleAccessAllowed: ({ path }) => `(temp) Only functions can be accessed from module '${path.join('.')}'`,
       TupleIndexTooBig: ({ index }) => `Tuple index ${index} is too big, limit is ${MAX_TUPLE_INDEX}`,
+      MissingTraitMethods: ({ trait, methods }) => `Missing methods [${methods.join(', ')}] in trait '${trait}'`,
+      SuperfluousTraitMethods: ({ trait, methods }) => `Superfluous methods [${methods.join(', ')}] in trait '${trait}'`,
+      WrongNumberOfTraitParams: ({ trait, expected, actual }) => `Wrong number of parameters in trait '${trait}', expected ${expected}, got ${actual}`,
     }, 'type'),
     Resolution: ({ err }) => matchVariant(err, {
       ModuleNotFound: ({ name }) => `Module '${name}' not found`,
       ModuleAlreadyExists: ({ name, path, existingPath }) => `Module '${name}' already exists at '${path}', but was already imported at '${existingPath}'`,
+      TypeNotFound: ({ name, path }) => `Type '${[...path, name].join('.')}' not found`,
     }, 'type'),
   }),
 };

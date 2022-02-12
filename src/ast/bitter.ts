@@ -91,6 +91,10 @@ export const Pattern = {
 
 type Argument = { name: Name, mutable: boolean, annotation: Maybe<MonoTy> };
 
+export const Argument = {
+  asMonoTy: ({ annotation }: Argument): MonoTy => annotation.orDefault(MonoTy.fresh),
+};
+
 export type Expr = DataType<WithSweetRefAndType<{
   Const: { value: Const },
   Variable: { name: Name },
@@ -252,7 +256,7 @@ export type Decl = DataType<{
   Module: { name: string, decls: Decl[], members: Record<string, Decl> },
   TypeAlias: { name: string, typeParams: TypeParams, alias: MonoTy },
   Impl: { ty: MonoTy, typeParams: TypeParams, decls: Decl[] },
-  TraitImpl: { trait: { path: string[], name: string }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[] },
+  TraitImpl: { trait: { path: string[], name: string, args: MonoTy[] }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[] },
   Trait: { name: string, typeParams: TypeParams, methods: MethodSig[] },
   Error: { message: string },
 }>;
@@ -291,7 +295,7 @@ export const Decl = {
   },
   TypeAlias: (name: string, typeParams: TypeParams, alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
   Impl: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
-  TraitImpl: (trait: { path: string[], name: string }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[]): Decl => ({ variant: 'TraitImpl', trait, typeParams, implementee, methods }),
+  TraitImpl: (trait: { path: string[], name: string, args: MonoTy[] }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[]): Decl => ({ variant: 'TraitImpl', trait, typeParams, implementee, methods }),
   Trait: (name: string, typeParams: TypeParams, methods: MethodSig[]): Decl => ({ variant: 'Trait', name, typeParams, methods }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: Error[]): Decl =>

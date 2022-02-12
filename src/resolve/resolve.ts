@@ -13,6 +13,7 @@ import { FileSystem } from "./fileSystem";
 
 export type ResolutionError = DataType<{
   ModuleNotFound: { name: string },
+  TypeNotFound: { path: string[], name: string },
   ModuleAlreadyExists: { name: string, path: string, existingPath: string },
 }, 'type'>;
 
