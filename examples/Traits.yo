@@ -3,6 +3,17 @@ trait PartialEq<Rhs> {
   fn eq(self: Self, other: Rhs) -> bool
 }
 
+type Point = {
+  x: u32,
+  y: u32
+}
+
+impl PartialEq<Point> for Point {
+  fn eq(self, other) {
+    self.x == other.x && self.y == other.y
+  }
+}
+
 fn main() {
   3
 }

@@ -25,7 +25,7 @@ type ModuleRef = {
 const moduleName = (path: string) => {
   const name = last(path.split('/')).replace(ext, '').toLowerCase();
   return `${name[0].toUpperCase()}${name.substring(1)}`;
-}
+};
 
 const ext = '.yo';
 
@@ -187,7 +187,9 @@ const resolveAux = async (
     ),
     traverseDecl: decl => matchVariant(decl, {
       TraitImpl: ({ trait: { path } }) => {
-        registerModule(moduleName(path[0]));
+        if (path.length > 0) {
+          registerModule(moduleName(path[0]));
+        }
       },
       _: () => { },
     }),
