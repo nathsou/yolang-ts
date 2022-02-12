@@ -1,9 +1,9 @@
-import { DataType, match as matchVariant } from 'itsamatch';
+import { DataType, match as matchVariant, VariantOf } from 'itsamatch';
 import { MonoTy, TypeParams } from '../infer/types';
 import { Const } from '../parse/token';
 import { joinWith } from '../utils/array';
 import { Maybe } from '../utils/maybe';
-import { parenthesized } from '../utils/misc';
+import { id, noop, parenthesized } from '../utils/misc';
 
 // Sweet expressions are *sugared* representations
 // of the structure of yolang source code.
@@ -17,6 +17,9 @@ export type Argument = { pattern: Pattern, mutable: boolean, annotation: Maybe<M
 export const Argument = {
   show: ({ pattern, mutable, annotation }: Argument) => {
     return `${mutable ? 'mut ' : ''}${Pattern.show(pattern)}${annotation.mapWithDefault(t => `: ${MonoTy.show(t)}`, '')}`;
+  },
+  asMonoTy: ({ annotation }: Argument): MonoTy => {
+    return annotation.orDefault(MonoTy.fresh);
   },
 };
 
@@ -185,36 +188,74 @@ export type Decl = DataType<{
   Function: { name: string, typeParams: TypeParams, args: Argument[], body: Expr },
   Module: { name: string, decls: Decl[] },
   TypeAlias: { name: string, typeParams: TypeParams, alias: MonoTy },
-  Impl: { ty: MonoTy, typeParams: TypeParams, decls: Decl[] },
+  InherentImpl: { ty: MonoTy, typeParams: TypeParams, decls: Decl[] },
+  Trait: { name: string, typeParams: TypeParams, methods: MethodSig[] },
+  TraitImpl: { trait: { path: string[], name: string, args: MonoTy[] }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[] },
   Error: { message: string },
 }>;
 
 export const Decl = {
-  Function: (name: string, typeParams: TypeParams, args: Argument[], body: Expr): Decl => ({ variant: 'Function', name, typeParams, args, body }),
+  Function: (name: string, typeParams: TypeParams, args: Argument[], body: Expr): VariantOf<Decl, 'Function'> => ({ variant: 'Function', name, typeParams, args, body }),
   Module: (name: string, decls: Decl[]): Decl => ({ variant: 'Module', name, decls }),
   TypeAlias: (name: string, typeParams: TypeParams, alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
-  Impl: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
+  Impl: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'InherentImpl', ty, typeParams, decls }),
+  Trait: (name: string, typeParams: TypeParams, methods: MethodSig[]): Decl => ({ variant: 'Trait', name, typeParams, methods }),
+  TraitImpl: (trait: { path: string[], name: string, args: MonoTy[] }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[]): Decl => ({ variant: 'TraitImpl', trait, typeParams, implementee, methods }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   show: (decl: Decl): string => matchVariant(decl, {
     Function: ({ name, typeParams, args, body }) => `fn ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
     Module: ({ name, decls }) => `module ${name} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)}`,
-    Impl: ({ ty, typeParams, decls }) => `impl${TypeParams.show(typeParams)} ${MonoTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
+    InherentImpl: ({ ty, typeParams, decls }) => `impl${TypeParams.show(typeParams)} ${MonoTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
+    Trait: ({ name, typeParams, methods }) => `trait ${name}${TypeParams.show(typeParams)} {\n${joinWith(methods, m => '  ' + MethodSig.show(m), '\n')}\n}`,
+    TraitImpl: ({ trait, typeParams, implementee, methods }) => `impl ${[...trait.path, trait.name].join('.')}${TypeParams.show(typeParams)} for ${MonoTy.show(implementee)} {\n${joinWith(methods, m => '  ' + Decl.show(m), '\n')}\n}`,
     Error: ({ message }) => `<Error: ${message}> `,
   }),
-  rewrite: (decl: Decl, f: (expr: Expr) => Expr): Decl => matchVariant(decl, {
-    Function: ({ name, typeParams, args, body }) => Decl.Function(name, typeParams, args, Expr.rewrite(body, f)),
-    Module: ({ name, decls }) => Decl.Module(name, decls.map(d => Decl.rewrite(d, f))),
-    TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias(name, typeParams, alias),
-    Impl: ({ ty, typeParams, decls }) => Decl.Impl(ty, typeParams, decls.map(d => Decl.rewrite(d, f))),
-    Error: ({ message }) => Decl.Error(message),
+  rewrite: (decl: Decl, rfs: RewriteFuncs): Decl => {
+    const { rewriteExpr: f = id, rewriteDecl: g = id } = rfs;
+    return matchVariant(decl, {
+      Function: ({ name, typeParams, args, body }) => g(Decl.Function(name, typeParams, args, Expr.rewrite(body, f))),
+      Module: ({ name, decls }) => g(Decl.Module(name, decls.map(d => Decl.rewrite(d, rfs)))),
+      TypeAlias: ({ name, typeParams, alias }) => g(Decl.TypeAlias(name, typeParams, alias)),
+      InherentImpl: ({ ty, typeParams, decls }) => g(Decl.Impl(ty, typeParams, decls.map(d => Decl.rewrite(d, rfs)))),
+      Trait: ({ name, typeParams, methods }) => g(Decl.Trait(name, typeParams, methods)),
+      TraitImpl: ({ trait, typeParams, implementee, methods }) => g(Decl.TraitImpl(trait, typeParams, implementee, methods.map(m => Decl.rewrite(m, rfs)))),
+      Error: ({ message }) => g(Decl.Error(message)),
+    });
+  },
+  traverse: (decl: Decl, { traverseExpr = noop, traverseDecl = noop }: TraverseFuncs): Decl => Decl.rewrite(decl, {
+    rewriteExpr: (expr: Expr): Expr => { traverseExpr(expr); return expr; },
+    rewriteDecl: (decl: Decl): Decl => { traverseDecl(decl); return decl; },
   }),
+};
+
+export type MethodSig = {
+  name: string,
+  typeParams: TypeParams,
+  args: Argument[],
+  ret: MonoTy,
+};
+
+export const MethodSig = {
+  make: (name: string, typeParams: TypeParams, args: Argument[], ret: MonoTy): MethodSig => ({ name, typeParams, args, ret }),
+  show: (method: MethodSig): string => `fn ${method.name}${TypeParams.show(method.typeParams)}(${joinWith(method.args, Argument.show, ', ')}) -> ${MonoTy.show(method.ret)}`,
+  asMonoTy: (method: MethodSig): MonoTy => MonoTy.Fun(method.args.map(Argument.asMonoTy), method.ret),
 };
 
 export type Prog = Decl[];
 
+type RewriteFuncs = {
+  rewriteExpr?: (expr: Expr) => Expr,
+  rewriteDecl?: (decl: Decl) => Decl,
+};
+
+type TraverseFuncs = {
+  traverseExpr?: (expr: Expr) => void,
+  traverseDecl?: (decl: Decl) => void,
+};
+
 export const Prog = {
   show: (prog: Prog): string => joinWith(prog, Decl.show, '\n\n'),
-  rewrite: (prog: Prog, f: (expr: Expr) => Expr): Prog => prog.map(d => Decl.rewrite(d, f)),
-  traverse: (prog: Prog, f: (expr: Expr) => void): Prog => prog.map(d => Decl.rewrite(d, expr => { f(expr); return expr; })),
+  rewrite: (prog: Prog, rfs: RewriteFuncs): Prog => prog.map(d => Decl.rewrite(d, rfs)),
+  traverse: (prog: Prog, rfs: TraverseFuncs): Prog => prog.map(d => Decl.traverse(d, rfs)),
 };

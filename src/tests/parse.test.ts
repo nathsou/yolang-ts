@@ -5,7 +5,7 @@ import { Row } from '../infer/records';
 import { MonoTy, TypeParamsContext } from '../infer/types';
 import { Parser } from '../parse/combinators';
 import { lex } from '../parse/lex';
-import { binary, expr, recordTy, tuple, unary } from '../parse/parse';
+import { binaryExpr, expr, recordTy, tuple, unary } from '../parse/parse';
 import { Const, Token } from '../parse/token';
 import { none } from '../utils/maybe';
 import { Slice } from '../utils/slice';
@@ -53,7 +53,7 @@ describe('Parser', () => {
   describe('binary operators', () => {
     it('should parse addition', () => {
       expectExpr(
-        binary,
+        binaryExpr,
         '1 + 2',
         Expr.BinaryOp(Expr.Const(Const.u32(1)), '+', Expr.Const(Const.u32(2)))
       );

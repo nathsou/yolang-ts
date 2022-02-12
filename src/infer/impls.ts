@@ -1,16 +1,17 @@
 import { VariantOf } from "itsamatch";
 import { Decl } from "../ast/bitter";
+import { Trait } from "./traits";
 import { MonoTy, TypeParams } from "./types";
 
-export type Impl = {
+export interface Impl {
   ty: MonoTy,
   typeParams: TypeParams,
   methods: Record<string, VariantOf<Decl, 'Function'>>,
   staticFuncs: Record<string, VariantOf<Decl, 'Function'>>,
-};
+}
 
 export const Impl = {
-  from: ({ ty, typeParams, decls }: VariantOf<Decl, 'Impl'>): Impl => {
+  from: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Impl => {
     const impl: Impl = {
       ty,
       typeParams,
@@ -34,5 +35,28 @@ export const Impl = {
     }
 
     return impl;
+  },
+};
+
+export interface TraitImpl extends Impl {
+  trait: Trait,
+  implementee: MonoTy,
+  args: MonoTy[],
+}
+
+export const TraitImpl = {
+  from: (
+    { implementee, methods, typeParams, trait: { args } }: VariantOf<Decl, 'TraitImpl'>,
+    trait: Trait,
+  ): TraitImpl => {
+    return {
+      implementee,
+      trait,
+      args,
+      ...Impl.from(implementee, typeParams, Object.values(methods)),
+    };
+  },
+  hash: ({ trait: { path, name } }: VariantOf<Decl, 'TraitImpl'>): string => {
+    return [...path, name].join('.');
   },
 };
