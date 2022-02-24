@@ -609,15 +609,15 @@ const inherentImplDecl = map(seq(
 
 const traitImplDecl = map(seq(
   keyword('impl'),
-  typePath,
-  optionalOrDefault(angleBrackets(commas(monoTy)), []),
   scopedTypeParams(seq(
+    typePath,
+    optionalOrDefault(angleBrackets(commas(monoTy)), []),
     expectOrDefault(keyword('for'), `Expected 'for' keyword after trait name`, Token.Keyword('for')),
     expectOrDefault(monoTy, `Expected type after 'impl' keyword`, MonoTy.Const('()')),
     expectOrDefault(curlyBrackets(many(funcDecl)), `Expected declarations`, []),
   ))
 ),
-  ([_impl, [path, name], args, [tyParams, [_for, ty, decls]]]) => Decl.TraitImpl({ path, name, args }, tyParams, ty, decls)
+  ([_impl, [tyParams, [[path, name], args, _for, ty, decls]]]) => Decl.TraitImpl({ path, name, args }, tyParams, ty, decls)
 );
 
 const moduleDecl = map(seq(

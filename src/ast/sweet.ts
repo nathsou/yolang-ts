@@ -208,7 +208,7 @@ export const Decl = {
     TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)}`,
     InherentImpl: ({ ty, typeParams, decls }) => `impl${TypeParams.show(typeParams)} ${MonoTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     Trait: ({ name, typeParams, methods }) => `trait ${name}${TypeParams.show(typeParams)} {\n${joinWith(methods, m => '  ' + MethodSig.show(m), '\n')}\n}`,
-    TraitImpl: ({ trait, typeParams, implementee, methods }) => `impl ${[...trait.path, trait.name].join('.')}${TypeParams.show(typeParams)} for ${MonoTy.show(implementee)} {\n${joinWith(methods, m => '  ' + Decl.show(m), '\n')}\n}`,
+    TraitImpl: ({ trait, typeParams, implementee, methods }) => `impl${TypeParams.show(typeParams)} ${[...trait.path, trait.name].join('.')}<${joinWith(trait.args, MonoTy.show)}> for ${MonoTy.show(implementee)} {\n${joinWith(methods, m => '  ' + Decl.show(m), '\n')}\n}`,
     Error: ({ message }) => `<Error: ${message}> `,
   }),
   rewrite: (decl: Decl, rfs: RewriteFuncs): Decl => {

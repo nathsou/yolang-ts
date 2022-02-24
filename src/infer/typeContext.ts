@@ -1,13 +1,14 @@
 import { VariantOf } from "itsamatch";
 import { Decl } from "../ast/bitter";
 import { Context } from "../ast/context";
+import { Error } from "../errors/errors";
 import { Maybe, none, some } from "../utils/maybe";
 import { pushRecord } from "../utils/misc";
 import { Env } from "./env";
 import { Impl, TraitImpl } from "./impls";
 import { Subst } from "./subst";
 import { Trait } from "./traits";
-import { MonoTy, TypeParams, TyVar } from "./types";
+import { MonoTy, PolyTy, TypeParams, TyVar } from "./types";
 import { unifyPure } from "./unification";
 
 export type TypeContext = {
@@ -116,10 +117,11 @@ export const TypeContext = {
     if (funcName in ctx.impls) {
       for (const impl of ctx.impls[funcName]) {
         const newCtx = TypeContext.clone(ctx);
+        const instTy = PolyTy.instantiate(PolyTy.instantiateTyParams(impl.typeParams, impl.ty));
         TypeContext.declareTypeParams(newCtx, ...impl.typeParams);
-        const res = unifyPure(ty, impl.ty, newCtx);
+        const res = unifyPure(ty, instTy, newCtx);
         if (res.isOk()) {
-          return some([impl, res.unwrap(), impl.ty, newCtx]);
+          return some([impl, res.unwrap(), instTy, newCtx]);
         }
       }
     }
