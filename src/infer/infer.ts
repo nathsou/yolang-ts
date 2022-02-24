@@ -1,8 +1,8 @@
 import { DataType, match as matchVariant } from 'itsamatch';
-import { Decl, Expr, Pattern, Prog, Stmt, Argument } from '../ast/bitter';
+import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
 import { MethodSig } from '../ast/sweet';
 import { Error } from '../errors/errors';
-import { gen, joinWith, zip } from '../utils/array';
+import { gen, zip } from '../utils/array';
 import { some } from '../utils/maybe';
 import { proj } from '../utils/misc';
 import { diffSet } from '../utils/set';

@@ -112,6 +112,10 @@ const unifyMany = (
           linkTo(s, t, subst);
         }
       })
+      // Orient
+      .with([__, { variant: 'Var' }], ([s, t]) => {
+        pushEqs([t, s]);
+      })
       .with([{ variant: 'Var', value: { kind: 'Link' } }, __], ([s, t]) => {
         pushEqs([s, t]);
       })
@@ -162,10 +166,6 @@ const unifyMany = (
         } else {
           s.link = t;
         }
-      })
-      // Orient
-      .with([__, { variant: 'Var' }], ([s, t]) => {
-        pushEqs([t, s]);
       })
       .with([__, { variant: 'Param' }], ([s, t]) => {
         pushEqs([t, s]);
