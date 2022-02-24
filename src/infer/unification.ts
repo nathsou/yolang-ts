@@ -156,8 +156,18 @@ const unifyMany = (
           t.name = s.name;
         }
       })
+      .with([{ variant: 'Param' }, __], ([s, t]) => {
+        if (s.link) {
+          pushEqs([s.link, t]);
+        } else {
+          s.link = t;
+        }
+      })
       // Orient
       .with([__, { variant: 'Var' }], ([s, t]) => {
+        pushEqs([t, s]);
+      })
+      .with([__, { variant: 'Param' }], ([s, t]) => {
         pushEqs([t, s]);
       })
       .otherwise(([s, t]) => {

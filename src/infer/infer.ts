@@ -2,7 +2,7 @@ import { DataType, match as matchVariant } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt, Argument } from '../ast/bitter';
 import { MethodSig } from '../ast/sweet';
 import { Error } from '../errors/errors';
-import { gen, zip } from '../utils/array';
+import { gen, joinWith, zip } from '../utils/array';
 import { some } from '../utils/maybe';
 import { proj } from '../utils/misc';
 import { diffSet } from '../utils/set';
@@ -26,7 +26,7 @@ export type TypingError = DataType<{
   TupleIndexTooBig: { index: number },
   MissingTraitMethods: { trait: string, methods: string[] },
   SuperfluousTraitMethods: { trait: string, methods: string[] },
-  WrongNumberOfTraitParams: { trait: string, expected: number, actual: number },
+  WrongNumberOfTraitArgs: { trait: string, expected: number, actual: number },
   ParsingError: { message: string },
 }, 'type'>;
 
@@ -159,10 +159,6 @@ export const inferExpr = (
 
             unify(implInstTy, receiver.ty);
             const func = impl.methods[method];
-
-            args.forEach(arg => {
-              inferExpr(arg, ctx, errors);
-            });
 
             const expectedFunTy = MonoTy.Fun(func.args.map(arg => arg.name.ty), func.body.ty);
 
@@ -344,10 +340,10 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
 
       inferExpr(body, bodyCtx, errors);
 
-      const funTy = MonoTy.Fun(
+      const funTy = PolyTy.instantiate(PolyTy.instantiateTyParams(typeParams, MonoTy.Fun(
         args.map(({ name: arg }) => arg.ty),
         body.ty
-      );
+      )));
 
       unify(funTy, name.ty);
 
@@ -397,9 +393,12 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
       if (declare) {
         const traitImpl = TypeContext.declareTraitImpl(ctx, impl);
 
+        const implCtx = TypeContext.clone(ctx);
+        TypeContext.declareTypeParams(implCtx, ...impl.typeParams);
+
         traitImpl.match({
           Some: impl => {
-            const { trait, methods, typeParams } = impl;
+            const { trait, methods } = impl;
             const traitMethods = trait.methods.map(m => m.name);
             const implMethods = Object.keys(methods);
 
@@ -432,7 +431,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
 
               if (argsWithSelf.length !== tyParamNamesWithSelf.length) {
                 errors.push(Error.Typing({
-                  type: 'WrongNumberOfTraitParams',
+                  type: 'WrongNumberOfTraitArgs',
                   trait: trait.name,
                   expected: tyParamNamesWithSelf.length,
                   actual: argsWithSelf.length,
@@ -442,10 +441,10 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
               for (const [method, implMethod] of Object.entries(methods)) {
                 const methodSig = trait.methods.find(m => m.name === method)!;
                 const methodTy = MonoTy.substituteTyParams(MethodSig.asMonoTy(methodSig), tyParamsSubst);
-                inferDecl(implMethod, ctx, false, errors);
+                inferDecl(implMethod, implCtx, false, errors);
                 const instTy = MonoTy.substituteTyParams(PolyTy.instantiate(implMethod.funTy), tyParamsSubst);
 
-                unify(methodTy, instTy);
+                unify(methodTy, instTy, implCtx);
               }
             }
           },

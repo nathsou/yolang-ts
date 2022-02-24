@@ -2,7 +2,7 @@ import { DataType, match as matchVariant } from "itsamatch";
 import { match } from "ts-pattern";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
-import { cond, panic, parenthesized } from "../utils/misc";
+import { cond, id, panic, parenthesized } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./records";
@@ -23,7 +23,7 @@ export const TyVar = {
 // Monomorphic types
 export type MonoTy = DataType<{
   Var: { value: TyVar },
-  Param: { name: string },
+  Param: { name: string, link?: MonoTy },
   Const: { path: string[], name: string, args: MonoTy[] },
   Fun: { args: MonoTy[], ret: MonoTy },
   Tuple: { tuple: Tuple },
@@ -188,7 +188,13 @@ export const MonoTy = {
     };
 
     return matchVariant(ty, {
-      Var: () => ty,
+      Var: () => {
+        if (ty.variant === 'Var' && ty.value.kind === 'Link') {
+          return MonoTy.substituteTyParams(ty.value.to, subst);
+        }
+
+        return ty;
+      },
       Param: ({ name }) => {
         if (!subst.has(name)) {
           panic(`Type parameter '${name}' not found in substitution`);
@@ -299,6 +305,12 @@ export const PolyTy = {
     });
 
     return MonoTy.substitute(ty, subst);
+  },
+  instantiateTyParams: (tyParams: TypeParams, ty: MonoTy): PolyTy => {
+    const quantifiedVars = gen(tyParams.length, id);
+    const subst = new Map<string, MonoTy>(zip(tyParams, quantifiedVars.map(id => MonoTy.Var(TyVar.Unbound(id)))));
+
+    return [quantifiedVars, MonoTy.substituteTyParams(ty, subst)];
   },
   freeTypeVars: ([quantified, monoTy]: PolyTy): Set<TyVarId> => {
     const freeVarsMonoTy = MonoTy.freeTypeVars(monoTy);

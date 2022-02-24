@@ -44,7 +44,7 @@ export const Error = {
       TupleIndexTooBig: ({ index }) => `Tuple index ${index} is too big, limit is ${MAX_TUPLE_INDEX}`,
       MissingTraitMethods: ({ trait, methods }) => `Missing methods [${methods.join(', ')}] in trait '${trait}'`,
       SuperfluousTraitMethods: ({ trait, methods }) => `Superfluous methods [${methods.join(', ')}] in trait '${trait}'`,
-      WrongNumberOfTraitParams: ({ trait, expected, actual }) => `Wrong number of parameters in trait '${trait}', expected ${expected}, got ${actual}`,
+      WrongNumberOfTraitArgs: ({ trait, expected, actual }) => `Wrong number of parameters in trait '${trait}', expected ${expected}, got ${actual}`,
     }, 'type'),
     Resolution: ({ err }) => matchVariant(err, {
       ModuleNotFound: ({ name }) => `Module '${name}' not found`,

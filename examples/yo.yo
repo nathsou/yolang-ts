@@ -1,4 +1,8 @@
 
+fn id<T>(x: T) { 
+  x
+}
+
 fn yo() {
-  let a: u32 = 7 in a
+  id(7)
 }
