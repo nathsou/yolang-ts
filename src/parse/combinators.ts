@@ -211,12 +211,12 @@ export const sepBy = <S>(sep: Parser<S>) => <T>(p: Parser<T>): Parser<T[]> => {
 export const commas = sepBy(symbol(','));
 export const semicolons = sepBy(symbol(';'));
 
-export const not = <T>(p: Parser<T>): Parser<null> => {
+export const not = <T>(p: Parser<T>, { consume } = { consume: true }): Parser<null> => {
   return ref((tokens, ctx) => {
     const [t, rem] = p.ref(tokens, ctx);
     return t.match({
-      Ok: () => [error({ message: fail, pos: tokens.start }), rem, []], // not.2
-      Error: () => [ok(null), rem, []], // not.1
+      Ok: () => [error({ message: fail, pos: tokens.start }), consume ? rem : tokens, []], // not.2
+      Error: () => [ok(null), consume ? rem : tokens, []], // not.1
     });
   });
 };

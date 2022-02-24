@@ -601,10 +601,11 @@ const inherentImplDecl = map(seq(
   keyword('impl'),
   scopedTypeParams(seq(
     expectOrDefault(monoTy, `Expected type after 'impl' keyword`, MonoTy.Const('()')),
+    not(keyword('for'), { consume: false }),
     expectOrDefault(curlyBrackets(many(decl)), `Expected declarations`, []),
   ))
 ),
-  ([_, [tyParams, [ty, decls]]]) => Decl.Impl(ty, tyParams, decls)
+  ([_, [tyParams, [ty, _2, decls]]]) => Decl.Impl(ty, tyParams, decls)
 );
 
 const traitImplDecl = map(seq(
@@ -612,8 +613,8 @@ const traitImplDecl = map(seq(
   scopedTypeParams(seq(
     typePath,
     optionalOrDefault(angleBrackets(commas(monoTy)), []),
-    expectOrDefault(keyword('for'), `Expected 'for' keyword after trait name`, Token.Keyword('for')),
-    expectOrDefault(monoTy, `Expected type after 'impl' keyword`, MonoTy.Const('()')),
+    expect(keyword('for'), `Expected 'for' keyword after trait name`),
+    expect(monoTy, `Expected type after 'impl' keyword`),
     expectOrDefault(curlyBrackets(many(funcDecl)), `Expected declarations`, []),
   ))
 ),
@@ -670,8 +671,8 @@ initParser(decl, alt(
   funcDecl,
   typeAliasDecl,
   moduleDecl,
-  traitImplDecl,
   inherentImplDecl,
+  traitImplDecl,
   traitDecl,
 ));
 
