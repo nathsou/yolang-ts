@@ -591,10 +591,14 @@ const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
   expectOrDefault(ident, `Expected identifier after 'fn' keyword`, '<?>'),
   scopedTypeParams(seq(
     expectOrDefault(argumentList, 'Expected arguments after function name', []),
+    optional(seq(
+      symbol('->'),
+      expect(monoTy, `Expected type after '->'`),
+    )),
     expectOrDefault(block, 'Expected block after function arguments', Expr.Error),
   ))
 ),
-  ([_, name, [typeParams, [args, body]]]) => Decl.Function(name, typeParams, args, body)
+  ([_, name, [typeParams, [args, returnTy, body]]]) => Decl.Function(name, typeParams, args, returnTy.map(snd), body)
 );
 
 const inherentImplDecl = map(seq(

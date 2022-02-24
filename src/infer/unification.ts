@@ -160,16 +160,6 @@ const unifyMany = (
           t.name = s.name;
         }
       })
-      .with([{ variant: 'Param' }, __], ([s, t]) => {
-        if (s.link) {
-          pushEqs([s.link, t]);
-        } else {
-          s.link = t;
-        }
-      })
-      .with([__, { variant: 'Param' }], ([s, t]) => {
-        pushEqs([t, s]);
-      })
       .otherwise(([s, t]) => {
         errors.push(Error.Unification({ type: 'Ununifiable', s, t }));
       });

@@ -185,7 +185,7 @@ export const Stmt = {
 };
 
 export type Decl = DataType<{
-  Function: { name: string, typeParams: TypeParams, args: Argument[], body: Expr },
+  Function: { name: string, typeParams: TypeParams, args: Argument[], returnTy: Maybe<MonoTy>, body: Expr },
   Module: { name: string, decls: Decl[] },
   TypeAlias: { name: string, typeParams: TypeParams, alias: MonoTy },
   InherentImpl: { ty: MonoTy, typeParams: TypeParams, decls: Decl[] },
@@ -195,7 +195,7 @@ export type Decl = DataType<{
 }>;
 
 export const Decl = {
-  Function: (name: string, typeParams: TypeParams, args: Argument[], body: Expr): VariantOf<Decl, 'Function'> => ({ variant: 'Function', name, typeParams, args, body }),
+  Function: (name: string, typeParams: TypeParams, args: Argument[], returnTy: Maybe<MonoTy>, body: Expr): VariantOf<Decl, 'Function'> => ({ variant: 'Function', name, typeParams, args, returnTy, body }),
   Module: (name: string, decls: Decl[]): Decl => ({ variant: 'Module', name, decls }),
   TypeAlias: (name: string, typeParams: TypeParams, alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
   Impl: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'InherentImpl', ty, typeParams, decls }),
@@ -214,7 +214,7 @@ export const Decl = {
   rewrite: (decl: Decl, rfs: RewriteFuncs): Decl => {
     const { rewriteExpr: f = id, rewriteDecl: g = id } = rfs;
     return matchVariant(decl, {
-      Function: ({ name, typeParams, args, body }) => g(Decl.Function(name, typeParams, args, Expr.rewrite(body, f))),
+      Function: ({ name, typeParams, args, returnTy, body }) => g(Decl.Function(name, typeParams, args, returnTy, Expr.rewrite(body, f))),
       Module: ({ name, decls }) => g(Decl.Module(name, decls.map(d => Decl.rewrite(d, rfs)))),
       TypeAlias: ({ name, typeParams, alias }) => g(Decl.TypeAlias(name, typeParams, alias)),
       InherentImpl: ({ ty, typeParams, decls }) => g(Decl.Impl(ty, typeParams, decls.map(d => Decl.rewrite(d, rfs)))),

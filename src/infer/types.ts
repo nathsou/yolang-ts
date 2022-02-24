@@ -23,7 +23,7 @@ export const TyVar = {
 // Monomorphic types
 export type MonoTy = DataType<{
   Var: { value: TyVar },
-  Param: { name: string, link?: MonoTy },
+  Param: { name: string },
   Const: { path: string[], name: string, args: MonoTy[] },
   Fun: { args: MonoTy[], ret: MonoTy },
   Tuple: { tuple: Tuple },
@@ -217,12 +217,16 @@ export const MonoTy = {
       ),
     });
   },
+  instantiateTyParams: (ty: MonoTy, tyParams: string[]): MonoTy => {
+    const subst = new Map(zip(tyParams, tyParams.map(MonoTy.fresh)));
+    return MonoTy.substituteTyParams(ty, subst);
+  },
   show: (ty: MonoTy): string => matchVariant(ty, {
     Var: ({ value }) => matchVariant(value, {
       Unbound: ({ id }) => showTyVarId(id),
       Link: ({ to }) => MonoTy.show(to),
     }, 'kind'),
-    Param: ({ name }) => `'${name}`,
+    Param: ({ name }) => `'${name}'`,
     Const: ({ path, name, args }) => (path.length > 0 ? `${path.join('.')}.` : '') + cond(args.length === 0, {
       then: () => name,
       else: () => `${name}<${joinWith(args, MonoTy.show, ', ')}>`,

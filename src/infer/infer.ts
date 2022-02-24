@@ -159,8 +159,10 @@ export const inferExpr = (
 
             unify(implInstTy, receiver.ty);
             const func = impl.methods[method];
-
-            const expectedFunTy = MonoTy.Fun(func.args.map(arg => arg.name.ty), func.body.ty);
+            const expectedFunTy = MonoTy.instantiateTyParams(
+              MonoTy.Fun(func.args.map(arg => arg.name.ty), func.body.ty),
+              impl.typeParams
+            );
 
             const argsTysWithSelf = [receiver.ty, ...args.map(proj('ty'))];
             const actualFunTy = MonoTy.Fun(argsTysWithSelf, tau);
@@ -326,7 +328,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
 
   matchVariant(decl, {
     Function: func => {
-      const { name, typeParams, args, body } = func;
+      const { name, typeParams, args, returnTy, body } = func;
       const bodyCtx = TypeContext.clone(ctx);
       TypeContext.declareTypeParams(bodyCtx, ...typeParams);
 
@@ -339,6 +341,10 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
       });
 
       inferExpr(body, bodyCtx, errors);
+
+      returnTy.do(retTy => {
+        unify(body.ty, retTy);
+      });
 
       const funTy = PolyTy.instantiate(PolyTy.instantiateTyParams(typeParams, MonoTy.Fun(
         args.map(({ name: arg }) => arg.ty),

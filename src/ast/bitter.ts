@@ -250,6 +250,7 @@ export type Decl = DataType<{
     name: Name,
     typeParams: TypeParams,
     args: { name: Name, mutable: boolean, annotation: Maybe<MonoTy> }[],
+    returnTy: Maybe<MonoTy>,
     body: Expr,
     funTy: PolyTy,
   },
@@ -262,7 +263,7 @@ export type Decl = DataType<{
 }>;
 
 export const Decl = {
-  Function: (name: Name, typeParams: TypeParams, args: { name: Name, mutable: boolean, annotation: Maybe<MonoTy> }[], body: Expr): Decl => ({ variant: 'Function', name, typeParams, args, body, funTy: PolyTy.fresh() }),
+  Function: (name: Name, typeParams: TypeParams, args: { name: Name, mutable: boolean, annotation: Maybe<MonoTy> }[], returnTy: Maybe<MonoTy>, body: Expr): Decl => ({ variant: 'Function', name, typeParams, args, body, returnTy, funTy: PolyTy.fresh() }),
   Module: (name: string, decls: Decl[]): Decl => {
     const mod: VariantOf<Decl, 'Module'> = {
       variant: 'Module',
@@ -300,13 +301,14 @@ export const Decl = {
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: Error[]): Decl =>
     matchVariant(sweet, {
-      Function: ({ name, typeParams, args, body }) => {
+      Function: ({ name, typeParams, args, returnTy, body }) => {
         const withoutPatterns = removeFuncArgsPatternMatching(args, body, nameEnv, errors);
 
         return Decl.Function(
           declareFuncNames ? NameEnv.declare(nameEnv, name, false) : NameEnv.resolve(nameEnv, name),
           typeParams,
           withoutPatterns.args,
+          returnTy,
           withoutPatterns.body
         );
       },
