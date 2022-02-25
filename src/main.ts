@@ -2,6 +2,7 @@ import { match as matchVariant } from "itsamatch";
 import { Decl, Prog } from "./ast/bitter";
 import { Context } from './ast/context';
 import { Prog as SweetProg } from "./ast/sweet";
+import { compile, Module } from "./codegen/codegen";
 import { Error } from './errors/errors';
 import { infer } from "./infer/infer";
 import { MonoTy, PolyTy, TypeParams } from "./infer/types";
@@ -26,7 +27,7 @@ const typeCheck = (sweetProg: SweetProg): [Prog, Error[]] => {
   return [prog, errors];
 };
 
-const run = async (source: string): Promise<Prog> => {
+const run = async (source: string): Promise<void> => {
   const nfs = await createNodeFileSystem();
   const [sweetProg, errs1] = await resolve(source, nfs);
   const [prog, errs2] = typeCheck(sweetProg);
@@ -35,7 +36,15 @@ const run = async (source: string): Promise<Prog> => {
     console.log('\x1b[31m%s\x1b[0m', Error.show(err));
   });
 
-  return prog;
+  console.log(showTypes(prog, []).join('\n\n'));
+
+  if (errs1.length === 0 && errs2.length === 0) {
+    const mod = compile(prog);
+    const compiled = new WebAssembly.Module(mod.emitBinary());
+    const instance = new WebAssembly.Instance(compiled, {});
+    console.log((instance.exports as any)['Lab_yo']());
+    console.log('\n', mod.emitText());
+  }
 };
 
 const showTypes = (decls: Decl[], path: string[]): string[] => {
@@ -64,8 +73,7 @@ const [, , source] = process.argv;
 
 (async () => {
   if (source) {
-    const prog = await run(source);
-    console.log(showTypes(prog, []).join('\n\n'));
+    await run(source);
   } else {
     console.info('Usage: yo <source.yo>');
     process.exit(0);

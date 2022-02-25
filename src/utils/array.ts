@@ -89,3 +89,7 @@ export const filterMap = <T, U>(elems: T[], f: (elem: T) => Maybe<U>): U[] => {
 
   return result;
 };
+
+export const compact = <T>(values: (T | undefined)[]): T[] => {
+  return values.filter(v => v !== undefined) as T[];
+};

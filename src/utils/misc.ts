@@ -30,9 +30,9 @@ export const proj = <T, K extends keyof T>(key: K): (data: T) => T[K] => {
   return (data: T) => data[key];
 };
 
-export const matchString = <T>(
-  str: string,
-  cases: { [str: string]: () => T } & { _: () => T }
+export const matchString = <S extends string, T>(
+  str: S,
+  cases: { [str in S]: () => T } & { _: () => T }
 ): T => {
   return cases[str in cases ? str : '_']();
 };

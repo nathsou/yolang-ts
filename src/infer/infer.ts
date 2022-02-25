@@ -167,6 +167,7 @@ export const inferExpr = (
             const argsTysWithSelf = [receiver.ty, ...args.map(proj('ty'))];
             const actualFunTy = MonoTy.Fun(argsTysWithSelf, tau);
 
+
             unify(expectedFunTy, actualFunTy);
             unify(func.body.ty, tau);
           }
