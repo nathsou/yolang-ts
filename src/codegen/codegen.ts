@@ -42,7 +42,7 @@ const blockRetTy = (ty: MonoTy): BlockType => match(ty, {
 export class Compiler {
   private mod: Module;
 
-  constructor() {
+  private constructor() {
     this.mod = Module.make();
   }
 
@@ -120,11 +120,13 @@ export class Compiler {
     });
   }
 
-  public compile(prog: Prog): Module {
-    for (const decl of prog) {
-      this.compileDecl(decl);
-    }
+  public static compile(prog: Prog): Module {
+    const compiler = new Compiler();
 
-    return this.mod;
+    prog.forEach(decl => {
+      compiler.compileDecl(decl);
+    });
+
+    return compiler.mod;
   }
 }

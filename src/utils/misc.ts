@@ -61,3 +61,7 @@ export const forEach = <T>(it: Iterable<T>, f: (value: T) => void): void => {
     f(value);
   }
 };
+
+export const ident = (str: string, count: number): string => {
+  return `${' '.repeat(Math.max(count, 0))}${str}`;
+};

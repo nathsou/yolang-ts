@@ -152,13 +152,13 @@ export const Inst = {
     br_if: ({ label }) => `br_if ${label}`,
     _: () => inst.variant,
   }),
-  identationDelta: (inst: Inst): number => match(inst, {
-    if: () => 1,
-    block: () => 1,
-    loop: () => 1,
-    else: () => -1,
-    end: () => -1,
-    _: () => 0,
+  identationDelta: (inst: Inst): { before: number, after: number } => match(inst, {
+    if: () => ({ before: 0, after: 1 }),
+    block: () => ({ before: 0, after: 1 }),
+    loop: () => ({ before: 0, after: 1 }),
+    else: () => ({ before: -1, after: 1 }),
+    end: () => ({ before: -1, after: 0 }),
+    _: () => ({ before: 0, after: 0 }),
   }),
 };
 

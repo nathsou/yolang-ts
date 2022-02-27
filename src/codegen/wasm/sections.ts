@@ -1,5 +1,6 @@
 import { DataType, match } from "itsamatch";
 import { joinWith, last } from "../../utils/array";
+import { ident } from "../../utils/misc";
 import { Inst } from "./instructions";
 import { Byte, FuncIdx, FuncType, TypeIdx, ValueType, Vec } from "./types";
 import { encodeStr, uleb128 } from "./utils";
@@ -151,8 +152,21 @@ const CodeEntry = {
     ...instructions.flatMap(Inst.encode),
     ...Inst.encode(Inst.end()),
   ]),
+  showInstructions: (insts: Inst[]) => {
+    let identation = 1;
+    const res: string[] = [];
+
+    insts.forEach(inst => {
+      const { before, after } = Inst.identationDelta(inst);
+      identation += before;
+      res.push(ident(Inst.show(inst), identation));
+      identation += after;
+    });
+
+    return res.join('\n');
+  },
   show: ({ funcName, locals, instructions }: CodeEntry): string => {
-    return `${funcName} ${Locals.show(locals)}\n${joinWith(instructions, Inst.show, '\n')}`;
+    return `${funcName} ${Locals.show(locals)}\n${CodeEntry.showInstructions(instructions)}`;
   },
 };
 

@@ -40,9 +40,7 @@ const run = async (source: string): Promise<void> => {
   console.log(showTypes(prog, []).join('\n\n'));
 
   if (errs1.length === 0 && errs2.length === 0) {
-    const compiler = new Compiler();
-
-    const mod = compiler.compile(prog);
+    const mod = Compiler.compile(prog);
     console.log(Module.show(mod));
 
     // writeFileSync('out.wasm', Module.encodeUin8Array(mod), { encoding: 'binary' });

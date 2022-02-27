@@ -3,7 +3,7 @@ import { BinaryOperator, UnaryOperator } from "../../ast/sweet";
 import { Maybe, none, some } from "../../utils/maybe";
 import { matchString } from "../../utils/misc";
 import { Inst } from "./instructions";
-import { BlockType } from "./types";
+import { BlockType, Byte } from "./types";
 
 export type Expr = DataType<{
   i32: { n: number },
@@ -66,7 +66,7 @@ export const Expr = {
     nop: () => [Inst.nop()],
     dropValue: ({ expr }) => [...Expr.compile(expr), Inst.drop()],
   }),
-  encode: (expr: Expr): number[] => Expr.compile(expr).flatMap(Inst.encode),
+  encode: (expr: Expr): Byte[] => Expr.compile(expr).flatMap(Inst.encode),
 };
 
 const BINOP_MAPPING: { [op in Exclude<BinaryOperator, '&&' | '||'>]: () => Inst } = {
