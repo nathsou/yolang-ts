@@ -3,7 +3,7 @@ import { BinaryOperator, UnaryOperator } from "../../ast/sweet";
 import { Maybe, none, some } from "../../utils/maybe";
 import { matchString } from "../../utils/misc";
 import { Inst } from "./instructions";
-import { BlockType, Byte } from "./types";
+import { BlockType, Byte, LocalIdx } from "./types";
 
 export type Expr = DataType<{
   i32: { n: number },
@@ -17,6 +17,9 @@ export type Expr = DataType<{
   unreachable: {},
   nop: {},
   dropValue: { expr: Expr },
+  declareVar: { local: LocalIdx, value: Expr },
+  resolveVar: { local: LocalIdx },
+  assignment: { local: LocalIdx, rhs: Expr },
 }>;
 
 export const Expr = {
@@ -31,10 +34,13 @@ export const Expr = {
   dropValue: (expr: Expr): Expr => ({ variant: 'dropValue', expr }),
   unreachable: (): Expr => ({ variant: 'unreachable' }),
   nop: (): Expr => ({ variant: 'nop' }),
+  declareVar: (local: number, value: Expr): Expr => ({ variant: 'declareVar', local, value }),
+  resolveVar: (local: number): Expr => ({ variant: 'resolveVar', local }),
+  assignment: (local: LocalIdx, rhs: Expr): Expr => ({ variant: 'assignment', local, rhs }),
   compile: (expr: Expr): Inst[] => match(expr, {
     i32: ({ n }) => [Inst.i32.const(n)],
     bool: ({ b }) => [Inst.i32.const(b ? 1 : 0)],
-    unit: () => [Inst.i32.const(0)],
+    unit: () => [],
     unop: ({ op, rhs }) => matchString(op, {
       '-': () => [Inst.i32.const(0), ...Expr.compile(rhs), Inst.i32.sub()],
       '!': () => [...Expr.compile(rhs), Inst.i32.eqz()],
@@ -65,6 +71,9 @@ export const Expr = {
     unreachable: () => [Inst.unreachable()],
     nop: () => [Inst.nop()],
     dropValue: ({ expr }) => [...Expr.compile(expr), Inst.drop()],
+    declareVar: ({ local, value }) => [...Expr.compile(value), Inst.local.set(local)],
+    resolveVar: ({ local }) => [Inst.local.get(local)],
+    assignment: ({ local, rhs }) => [...Expr.compile(rhs), Inst.local.set(local)],
   }),
   encode: (expr: Expr): Byte[] => Expr.compile(expr).flatMap(Inst.encode),
 };

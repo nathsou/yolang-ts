@@ -1,4 +1,4 @@
-import { Maybe, none } from "./maybe";
+import { Maybe, none, some } from "./maybe";
 import { error, Result } from "./result";
 
 export const firstSomeBy = <T, U>(elems: T[], f: (elem: T) => Maybe<U>): Maybe<U> => {
@@ -21,6 +21,16 @@ export const firstOkBy = <T, E, U>(elems: T[], f: (elem: T) => Result<U, E>, err
   }
 
   return error(err);
+};
+
+export const findRev = <T>(elems: T[], pred: (elem: T) => boolean): Maybe<T> => {
+  for (let i = elems.length - 1; i >= 0; i--) {
+    if (pred(elems[i])) {
+      return some(elems[i]);
+    }
+  }
+
+  return none;
 };
 
 export const joinWith = <T>(elems: T[], f: (elem: T) => string, sep = ', '): string => {

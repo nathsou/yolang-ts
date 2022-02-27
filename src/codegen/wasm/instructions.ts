@@ -1,5 +1,5 @@
 import { DataType, match } from "itsamatch";
-import { BlockType, Byte, LabelIdx, Vec } from "./types";
+import { BlockType, Byte, LabelIdx, LocalIdx, Vec } from "./types";
 import { sleb128 } from "./utils";
 
 export type Inst = DataType<{
@@ -18,6 +18,9 @@ export type Inst = DataType<{
   'end': {},
   'return': {},
   'drop': {},
+  'local.get': { local: LocalIdx },
+  'local.set': { local: LocalIdx },
+  'local.tee': { local: LocalIdx },
   'i32.add': {},
   'i32.sub': {},
   'i32.mul': {},
@@ -96,6 +99,11 @@ export const Inst = {
   end: (): Inst => ({ variant: 'end' }),
   return: (): Inst => ({ variant: 'return' }),
   drop: (): Inst => ({ variant: 'drop' }),
+  local: {
+    get: (local: number): Inst => ({ variant: 'local.get', local }),
+    set: (local: number): Inst => ({ variant: 'local.set', local }),
+    tee: (local: number): Inst => ({ variant: 'local.tee', local }),
+  },
   encode: (inst: Inst): Byte[] => match(inst, {
     'unreachable': () => [0x00],
     'nop': () => [0x01],
@@ -108,6 +116,9 @@ export const Inst = {
     'br_if': ({ label }) => [0x0d, ...LabelIdx.encode(label)],
     'return': () => [0x0f],
     'drop': () => [0x1a],
+    'local.get': ({ local }) => [0x20, ...LocalIdx.encode(local)],
+    'local.set': ({ local }) => [0x21, ...LocalIdx.encode(local)],
+    'local.tee': ({ local }) => [0x22, ...LocalIdx.encode(local)],
     'i32.const': ({ n }) => [0x41, ...Const.i32.encode(n)],
     'i64.const': ({ n }) => [0x42, ...Const.i64.encode(n)],
     'f32.const': ({ x }) => [0x43, ...Const.f32.encode(x)],
@@ -145,6 +156,9 @@ export const Inst = {
     'i64.const': ({ n }) => `i64.const ${n}`,
     'f32.const': ({ x }) => `f32.const ${x}`,
     'f64.const': ({ x }) => `f64.const ${x}`,
+    'local.get': ({ local }) => `local.get ${local}`,
+    'local.set': ({ local }) => `local.set ${local}`,
+    'local.tee': ({ local }) => `local.tee ${local}`,
     block: ({ returnTy }) => `block ${BlockType.show(returnTy)}`,
     loop: ({ returnTy }) => `loop ${BlockType.show(returnTy)}`,
     if: ({ returnTy }) => `if ${BlockType.show(returnTy)}`,

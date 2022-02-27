@@ -27,10 +27,11 @@ export const ReferenceType = {
 
 const VALUE_TYPE_ENCODING = { ...NUMBER_TYPE_ENCODING, ...REFERENCE_TYPE_ENCODING };
 
-export type ValueType = NumberType | ReferenceType;
+export type ValueType = NumberType | ReferenceType | 'none';
 export const ValueType = {
   i32: (): ValueType => 'i32',
-  encode: (ty: ValueType): Byte[] => [VALUE_TYPE_ENCODING[ty]],
+  none: (): ValueType => 'none',
+  encode: (ty: ValueType): Byte[] => ty === 'none' ? [] : [VALUE_TYPE_ENCODING[ty]],
 };
 
 export type ResultType = ValueType[];
@@ -40,7 +41,12 @@ export const ResultType = {
 
 export type FuncType = { args: ValueType[], ret: ResultType };
 export const FuncType = {
-  make: (args: ValueType[], ret: ResultType): FuncType => ({ args, ret }),
+  make: (args: ValueType[], ret: ResultType): FuncType => {
+    return {
+      args: args.filter(ty => ty !== 'none'),
+      ret: ret.filter(ty => ty !== 'none'),
+    };
+  },
   encode: (ty: FuncType): Byte[] => [
     0x60,
     ...Vec.encodeMany(ty.args.map(ValueType.encode)),
@@ -59,6 +65,9 @@ export const LabelIdx = { encode: uleb128 };
 
 export type FuncIdx = number;
 export const FuncIdx = { encode: uleb128 };
+
+export type LocalIdx = number;
+export const LocalIdx = { encode: uleb128 };
 
 export type BlockType = DataType<{
   ValueType: { ty: ValueType },

@@ -163,7 +163,7 @@ const CodeEntry = {
       identation += after;
     });
 
-    return res.join('\n');
+    return res.join('\n') + '\nend\n';
   },
   show: ({ funcName, locals, instructions }: CodeEntry): string => {
     return `${funcName} ${Locals.show(locals)}\n${CodeEntry.showInstructions(instructions)}`;

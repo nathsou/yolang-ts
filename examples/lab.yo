@@ -1,8 +1,6 @@
 
-fn yo() {
-  if !(3 == 7) { 
-    { 1; 2 } * { 3; 4 }
-  } else { 
-    3 * 7 + 2
-  }
+fn main() {
+  mut yolo = 7
+  yolo *= 2
+  3 * yolo
 }

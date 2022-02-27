@@ -10,14 +10,28 @@ import { MonoTy, PolyTy, TypeParams } from "./infer/types";
 import { createNodeFileSystem } from './resolve/nodefs';
 import { resolve } from './resolve/resolve';
 
+enum DebugLvl {
+  nothing = 0,
+  sections = 1,
+  types = 2,
+  sweet = 3,
+  all = 4,
+}
+
+let debugLevel = DebugLvl.nothing;
+
 // pipeline:
 // <string> -> parse -> <sweet> -> desugar & resolve modules -> <bitter> -> infer ->
 // monomorphize -> inject reference counting -> emit code
 
 const typeCheck = (sweetProg: SweetProg): [Prog, Error[]] => {
   Context.clear();
-  console.log(SweetProg.show(sweetProg) + '\n');
   const errors: Error[] = [];
+
+  if (debugLevel >= DebugLvl.sweet) {
+    console.log('--- sweet ---');
+    console.log(SweetProg.show(sweetProg) + '\n');
+  }
 
   const [prog, bitterErrors] = Prog.fromSweet(sweetProg);
   errors.push(...bitterErrors);
@@ -28,28 +42,46 @@ const typeCheck = (sweetProg: SweetProg): [Prog, Error[]] => {
   return [prog, errors];
 };
 
-const run = async (source: string): Promise<void> => {
+const run = async (source: string): Promise<boolean> => {
   const nfs = await createNodeFileSystem();
   const [sweetProg, errs1] = await resolve(source, nfs);
   const [prog, errs2] = typeCheck(sweetProg);
+  const errors = [...errs1, ...errs2];
 
-  [...errs1, ...errs2].forEach(err => {
+  errors.forEach(err => {
     console.log('\x1b[31m%s\x1b[0m', Error.show(err));
   });
 
-  console.log(showTypes(prog, []).join('\n\n'));
+  if (debugLevel >= DebugLvl.types) {
+    console.log('--- types ---');
+    console.log(showTypes(prog, []).join('\n\n') + '\n');
+  }
 
-  if (errs1.length === 0 && errs2.length === 0) {
+  if (errors.length === 0) {
     const mod = Compiler.compile(prog);
-    console.log(Module.show(mod));
 
-    // writeFileSync('out.wasm', Module.encodeUin8Array(mod), { encoding: 'binary' });
+    if (debugLevel >= DebugLvl.sections) {
+      console.log('--- sections ---');
+      console.log(Module.show(mod));
+      // writeFileSync('out.wasm', Module.encodeUin8Array(mod), { encoding: 'binary' });
+    }
 
     const compiled = new WebAssembly.Module(Module.encodeUin8Array(mod));
     const instance = new WebAssembly.Instance(compiled, {});
 
-    console.log((instance.exports['Lab_yo'] as any)());
+    const mainFunc = Object
+      .entries(instance.exports)
+      .find(([k]) => k.endsWith('_main'));
+
+    if (mainFunc && mainFunc[1] instanceof Function) {
+      console.log(mainFunc[1]());
+    } else {
+      console.log('No main function found');
+      return false;
+    }
   }
+
+  return errors.length === 0;
 };
 
 const showTypes = (decls: Decl[], path: string[]): string[] => {
@@ -74,11 +106,15 @@ const showTypes = (decls: Decl[], path: string[]): string[] => {
   return types;
 };
 
-const [, , source] = process.argv;
+const [, , source, debugLvl] = process.argv;
 
 (async () => {
   if (source) {
-    await run(source);
+    if (debugLvl) {
+      debugLevel = parseInt(debugLvl);
+    }
+    const allGood = await run(source);
+    process.exit(allGood ? 0 : 1);
   } else {
     console.info('Usage: yo <source.yo>');
     process.exit(0);
