@@ -1,8 +1,8 @@
 import { DataType, match } from "itsamatch";
 import { joinWith, last } from "../../utils/array";
-import { ident } from "../../utils/misc";
+import { ident, panic, proj } from "../../utils/misc";
 import { Inst } from "./instructions";
-import { Byte, FuncIdx, FuncType, TypeIdx, ValueType, Vec } from "./types";
+import { Byte, FuncIdx, FuncType, LocalIdx, TypeIdx, ValueType, Vec } from "./types";
 import { encodeStr, uleb128 } from "./utils";
 
 const SECTION_TYPE_ID = {
@@ -137,6 +137,20 @@ export const Locals = {
     locals.map(({ names, ty }) => [...uleb128(names.length), ...ValueType.encode(ty)])
   ),
   show: (locals: Locals): string => joinWith(locals, ({ names, ty }) => `${names.join(', ')}: ${ty}`, ', '),
+  get: (locals: Locals, index: LocalIdx): string => {
+    let i = 0;
+    for (const { names } of locals) {
+      for (const name of names) {
+        if (i === index) {
+          return name;
+        }
+
+        i += 1;
+      }
+    }
+
+    return panic(`local index ${index} out of range`);
+  },
 };
 
 type CodeEntry = {
@@ -152,21 +166,21 @@ const CodeEntry = {
     ...instructions.flatMap(Inst.encode),
     ...Inst.encode(Inst.end()),
   ]),
-  showInstructions: (insts: Inst[]) => {
+  showInstructions: (insts: Inst[], locals: Locals, funcNames: string[]): string => {
     let identation = 1;
     const res: string[] = [];
 
     insts.forEach(inst => {
       const { before, after } = Inst.identationDelta(inst);
       identation += before;
-      res.push(ident(Inst.show(inst), identation));
+      res.push(ident(Inst.show(inst, locals, funcNames), identation));
       identation += after;
     });
 
     return res.join('\n') + '\nend\n';
   },
-  show: ({ funcName, locals, instructions }: CodeEntry): string => {
-    return `${funcName} ${Locals.show(locals)}\n${CodeEntry.showInstructions(instructions)}`;
+  show: ({ funcName, locals, instructions }: CodeEntry, funcNames: string[]): string => {
+    return `fn ${funcName}(${Locals.show(locals)})\n${CodeEntry.showInstructions(instructions, locals, funcNames)}`;
   },
 };
 
@@ -182,9 +196,9 @@ export const CodeSection = {
     'code',
     Vec.encodeMany(self.map(CodeEntry.encode))
   ),
-  show: (self: CodeSection): string => Section.show(
+  show: (self: CodeSection, funcNames: string[]): string => Section.show(
     'code',
-    joinWith(self, CodeEntry.show, '\n')
+    joinWith(self, c => CodeEntry.show(c, funcNames), '\n')
   ),
 };
 
@@ -232,10 +246,14 @@ export const Module = {
     ...CodeSection.encode(self.sections.code),
   ],
   encodeUin8Array: (self: Module): Uint8Array => new Uint8Array(Module.encode(self)),
-  show: (self: Module): string => [
-    TypeSection.show(self.sections.type),
-    FuncSection.show(self.sections.function),
-    ExportSection.show(self.sections.export),
-    CodeSection.show(self.sections.code),
-  ].join('\n\n'),
+  show: (self: Module): string => {
+    const funcNames = self.sections.function.map(proj('name'));
+
+    return [
+      TypeSection.show(self.sections.type),
+      FuncSection.show(self.sections.function),
+      ExportSection.show(self.sections.export),
+      CodeSection.show(self.sections.code, funcNames),
+    ].join('\n\n');
+  },
 };

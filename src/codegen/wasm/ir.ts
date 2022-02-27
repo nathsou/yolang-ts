@@ -3,7 +3,7 @@ import { BinaryOperator, UnaryOperator } from "../../ast/sweet";
 import { Maybe, none, some } from "../../utils/maybe";
 import { matchString } from "../../utils/misc";
 import { Inst } from "./instructions";
-import { BlockType, Byte, LocalIdx } from "./types";
+import { BlockType, Byte, FuncIdx } from "./types";
 
 export type Expr = DataType<{
   i32: { n: number },
@@ -17,9 +17,10 @@ export type Expr = DataType<{
   unreachable: {},
   nop: {},
   dropValue: { expr: Expr },
-  declareVar: { local: LocalIdx, value: Expr },
-  resolveVar: { local: LocalIdx },
-  assignment: { local: LocalIdx, rhs: Expr },
+  declareVar: { index: number, value: Expr, isGlobal: boolean },
+  resolveVar: { index: number, isGlobal: boolean },
+  assignment: { index: number, rhs: Expr, isGlobal: boolean },
+  call: { func: FuncIdx, args: Expr[] },
 }>;
 
 export const Expr = {
@@ -34,9 +35,10 @@ export const Expr = {
   dropValue: (expr: Expr): Expr => ({ variant: 'dropValue', expr }),
   unreachable: (): Expr => ({ variant: 'unreachable' }),
   nop: (): Expr => ({ variant: 'nop' }),
-  declareVar: (local: number, value: Expr): Expr => ({ variant: 'declareVar', local, value }),
-  resolveVar: (local: number): Expr => ({ variant: 'resolveVar', local }),
-  assignment: (local: LocalIdx, rhs: Expr): Expr => ({ variant: 'assignment', local, rhs }),
+  declareVar: (index: number, value: Expr, { isGlobal } = { isGlobal: false }): Expr => ({ variant: 'declareVar', index, value, isGlobal }),
+  resolveVar: (index: number, { isGlobal } = { isGlobal: false }): Expr => ({ variant: 'resolveVar', index, isGlobal }),
+  assignment: (index: number, rhs: Expr, { isGlobal } = { isGlobal: false }): Expr => ({ variant: 'assignment', index, rhs, isGlobal }),
+  call: (func: FuncIdx, args: Expr[]): Expr => ({ variant: 'call', func, args }),
   compile: (expr: Expr): Inst[] => match(expr, {
     i32: ({ n }) => [Inst.i32.const(n)],
     bool: ({ b }) => [Inst.i32.const(b ? 1 : 0)],
@@ -71,9 +73,21 @@ export const Expr = {
     unreachable: () => [Inst.unreachable()],
     nop: () => [Inst.nop()],
     dropValue: ({ expr }) => [...Expr.compile(expr), Inst.drop()],
-    declareVar: ({ local, value }) => [...Expr.compile(value), Inst.local.set(local)],
-    resolveVar: ({ local }) => [Inst.local.get(local)],
-    assignment: ({ local, rhs }) => [...Expr.compile(rhs), Inst.local.set(local)],
+    declareVar: ({ index, value, isGlobal }) => [
+      ...Expr.compile(value),
+      (isGlobal ? Inst.global.set : Inst.local.set)(index)
+    ],
+    resolveVar: ({ index, isGlobal }) => [
+      (isGlobal ? Inst.global.get : Inst.local.get)(index)
+    ],
+    assignment: ({ index, rhs, isGlobal }) => [
+      ...Expr.compile(rhs),
+      (isGlobal ? Inst.global.set : Inst.local.set)(index)
+    ],
+    call: ({ func, args }) => [
+      ...args.flatMap(Expr.compile),
+      Inst.call(func)
+    ],
   }),
   encode: (expr: Expr): Byte[] => Expr.compile(expr).flatMap(Inst.encode),
 };

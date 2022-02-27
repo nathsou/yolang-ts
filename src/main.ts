@@ -71,10 +71,10 @@ const run = async (source: string): Promise<boolean> => {
 
     const mainFunc = Object
       .entries(instance.exports)
-      .find(([k]) => k.endsWith('_main'));
+      .find(([name, val]) => name.endsWith('_main') && val instanceof Function);
 
-    if (mainFunc && mainFunc[1] instanceof Function) {
-      console.log(mainFunc[1]());
+    if (mainFunc) {
+      console.log((mainFunc[1] as Function)());
     } else {
       console.log('No main function found');
       return false;

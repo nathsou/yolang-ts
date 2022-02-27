@@ -1,6 +1,18 @@
 
+fn triple(n) {
+  3 * n
+}
+
+fn double(n) {
+  n + n
+}
+
 fn main() {
-  mut yolo = 7
-  yolo *= 2
-  3 * yolo
+  let res = triple(if triple(4) == 12 {
+    triple(triple(3 * 7) + 2)
+  } else {
+    triple(12)
+  }) * 8 + 1
+
+  double(res)
 }

@@ -69,6 +69,9 @@ export const FuncIdx = { encode: uleb128 };
 export type LocalIdx = number;
 export const LocalIdx = { encode: uleb128 };
 
+export type GlobalIdx = number;
+export const GlobalIdx = { encode: uleb128 };
+
 export type BlockType = DataType<{
   ValueType: { ty: ValueType },
   TypeIdx: { idx: TypeIdx },

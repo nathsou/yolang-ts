@@ -1,5 +1,6 @@
 import { DataType, match } from "itsamatch";
-import { BlockType, Byte, LabelIdx, LocalIdx, Vec } from "./types";
+import { Locals } from "./sections";
+import { BlockType, Byte, FuncIdx, GlobalIdx, LabelIdx, LocalIdx, Vec } from "./types";
 import { sleb128 } from "./utils";
 
 export type Inst = DataType<{
@@ -17,10 +18,13 @@ export type Inst = DataType<{
   'else': {},
   'end': {},
   'return': {},
+  'call': { func: FuncIdx },
   'drop': {},
   'local.get': { local: LocalIdx },
   'local.set': { local: LocalIdx },
   'local.tee': { local: LocalIdx },
+  'global.get': { global: GlobalIdx },
+  'global.set': { global: GlobalIdx },
   'i32.add': {},
   'i32.sub': {},
   'i32.mul': {},
@@ -98,11 +102,16 @@ export const Inst = {
   else: (): Inst => ({ variant: 'else' }),
   end: (): Inst => ({ variant: 'end' }),
   return: (): Inst => ({ variant: 'return' }),
+  call: (func: FuncIdx): Inst => ({ variant: 'call', func }),
   drop: (): Inst => ({ variant: 'drop' }),
   local: {
-    get: (local: number): Inst => ({ variant: 'local.get', local }),
-    set: (local: number): Inst => ({ variant: 'local.set', local }),
-    tee: (local: number): Inst => ({ variant: 'local.tee', local }),
+    get: (local: LocalIdx): Inst => ({ variant: 'local.get', local }),
+    set: (local: LocalIdx): Inst => ({ variant: 'local.set', local }),
+    tee: (local: LocalIdx): Inst => ({ variant: 'local.tee', local }),
+  },
+  global: {
+    get: (global: GlobalIdx): Inst => ({ variant: 'global.get', global }),
+    set: (global: GlobalIdx): Inst => ({ variant: 'global.set', global }),
   },
   encode: (inst: Inst): Byte[] => match(inst, {
     'unreachable': () => [0x00],
@@ -115,10 +124,13 @@ export const Inst = {
     'br': ({ label }) => [0x0c, ...LabelIdx.encode(label)],
     'br_if': ({ label }) => [0x0d, ...LabelIdx.encode(label)],
     'return': () => [0x0f],
+    'call': ({ func }) => [0x10, ...FuncIdx.encode(func)],
     'drop': () => [0x1a],
     'local.get': ({ local }) => [0x20, ...LocalIdx.encode(local)],
     'local.set': ({ local }) => [0x21, ...LocalIdx.encode(local)],
     'local.tee': ({ local }) => [0x22, ...LocalIdx.encode(local)],
+    'global.get': ({ global }) => [0x23, ...GlobalIdx.encode(global)],
+    'global.set': ({ global }) => [0x24, ...GlobalIdx.encode(global)],
     'i32.const': ({ n }) => [0x41, ...Const.i32.encode(n)],
     'i64.const': ({ n }) => [0x42, ...Const.i64.encode(n)],
     'f32.const': ({ x }) => [0x43, ...Const.f32.encode(x)],
@@ -151,17 +163,17 @@ export const Inst = {
     'i32.rotr': () => [0x78],
   }),
   encodeMany: (insts: Inst[]): Byte[] => insts.flatMap(Inst.encode),
-  show: (inst: Inst): string => match(inst, {
+  show: (inst: Inst, locals: Locals, funcNames: string[]): string => match(inst, {
     'i32.const': ({ n }) => `i32.const ${n}`,
     'i64.const': ({ n }) => `i64.const ${n}`,
     'f32.const': ({ x }) => `f32.const ${x}`,
     'f64.const': ({ x }) => `f64.const ${x}`,
-    'local.get': ({ local }) => `local.get ${local}`,
-    'local.set': ({ local }) => `local.set ${local}`,
-    'local.tee': ({ local }) => `local.tee ${local}`,
-    block: ({ returnTy }) => `block ${BlockType.show(returnTy)}`,
-    loop: ({ returnTy }) => `loop ${BlockType.show(returnTy)}`,
-    if: ({ returnTy }) => `if ${BlockType.show(returnTy)}`,
+    'local.get': ({ local }) => `local.get ${Locals.get(locals, local)}`,
+    'local.set': ({ local }) => `local.set ${Locals.get(locals, local)}`,
+    'local.tee': ({ local }) => `local.tee ${Locals.get(locals, local)}`,
+    'global.get': ({ global }) => `global.get ${global}`,
+    'global.set': ({ global }) => `global.set ${global}`,
+    call: ({ func }) => `call ${funcNames[func]}`,
     br: ({ label }) => `br ${label}`,
     br_if: ({ label }) => `br_if ${label}`,
     _: () => inst.variant,

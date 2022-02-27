@@ -1,5 +1,8 @@
+import { match } from "itsamatch";
+import { MonoTy } from "../../infer/types";
 import { gen } from "../../utils/array";
-import { Byte, Vec } from "./types"
+import { matchString, panic } from "../../utils/misc";
+import { BlockType, Byte, ValueType, Vec } from "./types"
 
 export const uleb128 = (n: number): Byte[] => {
   const bytes: Byte[] = [];
@@ -36,3 +39,37 @@ export const sleb128 = (n: number): Byte[] => {
 };
 
 export const encodeStr = (str: string): Byte[] => Vec.encode(gen(str.length, i => str.charCodeAt(i)));
+
+export const wasmTy = (ty: MonoTy): ValueType => match(ty, {
+  Const: c => matchString(c.name, {
+    'u32': () => ValueType.i32(),
+    'bool': () => ValueType.i32(),
+    '()': () => ValueType.none(),
+    _: () => {
+      return panic(`Unknown type repr for const type: ${c.name}`);
+    },
+  }),
+  Var: v => wasmTy(MonoTy.deref(v)),
+  Fun: () => ValueType.i32(), // function index
+  _: () => {
+    return panic(`wasmTy: type repr not defined yet for ${MonoTy.show(ty)}`);
+  },
+});
+
+export const blockRetTy = (ty: MonoTy): BlockType => match(ty, {
+  Const: c => matchString(c.name, {
+    'u32': () => BlockType.ValueType('i32'),
+    'bool': () => BlockType.ValueType('i32'),
+    '()': () => BlockType.ValueType('none'),
+    _: () => {
+      panic(`Unknown type repr for const type: ${c.name}`);
+      return BlockType.Void();
+    },
+  }),
+  Var: v => blockRetTy(MonoTy.deref(v)),
+  Fun: () => BlockType.ValueType('i32'), // function index
+  _: () => {
+    panic(`blockRetTy: type repr not defined yet for ${MonoTy.show(ty)}`);
+    return BlockType.Void();
+  },
+});

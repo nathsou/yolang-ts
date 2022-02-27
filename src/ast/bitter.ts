@@ -5,48 +5,12 @@ import { Tuple } from "../infer/tuples";
 import { MonoTy, PolyTy, TypeParams } from "../infer/types";
 import { Const } from "../parse/token";
 import { Maybe, none } from "../utils/maybe";
+import { Name, NameEnv } from "./name";
 import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, MethodSig, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
 
 // Bitter expressions are *unsugared* representations
 // of the structure of yolang source code
 // with attached type information and lexically resolved identifier references
-
-type Name = {
-  readonly original: string,
-  renaming: string,
-  ty: MonoTy,
-  readonly mutable: boolean,
-};
-
-const Name = {
-  fresh: (name: string, mutable: boolean): Name => ({
-    original: name,
-    renaming: name,
-    ty: MonoTy.fresh(),
-    mutable,
-  }),
-};
-
-type NameEnv = Record<string, Name>;
-
-const NameEnv = {
-  make: (): NameEnv => ({}),
-  clone: (env: NameEnv): NameEnv => ({ ...env }),
-  declare: (env: NameEnv, name: string, mutable: boolean): Name => {
-    const fresh = Name.fresh(name, mutable);
-    env[name] = fresh;
-    return fresh;
-  },
-  resolve: (env: NameEnv, name: string): Name => {
-    if (name in env) {
-      return env[name];
-    }
-
-    // TODO: return a dummy value
-    // so that this error gets handled in the inferencer
-    throw `Name '${name}' not found`;
-  },
-};
 
 type WithSweetRefAndType<T> = {
   [K in keyof T]: T[K] & { sweet: SweetExpr, ty: MonoTy }

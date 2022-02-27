@@ -1,92 +1,26 @@
-import { match, VariantOf } from "itsamatch";
+import { DataType, match, VariantOf } from "itsamatch";
 import { Decl, Expr, Prog, Stmt } from "../ast/bitter";
+import { Name } from "../ast/name";
 import { MonoTy } from "../infer/types";
-import { findRev, last } from "../utils/array";
-import { Maybe } from "../utils/maybe";
-import { matchString, panic } from "../utils/misc";
+import { last } from "../utils/array";
+import { panic } from "../utils/misc";
+import { Func } from "./wasm/func";
 import { Expr as IRExpr } from './wasm/ir';
-import { Locals, Module } from "./wasm/sections";
-import { BlockType, FuncType, LocalIdx, ValueType } from "./wasm/types";
-
-const wasmTy = (ty: MonoTy): ValueType => match(ty, {
-  Const: c => matchString(c.name, {
-    'u32': () => ValueType.i32(),
-    'bool': () => ValueType.i32(),
-    '()': () => ValueType.none(),
-    _: () => {
-      return panic(`Unknown type repr for const type: ${c.name}`);
-    },
-  }),
-  Var: v => wasmTy(MonoTy.deref(v)),
-  _: () => {
-    return panic(`type repr not defined yet for ${MonoTy.show(ty)}`);
-  },
-});
-
-const blockRetTy = (ty: MonoTy): BlockType => match(ty, {
-  Const: c => matchString(c.name, {
-    'u32': () => BlockType.ValueType('i32'),
-    'bool': () => BlockType.ValueType('i32'),
-    '()': () => BlockType.ValueType('none'),
-    _: () => {
-      panic(`Unknown type repr for const type: ${c.name}`);
-      return BlockType.Void();
-    },
-  }),
-  Var: v => blockRetTy(MonoTy.deref(v)),
-  _: () => {
-    panic(`type repr not defined yet for ${MonoTy.show(ty)}`);
-    return BlockType.Void();
-  },
-});
-
-type Var = {
-  name: string,
-  ty: MonoTy,
-  mutable: boolean,
-  scopeDepth: number,
-  index: number,
-};
-
-type Func = {
-  name: string,
-  locals: Var[],
-  body: Expr,
-  scopeDepth: number,
-};
-
-const Func = {
-  make: (name: string, args: { name: string, ty: MonoTy, mutable: boolean }[], body: Expr): Func => ({
-    name,
-    locals: args.map((a, index) => ({ ...a, index, scopeDepth: 0 })),
-    body,
-    scopeDepth: 0,
-  }),
-  declareVar: (self: Func, name: string, ty: MonoTy, mutable: boolean): LocalIdx => {
-    self.locals.push({ name, ty, mutable, scopeDepth: self.scopeDepth, index: self.locals.length });
-    return self.locals.length - 1;
-  },
-  scoped: (self: Func, f: () => void): void => {
-    self.scopeDepth += 1;
-    f();
-    self.scopeDepth -= 1;
-    self.locals = self.locals.filter(({ scopeDepth }) => scopeDepth <= self.scopeDepth);
-  },
-  resolveVar: (self: Func, name: string): Maybe<LocalIdx> => {
-    return findRev(self.locals, ({ name: n }) => n === name).map(({ index }) => index);
-  },
-  locals: (self: Func): Locals => {
-    return Locals.from(self.locals.flatMap(({ name, ty }) => ({ name, ty: wasmTy(ty) })));
-  },
-};
+import { Module } from "./wasm/sections";
+import { FuncIdx, FuncType, GlobalIdx, LocalIdx } from "./wasm/types";
+import { blockRetTy, wasmTy } from "./wasm/utils";
 
 export class Compiler {
   private mod: Module;
   private funcStack: Func[];
+  private globalVars: GlobalVar[];
+  private topLevelFuncs: Map<string, Func>;
 
   private constructor() {
     this.mod = Module.make();
     this.funcStack = [];
+    this.globalVars = [];
+    this.topLevelFuncs = new Map();
   }
 
   private compileDecl(decl: Decl): void {
@@ -95,6 +29,16 @@ export class Compiler {
         this.compileFunction(f);
       },
       Module: mod => {
+        // declare top-level functions first
+        mod.decls.forEach(decl => {
+          match(decl, {
+            Function: f => {
+              this.declareFunction(f);
+            },
+            _: () => { },
+          });
+        });
+
         mod.decls.forEach(decl => {
           this.compileDecl(decl);
         });
@@ -105,18 +49,36 @@ export class Compiler {
     });
   }
 
-  private compileFunction(f: VariantOf<Decl, 'Function'>): void {
+  private declareFunction(f: VariantOf<Decl, 'Function'>): FuncIdx {
+    const idx: FuncIdx = this.topLevelFuncs.size;
     const func = Func.make(
       f.name.original,
       f.args.map(({ name, mutable }) => ({ name: name.original, ty: name.ty, mutable })),
-      f.body
+      f.body,
+      idx
     );
+
+    if (this.topLevelFuncs.has(f.name.renaming)) {
+      panic(`function ${f.name.renaming} already defined`);
+    }
+
+    this.topLevelFuncs.set(f.name.renaming, func);
+
+    return idx;
+  }
+
+  private compileFunction(f: VariantOf<Decl, 'Function'>): FuncIdx {
+    if (!this.topLevelFuncs.has(f.name.renaming)) {
+      panic(`function ${f.name.renaming} not defined`);
+    }
+
+    const func = this.topLevelFuncs.get(f.name.renaming)!;
 
     this.funcStack.push(func);
     const insts = IRExpr.compile(this.compileExpr(f.body));
     this.funcStack.pop();
 
-    Module.addFunction(
+    const funcIdx = Module.addFunction(
       this.mod,
       f.name.renaming,
       FuncType.make(f.args.flatMap(arg => wasmTy(arg.name.ty)), [wasmTy(f.body.ty)]),
@@ -124,6 +86,12 @@ export class Compiler {
       insts,
       true
     );
+
+    if (funcIdx !== func.index) {
+      panic(`mismatching function index for '${f.name.renaming}': ${funcIdx} !== ${func.index}`);
+    }
+
+    return func.index;
   }
 
   private compileExpr(expr: Expr): IRExpr {
@@ -149,8 +117,11 @@ export class Compiler {
         return IRExpr.unop(op, this.compileExpr(expr));
       },
       Variable: ({ name }) => {
-        const localIdx = this.resolveVar(name.original);
-        return IRExpr.resolveVar(localIdx);
+        return match(this.resolveVar(name), {
+          Local: ({ idx }) => IRExpr.resolveVar(idx),
+          Global: ({ idx }) => IRExpr.resolveVar(idx, { isGlobal: true }),
+          Func: ({ idx }) => IRExpr.i32(idx),
+        });
       },
       IfThenElse: ({ condition, then, else_, ty }) => {
         return IRExpr.if(
@@ -163,15 +134,28 @@ export class Compiler {
       Assignment: ({ lhs, rhs }) => {
         return match(lhs, {
           Variable: ({ name }) => {
-            const localIdx = this.resolveVar(name.original);
-            return IRExpr.assignment(localIdx, this.compileExpr(rhs));
+            return match(this.resolveVar(name), {
+              Local: ({ idx }) => IRExpr.assignment(idx, this.compileExpr(rhs)),
+              Global: ({ idx }) => IRExpr.assignment(idx, this.compileExpr(rhs), { isGlobal: true }),
+              Func: () => panic('cannot assign to a function'),
+            });
           },
-          _: () => panic('invalid assignment target: ' + Expr.showSweet(lhs)),
+          _: () => panic('unhandled assignment target: ' + Expr.showSweet(lhs)),
+        });
+      },
+      Call: ({ lhs, args }) => {
+        return match(lhs, {
+          Variable: ({ name }) => {
+            return match(this.resolveVar(name), {
+              Func: ({ idx }) => IRExpr.call(idx, args.map(a => this.compileExpr(a))),
+              _: () => panic('indirect function call not supported yet'),
+            });
+          },
+          _: () => panic('unhandled call target: ' + Expr.showSweet(lhs)),
         });
       },
       _: () => {
-        panic(`expr ${expr.variant} not supported yet`);
-        return IRExpr.unreachable();
+        return panic(`expr ${expr.variant} not supported yet`);
       }
     });
   }
@@ -184,14 +168,31 @@ export class Compiler {
     return last(this.funcStack);
   }
 
-  private declareVar(name: string, ty: MonoTy, mutable: boolean): LocalIdx {
-    return Func.declareVar(this.currentFunc, name, ty, mutable);
+  private declareVar(name: string, ty: MonoTy, mutable: boolean): DeclaredVar {
+    if (this.funcStack.length === 0) {
+      const globalIdx = this.globalVars.length;
+      this.globalVars.push({ name, ty, mutable, index: globalIdx });
+      return DeclaredVar.Global(globalIdx);
+    } else {
+      return DeclaredVar.Local(Func.declareVar(this.currentFunc, name, ty, mutable));
+    }
   }
 
-  private resolveVar(name: string): LocalIdx {
-    return Func.resolveVar(this.currentFunc, name).match({
-      Some: idx => idx,
-      None: () => panic(`variable ${name} not found`),
+  private resolveVar(name: Name): ResolvedVar {
+    return Func.resolveVar(this.currentFunc, name.renaming).match({
+      Some: idx => ResolvedVar.Local(idx),
+      None: () => {
+        const globalVar = this.globalVars.find(v => v.name === name.renaming);
+        if (globalVar) {
+          return ResolvedVar.Global(globalVar.index);
+        }
+
+        if (this.topLevelFuncs.has(name.renaming)) {
+          return ResolvedVar.Func(this.topLevelFuncs.get(name.renaming)!.index);
+        }
+
+        return panic(`resolveVar: variable ${name.renaming} not found`);
+      },
     });
   }
 
@@ -205,8 +206,10 @@ export class Compiler {
         }
       },
       Let: ({ name, expr, mutable }) => {
-        const localIdx = this.declareVar(name.original, expr.ty, mutable);
-        return IRExpr.declareVar(localIdx, this.compileExpr(expr));
+        return match(this.declareVar(name.original, expr.ty, mutable), {
+          Local: ({ idx }) => IRExpr.declareVar(idx, this.compileExpr(expr)),
+          Global: ({ idx }) => IRExpr.declareVar(idx, this.compileExpr(expr), { isGlobal: true }),
+        });
       },
       _: () => {
         panic(`stmt ${stmt.variant} not supported yet`);
@@ -225,3 +228,31 @@ export class Compiler {
     return compiler.mod;
   }
 }
+
+type GlobalVar = {
+  name: string,
+  ty: MonoTy,
+  mutable: boolean,
+  index: GlobalIdx
+};
+
+type DeclaredVar = DataType<{
+  Local: { idx: LocalIdx },
+  Global: { idx: number },
+}>;
+
+const DeclaredVar = {
+  Local: (idx: LocalIdx): DeclaredVar => ({ variant: 'Local', idx }),
+  Global: (idx: number): DeclaredVar => ({ variant: 'Global', idx }),
+};
+
+type ResolvedVar = DataType<{
+  Local: { idx: LocalIdx },
+  Global: { idx: number },
+  Func: { idx: FuncIdx },
+}>;
+
+const ResolvedVar = {
+  ...DeclaredVar,
+  Func: (idx: FuncIdx): ResolvedVar => ({ variant: 'Func', idx }),
+};
