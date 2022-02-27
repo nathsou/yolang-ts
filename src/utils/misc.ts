@@ -32,8 +32,9 @@ export const proj = <T, K extends keyof T>(key: K): (data: T) => T[K] => {
 
 export const matchString = <S extends string, T>(
   str: S,
-  cases: { [str in S]: () => T } & { _: () => T }
+  cases: ({ [str in S]: () => T }) | (Partial<{ [str in S]: () => T }> & { _: () => T })
 ): T => {
+  /// @ts-ignore
   return cases[str in cases ? str : '_']();
 };
 

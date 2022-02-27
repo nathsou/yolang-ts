@@ -1,121 +1,130 @@
+import { match, VariantOf } from "itsamatch";
 import { Decl, Expr, Prog, Stmt } from "../ast/bitter";
-import bn from "binaryen";
-import { VariantOf, match as matchVariant } from "itsamatch";
-import { matchString, panic } from "../utils/misc";
-import { compact } from "../utils/array";
 import { MonoTy } from "../infer/types";
-import { BinaryOperator, UnaryOperator } from "../ast/sweet";
+import { matchString, panic } from "../utils/misc";
+import { Expr as IRExpr } from './wasm/ir';
+import { Module } from "./wasm/sections";
+import { BlockType, FuncType, ValueType } from "./wasm/types";
 
-const createModule = () => new bn.Module();
-export type Module = ReturnType<typeof createModule>;
-
-const modulesStack: string[] = [];
-
-const compileDecl = (decl: Decl, m: Module): void => {
-  matchVariant(decl, {
-    Function: f => {
-      compileFunction(f, m);
-    },
-    Module: mod => {
-      modulesStack.push(mod.name);
-      for (const decl of mod.decls) {
-        compileDecl(decl, m);
-      }
-      modulesStack.pop();
-    },
+const wasmTy = (ty: MonoTy): ValueType[] => match(ty, {
+  Const: c => matchString(c.name, {
+    'u32': () => [ValueType.i32()],
+    'bool': () => [ValueType.i32()],
     _: () => {
-      panic('unhandled decl variant: ' + decl.variant);
+      panic(`Unknown type repr for const type: ${c.name}`);
+      return [];
     },
-  });
-};
+  }),
+  Var: v => wasmTy(MonoTy.deref(v)),
+  _: () => {
+    panic(`type repr not defined yet for ${MonoTy.show(ty)}`);
+    return [];
+  },
+});
 
-const compileFunction = (f: VariantOf<Decl, 'Function'>, m: Module): void => {
-  f.name.renaming = [...modulesStack, f.name.renaming].join('_');
-
-  m.addFunction(
-    f.name.renaming,
-    bn.createType(f.args.map(arg => MonoTy.wasmRepr(arg.name.ty))),
-    MonoTy.wasmRepr(f.body.ty),
-    [],
-    compileExpr(f.body, m)!
-  );
-
-  m.addFunctionExport(f.name.renaming, f.name.renaming);
-};
-
-type ExpressionRef = number;
-
-const compileExpr = (expr: Expr, m: Module): ExpressionRef | undefined => {
-  return matchVariant(expr, {
-    Const: c => matchVariant(c.value, {
-      u32: ({ value }) => m.i32.const(value),
-      bool: ({ value }) => m.i32.const(value ? 1 : 0),
-      unit: () => { },
-    }),
-    Block: ({ statements }) => {
-      return m.block(null, compact(statements.map((stmt, index) => {
-        if (index === statements.length - 1 && stmt.variant === 'Expr') {
-          return m.return(compileExpr(stmt.expr, m));
-        } else {
-          return compileStmt(stmt, m);
-        }
-      })));
+const blockRetTy = (ty: MonoTy): BlockType => match(ty, {
+  Const: c => matchString(c.name, {
+    'u32': () => BlockType.ValueType('i32'),
+    'bool': () => BlockType.ValueType('i32'),
+    '()': () => BlockType.Void(),
+    _: () => {
+      panic(`Unknown type repr for const type: ${c.name}`);
+      return BlockType.Void();
     },
-    BinaryOp: ({ lhs, op, rhs }) => {
-      const opMap: {
-        [op in BinaryOperator]: (left: number, right: number) => number
-      } = {
-        '+': m.i32.add,
-        '-': m.i32.sub,
-        '*': m.i32.mul,
-        '/': m.i32.div_s,
-        '%': m.i32.rem_s,
-        '==': m.i32.eq,
-        '!=': m.i32.ne,
-        '<': m.i32.lt_s,
-        '<=': m.i32.le_s,
-        '>': m.i32.gt_s,
-        '>=': m.i32.ge_s,
-        "&&": m.i32.and,
-        '||': m.i32.or,
-      };
+  }),
+  Var: v => blockRetTy(MonoTy.deref(v)),
+  _: () => {
+    panic(`type repr not defined yet for ${MonoTy.show(ty)}`);
+    return BlockType.Void();
+  },
+});
 
-      return opMap[op](compileExpr(lhs, m)!, compileExpr(rhs, m)!);
-    },
-    UnaryOp: ({ op, expr }) => {
-      const opMap: {
-        [op in UnaryOperator]: (val: number) => number
-      } = {
-        '-': v => m.i32.sub(m.i32.const(0), v),
-        '!': m.i32.eqz,
-      };
+export class Compiler {
+  private mod: Module;
 
-      return opMap[op](compileExpr(expr, m)!);
-    },
-    IfThenElse: ({ condition, then, else_ }) => {
-      return m.if(
-        compileExpr(condition, m)!,
-        compileExpr(then, m)!,
-        else_.mapWithDefault(br => compileExpr(br, m)!, undefined)
-      );
-    },
-    _: () => { panic(`expr ${expr.variant} not supported yet`) }
-  }) ?? undefined;
-};
-
-const compileStmt = (stmt: Stmt, m: Module): ExpressionRef | undefined => {
-  return matchVariant(stmt, {
-    Expr: ({ expr }) => compileExpr(expr, m),
-    _: () => { panic(`stmt ${stmt.variant} not supported yet`) }
-  }) ?? undefined;
-};
-
-export const compile = (prog: Prog): Module => {
-  const mod = createModule();
-
-  for (const decl of prog) {
-    compileDecl(decl, mod);
+  constructor() {
+    this.mod = Module.make();
   }
 
-  return mod;
-};
+  private compileDecl(decl: Decl): void {
+    match(decl, {
+      Function: f => {
+        this.compileFunction(f);
+      },
+      Module: mod => {
+        mod.decls.forEach(decl => {
+          this.compileDecl(decl);
+        });
+      },
+      _: () => {
+        panic('unhandled decl variant: ' + decl.variant);
+      },
+    });
+  }
+
+  private compileFunction(f: VariantOf<Decl, 'Function'>): void {
+    Module.addFunction(
+      this.mod,
+      f.name.renaming,
+      FuncType.make(f.args.flatMap(arg => wasmTy(arg.name.ty)), wasmTy(f.body.ty)),
+      [],
+      IRExpr.compile(this.compileExpr(f.body)),
+      true
+    );
+  }
+
+  private compileExpr(expr: Expr): IRExpr {
+    return match(expr, {
+      Const: c => match(c.value, {
+        u32: ({ value }) => IRExpr.i32(value),
+        bool: ({ value }) => IRExpr.bool(value),
+        unit: () => IRExpr.unit(),
+      }),
+      Block: ({ statements, lastExpr, ty }) => {
+        const retTy = blockRetTy(ty);
+        const exprs = statements.map(s => this.compileStmt(s));
+        lastExpr.do(e => {
+          exprs.push(this.compileExpr(e));
+        });
+
+        return IRExpr.block(retTy, exprs);
+      },
+      BinaryOp: ({ lhs, op, rhs }) => {
+        return IRExpr.binop(this.compileExpr(lhs), op, this.compileExpr(rhs));
+      },
+      UnaryOp: ({ op, expr }) => {
+        return IRExpr.unop(op, this.compileExpr(expr));
+      },
+      IfThenElse: ({ condition, then, else_, ty }) => {
+        return IRExpr.if(
+          blockRetTy(ty),
+          this.compileExpr(condition),
+          this.compileExpr(then),
+          else_.map(e => this.compileExpr(e)),
+        );
+      },
+      _: () => {
+        panic(`expr ${expr.variant} not supported yet`);
+        return IRExpr.unreachable();
+      }
+    });
+  }
+
+  private compileStmt(stmt: Stmt): IRExpr {
+    return match(stmt, {
+      Expr: ({ expr }) => IRExpr.dropValue(this.compileExpr(expr)),
+      _: () => {
+        panic(`stmt ${stmt.variant} not supported yet`);
+        return IRExpr.unreachable();
+      },
+    });
+  }
+
+  public compile(prog: Prog): Module {
+    for (const decl of prog) {
+      this.compileDecl(decl);
+    }
+
+    return this.mod;
+  }
+}

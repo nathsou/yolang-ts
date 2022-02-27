@@ -2,12 +2,11 @@ import { DataType, match as matchVariant } from "itsamatch";
 import { match } from "ts-pattern";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
-import { cond, id, matchString, panic, parenthesized } from "../utils/misc";
+import { cond, id, panic, parenthesized } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./records";
 import { Tuple } from "./tuples";
-import bn from "binaryen";
 
 export type TyVarId = number;
 export type TyVar = DataType<{
@@ -295,19 +294,6 @@ export const MonoTy = {
         return Tuple.eq(s.tuple, t.tuple);
       })
       .otherwise(() => false),
-  wasmRepr: (ty: MonoTy): number => matchVariant(ty, {
-    Const: c => matchString(c.name, {
-      'u32': () => bn.i32,
-      'bool': () => bn.i32,
-      '()': () => bn.none,
-      _: () => panic(`Unknown type repr for const type: ${c.name}`),
-    }),
-    Var: v => MonoTy.wasmRepr(MonoTy.deref(v)),
-    _: () => {
-      panic(`type repr not defined yet for ${MonoTy.show(ty)}`);
-      return bn.none;
-    },
-  }),
 };
 
 export type PolyTy = [TyVarId[], MonoTy];

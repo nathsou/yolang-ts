@@ -92,6 +92,10 @@ export class Maybe<T> {
 
     return 'None';
   }
+
+  static from<T>(val: T | undefined): Maybe<T> {
+    return val === undefined ? none : some(val);
+  }
 }
 
 export const { none, some } = Maybe;

@@ -93,3 +93,11 @@ export const filterMap = <T, U>(elems: T[], f: (elem: T) => Maybe<U>): U[] => {
 export const compact = <T>(values: (T | undefined)[]): T[] => {
   return values.filter(v => v !== undefined) as T[];
 };
+
+export const decons = <T>(vals: T[]): [T, T[]] => {
+  return [vals[0], vals.slice(1)];
+};
+
+export const deconsLast = <T>(vals: T[]): [T[], T] => {
+  return [vals.slice(0, -1), last(vals)];
+};

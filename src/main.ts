@@ -2,7 +2,8 @@ import { match as matchVariant } from "itsamatch";
 import { Decl, Prog } from "./ast/bitter";
 import { Context } from './ast/context';
 import { Prog as SweetProg } from "./ast/sweet";
-import { compile, Module } from "./codegen/codegen";
+import { Compiler } from "./codegen/codegen";
+import { Module } from "./codegen/wasm/sections";
 import { Error } from './errors/errors';
 import { infer } from "./infer/infer";
 import { MonoTy, PolyTy, TypeParams } from "./infer/types";
@@ -39,11 +40,17 @@ const run = async (source: string): Promise<void> => {
   console.log(showTypes(prog, []).join('\n\n'));
 
   if (errs1.length === 0 && errs2.length === 0) {
-    const mod = compile(prog);
-    const compiled = new WebAssembly.Module(mod.emitBinary());
+    const compiler = new Compiler();
+
+    const mod = compiler.compile(prog);
+    console.log(Module.show(mod));
+
+    // writeFileSync('out.wasm', Module.encodeUin8Array(mod), { encoding: 'binary' });
+
+    const compiled = new WebAssembly.Module(Module.encodeUin8Array(mod));
     const instance = new WebAssembly.Instance(compiled, {});
-    console.log((instance.exports as any)['Lab_yo']());
-    console.log('\n', mod.emitText());
+
+    console.log((instance.exports['Lab_yo'] as any)());
   }
 };
 

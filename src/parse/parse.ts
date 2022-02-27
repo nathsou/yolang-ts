@@ -4,7 +4,7 @@ import { Argument, Decl, Expr, MethodSig, Pattern, Prog, Stmt } from '../ast/swe
 import { Row } from '../infer/records';
 import { Tuple } from '../infer/tuples';
 import { MonoTy, TypeParams, TypeParamsContext } from '../infer/types';
-import { last } from '../utils/array';
+import { deconsLast, last } from '../utils/array';
 import { Maybe, none, some } from '../utils/maybe';
 import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
@@ -257,7 +257,17 @@ const assignmentOp = alt(
 
 const variable = map(ident, Expr.Variable);
 
-const block: Parser<Expr> = map(curlyBrackets(many(stmt)), Expr.Block);
+const block: Parser<Expr> = map(
+  curlyBrackets(many(stmt)),
+  stmts => {
+    if (stmts.length > 0 && last(stmts).variant === 'Expr') {
+      const [front, last] = deconsLast(stmts);
+      return Expr.Block(front, some((last as VariantOf<Stmt, 'Expr'>).expr));
+    } else {
+      return Expr.Block(stmts, none);
+    }
+  }
+);
 
 const constExpr = map(constVal, Expr.Const);
 

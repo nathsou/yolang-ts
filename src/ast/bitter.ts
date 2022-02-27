@@ -103,7 +103,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   UnaryOp: { op: UnaryOperator, expr: Expr },
   Error: { message: string },
   Closure: { args: Argument[], body: Expr },
-  Block: { statements: Stmt[] },
+  Block: { statements: Stmt[], lastExpr: Maybe<Expr> },
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
   Assignment: { lhs: Expr, rhs: Expr },
   MethodCall: { receiver: Expr, method: string, args: Expr[], impl: Maybe<Impl> },
@@ -129,7 +129,7 @@ export const Expr = {
   UnaryOp: (op: UnaryOperator, expr: Expr, sweet: SweetExpr): Expr => typed({ variant: 'UnaryOp', op, expr }, sweet),
   Error: (message: string, sweet: SweetExpr): Expr => ({ variant: 'Error', message, sweet, ty: MonoTy.unit() }),
   Closure: (args: Argument[], body: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Closure', args, body }, sweet),
-  Block: (statements: Stmt[], sweet: SweetExpr): Expr => typed({ variant: 'Block', statements }, sweet),
+  Block: (statements: Stmt[], lastExpr: Maybe<Expr>, sweet: SweetExpr): Expr => typed({ variant: 'Block', statements, lastExpr }, sweet),
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>, sweet: SweetExpr): Expr => typed({ variant: 'IfThenElse', condition, then, else_ }, sweet),
   Assignment: (lhs: Expr, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Assignment', lhs, rhs }, sweet),
   MethodCall: (receiver: Expr, method: string, args: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'MethodCall', receiver, method, args, impl: none }, sweet),
@@ -157,9 +157,9 @@ export const Expr = {
           sweet
         );
       },
-      Block: ({ statements }) => {
+      Block: ({ statements, lastExpr }) => {
         const newNameEnv = NameEnv.clone(nameEnv);
-        return Expr.Block(statements.map(s => Stmt.fromSweet(s, newNameEnv, errors)), sweet);
+        return Expr.Block(statements.map(s => Stmt.fromSweet(s, newNameEnv, errors)), lastExpr.map(go), sweet);
       },
       IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(go), sweet),
       Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs), sweet),
@@ -299,13 +299,15 @@ export const Decl = {
   TraitImpl: (trait: { path: string[], name: string, args: MonoTy[] }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[]): Decl => ({ variant: 'TraitImpl', trait, typeParams, implementee, methods }),
   Trait: (name: string, typeParams: TypeParams, methods: MethodSig[]): Decl => ({ variant: 'Trait', name, typeParams, methods }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
-  fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, errors: Error[]): Decl =>
+  fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, moduleStack: string[], errors: Error[]): Decl =>
     matchVariant(sweet, {
       Function: ({ name, typeParams, args, returnTy, body }) => {
         const withoutPatterns = removeFuncArgsPatternMatching(args, body, nameEnv, errors);
+        const nameRef = declareFuncNames ? NameEnv.declare(nameEnv, name, false) : NameEnv.resolve(nameEnv, name);
+        nameRef.renaming = [...moduleStack, name].join('_');
 
         return Decl.Function(
-          declareFuncNames ? NameEnv.declare(nameEnv, name, false) : NameEnv.resolve(nameEnv, name),
+          nameRef,
           typeParams,
           withoutPatterns.args,
           returnTy,
@@ -323,7 +325,7 @@ export const Decl = {
 
         return Decl.Module(
           name,
-          decls.map(decl => Decl.fromSweet(decl, modEnv, false, errors))
+          decls.map(decl => Decl.fromSweet(decl, modEnv, false, [...moduleStack, name], errors))
         );
       },
       TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias(name, typeParams, alias),
@@ -336,7 +338,7 @@ export const Decl = {
           }
         }
 
-        return Decl.Impl(ty, typeParams, decls.map(decl => Decl.fromSweet(decl, implEnv, false, errors)));
+        return Decl.Impl(ty, typeParams, decls.map(decl => Decl.fromSweet(decl, implEnv, false, moduleStack, errors)));
       },
       TraitImpl: ({ trait, typeParams, implementee, methods }) => {
         const implEnv = NameEnv.clone(nameEnv);
@@ -347,7 +349,7 @@ export const Decl = {
           }
         }
 
-        return Decl.TraitImpl(trait, typeParams, implementee, methods.map(method => Decl.fromSweet(method, implEnv, false, errors)));
+        return Decl.TraitImpl(trait, typeParams, implementee, methods.map(method => Decl.fromSweet(method, implEnv, false, moduleStack, errors)));
       },
       Trait: ({ name, typeParams, methods }) => Decl.Trait(name, typeParams, methods),
       Error: ({ message }) => Decl.Error(message),
@@ -378,6 +380,7 @@ export const Prog = {
       decl,
       nameEnv,
       false, // do not redeclare function names
+      [],
       errors
     ));
 

@@ -2,7 +2,7 @@ import { DataType, match as matchVariant, VariantOf } from 'itsamatch';
 import { MonoTy, TypeParams } from '../infer/types';
 import { Const } from '../parse/token';
 import { joinWith } from '../utils/array';
-import { Maybe } from '../utils/maybe';
+import { Maybe, none } from '../utils/maybe';
 import { id, noop, parenthesized } from '../utils/misc';
 
 // Sweet expressions are *sugared* representations
@@ -42,7 +42,7 @@ export type Expr = DataType<{
   UnaryOp: { op: UnaryOperator, expr: Expr },
   Error: { message: string },
   Closure: { args: Argument[], body: Expr },
-  Block: { statements: Stmt[] },
+  Block: { statements: Stmt[], lastExpr: Maybe<Expr> },
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
   Assignment: { lhs: Expr, rhs: Expr },
   CompoundAssignment: { lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr },
@@ -65,7 +65,7 @@ export const Expr = {
   UnaryOp: (op: UnaryOperator, expr: Expr): Expr => ({ variant: 'UnaryOp', op, expr }),
   Error: (message: string): Expr => ({ variant: 'Error', message }),
   Closure: (args: Argument[], body: Expr): Expr => ({ variant: 'Closure', args, body }),
-  Block: (statements: Stmt[]): Expr => ({ variant: 'Block', statements }),
+  Block: (statements: Stmt[], lastExpr?: Maybe<Expr>): Expr => ({ variant: 'Block', statements, lastExpr: lastExpr ?? none }),
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>): Expr => ({ variant: 'IfThenElse', condition, then, else_ }),
   Assignment: (lhs: Expr, rhs: Expr): Expr => ({ variant: 'Assignment', lhs, rhs }),
   CompoundAssignment: (lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr): Expr => ({ variant: 'CompoundAssignment', lhs, op, rhs }),
@@ -86,7 +86,7 @@ export const Expr = {
     BinaryOp: ({ lhs, op, rhs }) => `${Expr.show(lhs)} ${op} ${Expr.show(rhs)}`,
     Error: ({ message }) => `<Error: ${message}>`,
     Closure: ({ args, body }) => `${ArgumentList.show(args)} -> ${Expr.show(body)}`,
-    Block: ({ statements }) => `{\n${joinWith(statements, s => '  ' + Stmt.show(s), '\n')}\n}`,
+    Block: ({ statements, lastExpr }) => `{\n${joinWith([...statements, ...lastExpr.mapWithDefault(e => [Stmt.Expr(e)], [])], s => '  ' + Stmt.show(s), '\n')}\n}`,
     IfThenElse: ({ condition, then, else_ }) => `if ${Expr.show(condition)} ${Expr.show(then)}${else_.map(e => ` else ${Expr.show(e)}`).orDefault('')}`,
     Assignment: ({ lhs, rhs }) => `${Expr.show(lhs)} = ${Expr.show(rhs)}`,
     CompoundAssignment: ({ lhs, op, rhs }) => `${Expr.show(lhs)} ${op} ${Expr.show(rhs)}`,
@@ -110,7 +110,7 @@ export const Expr = {
       BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(go(lhs), op, go(rhs)),
       Error: ({ message }) => Expr.Error(message),
       Closure: ({ args, body }) => Expr.Closure(args, go(body)),
-      Block: ({ statements: stmts }) => Expr.Block(stmts.map(s => Stmt.rewrite(s, f))),
+      Block: ({ statements: stmts, lastExpr }) => Expr.Block(stmts.map(s => Stmt.rewrite(s, f)), lastExpr.map(go)),
       IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(f)),
       Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs)),
       CompoundAssignment: ({ lhs, op, rhs }) => Expr.CompoundAssignment(go(lhs), op, go(rhs)),

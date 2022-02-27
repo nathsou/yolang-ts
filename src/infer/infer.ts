@@ -78,19 +78,19 @@ export const inferExpr = (
 
       unify(expectedFunTy, actualFunTy);
     },
-    Block: ({ statements }) => {
+    Block: ({ statements, lastExpr }) => {
       const newCtx = TypeContext.clone(ctx);
-      for (const stmt of statements) {
+
+      statements.forEach(stmt => {
         inferStmt(stmt, newCtx, errors);
-      }
+      });
 
-      const last = statements[statements.length - 1];
-      const lastTy = last ?
-        (last.variant === 'Expr' ?
-          last.expr.ty : MonoTy.unit()
-        ) : MonoTy.unit();
+      lastExpr.do(expr => {
+        inferExpr(expr, newCtx, errors);
+      });
 
-      unify(tau, lastTy);
+      const retTy = lastExpr.mapWithDefault(proj('ty'), MonoTy.unit());
+      unify(tau, retTy);
     },
     IfThenElse: ({ condition, then, else_ }) => {
       inferExpr(condition, ctx, errors);

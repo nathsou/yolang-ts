@@ -752,11 +752,6 @@ balanced-match@^1.0.0:
   resolved "https://registry.yarnpkg.com/balanced-match/-/balanced-match-1.0.2.tgz#e83e3a7e3f300b34cb9d87f615fa0cbf357690ee"
   integrity sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==
 
-binaryen@105.0.0:
-  version "105.0.0"
-  resolved "https://registry.yarnpkg.com/binaryen/-/binaryen-105.0.0.tgz#78db8b517e9ad1c31229dbbcd48cdad70c6c1580"
-  integrity sha512-4d8WX9M30cHHEDkCT+Dci9CT27TVIGwxOA6R/JXjgaKTGba90TuBNmoRmoZGE6eRF8YGICFD+GODom4/eUD0Zw==
-
 brace-expansion@^1.1.7:
   version "1.1.11"
   resolved "https://registry.yarnpkg.com/brace-expansion/-/brace-expansion-1.1.11.tgz#3c7fcbf529d87226f3d2f52b966ff5271eb441dd"
