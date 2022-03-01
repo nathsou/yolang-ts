@@ -73,6 +73,17 @@ export class Result<T, E> {
 
     return `Error(${showError(this.raw.data)})`;
   }
+
+  static firstOkBy<T, E, U>(elems: T[], f: (elem: T) => Result<U, E>, err: E): Result<U, E> {
+    for (const elem of elems) {
+      const mapped = f(elem);
+      if (mapped.isOk()) {
+        return mapped;
+      }
+    }
+
+    return error(err);
+  }
 }
 
 export const { ok, error } = Result;

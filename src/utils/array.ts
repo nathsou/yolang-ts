@@ -1,27 +1,4 @@
 import { Maybe, none, some } from "./maybe";
-import { error, Result } from "./result";
-
-export const firstSomeBy = <T, U>(elems: T[], f: (elem: T) => Maybe<U>): Maybe<U> => {
-  for (const elem of elems) {
-    const mapped = f(elem);
-    if (mapped.isSome()) {
-      return mapped;
-    }
-  }
-
-  return none;
-};
-
-export const firstOkBy = <T, E, U>(elems: T[], f: (elem: T) => Result<U, E>, err: E): Result<U, E> => {
-  for (const elem of elems) {
-    const mapped = f(elem);
-    if (mapped.isOk()) {
-      return mapped;
-    }
-  }
-
-  return error(err);
-};
 
 export const findRev = <T>(elems: T[], pred: (elem: T) => boolean): Maybe<T> => {
   for (let i = elems.length - 1; i >= 0; i--) {
@@ -110,4 +87,8 @@ export const decons = <T>(vals: T[]): [T, T[]] => {
 
 export const deconsLast = <T>(vals: T[]): [T[], T] => {
   return [vals.slice(0, -1), last(vals)];
+};
+
+export const reverse = <T>(elems: T[]): T[] => {
+  return [...elems].reverse();
 };

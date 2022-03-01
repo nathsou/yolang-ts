@@ -96,6 +96,17 @@ export class Maybe<T> {
   static from<T>(val: T | undefined): Maybe<T> {
     return val === undefined ? none : some(val);
   }
+
+  static firstSomeBy<T, U>(elems: T[], f: (elem: T) => Maybe<U>): Maybe<[U, number]> {
+    for (let i = 0; i < elems.length; i++) {
+      const mapped = f(elems[i]);
+      if (mapped.isSome()) {
+        return mapped.map(data => [data, i]);
+      }
+    }
+
+    return none;
+  }
 }
 
 export const { none, some } = Maybe;

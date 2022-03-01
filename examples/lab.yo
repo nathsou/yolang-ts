@@ -1,18 +1,14 @@
 
-fn triple(n) {
-  3 * n
+trait Add {
+  fn add(self: Self, other: Self) -> Self
 }
 
-fn double(n) {
-  n + n
+impl Lab.Add for u32 {
+  fn add(self, other: u32) {
+    self + other
+  }
 }
 
 fn main() {
-  let res = triple(if triple(4) == 12 {
-    triple(triple(3 * 7) + 2)
-  } else {
-    triple(12)
-  }) * 8 + 1
-
-  double(res)
+  7.add(3)
 }

@@ -2,7 +2,8 @@ import { DataType, match, VariantOf } from "itsamatch";
 import { Decl, Expr, Prog, Stmt } from "../ast/bitter";
 import { Name } from "../ast/name";
 import { MonoTy } from "../infer/types";
-import { last } from "../utils/array";
+import { last, reverse } from "../utils/array";
+import { Maybe } from "../utils/maybe";
 import { panic } from "../utils/misc";
 import { Func } from "./wasm/func";
 import { Expr as IRExpr } from './wasm/ir';
@@ -35,6 +36,20 @@ export class Compiler {
             Function: f => {
               this.declareFunction(f);
             },
+            Impl: impl => {
+              impl.decls.forEach(decl => {
+                if (decl.variant === 'Function') {
+                  this.declareFunction(decl);
+                }
+              });
+            },
+            TraitImpl: impl => {
+              impl.methods.forEach(method => {
+                if (method.variant === 'Function') {
+                  this.declareFunction(method);
+                }
+              });
+            },
             _: () => { },
           });
         });
@@ -43,6 +58,17 @@ export class Compiler {
           this.compileDecl(decl);
         });
       },
+      Impl: ({ decls }) => {
+        decls.forEach(decl => {
+          this.compileDecl(decl);
+        });
+      },
+      TraitImpl: ({ methods }) => {
+        methods.forEach(method => {
+          this.compileDecl(method);
+        });
+      },
+      Trait: () => { },
       _: () => {
         panic('unhandled decl variant: ' + decl.variant);
       },
@@ -52,7 +78,7 @@ export class Compiler {
   private declareFunction(f: VariantOf<Decl, 'Function'>): FuncIdx {
     const idx: FuncIdx = this.topLevelFuncs.size;
     const func = Func.make(
-      f.name.original,
+      f.name.renaming,
       f.args.map(({ name, mutable }) => ({ name: name.original, ty: name.ty, mutable })),
       f.body,
       idx
@@ -92,6 +118,13 @@ export class Compiler {
     }
 
     return func.index;
+  }
+
+  private call(funcName: Name, args: Expr[]): IRExpr {
+    return match(this.resolveVar(funcName), {
+      Func: ({ idx }) => IRExpr.call(idx, args.map(a => this.compileExpr(a))),
+      _: () => panic('indirect function call not supported yet'),
+    });
   }
 
   private compileExpr(expr: Expr): IRExpr {
@@ -145,14 +178,13 @@ export class Compiler {
       },
       Call: ({ lhs, args }) => {
         return match(lhs, {
-          Variable: ({ name }) => {
-            return match(this.resolveVar(name), {
-              Func: ({ idx }) => IRExpr.call(idx, args.map(a => this.compileExpr(a))),
-              _: () => panic('indirect function call not supported yet'),
-            });
-          },
+          Variable: ({ name }) => this.call(name, args),
           _: () => panic('unhandled call target: ' + Expr.showSweet(lhs)),
         });
+      },
+      MethodCall: ({ receiver, method, args, impl }) => {
+        const name = impl.unwrap().methods[method].name;
+        return this.call(name, [receiver, ...args]);
       },
       _: () => {
         return panic(`expr ${expr.variant} not supported yet`);
@@ -179,8 +211,14 @@ export class Compiler {
   }
 
   private resolveVar(name: Name): ResolvedVar {
-    return Func.resolveVar(this.currentFunc, name.renaming).match({
-      Some: idx => ResolvedVar.Local(idx),
+    return Maybe.firstSomeBy(reverse(this.funcStack), f => Func.resolveVar(f, name.renaming)).match({
+      Some: ([funcIdx, index]) => {
+        if (index !== 0) {
+          panic('closures not supported yet');
+        }
+
+        return ResolvedVar.Local(funcIdx);
+      },
       None: () => {
         const globalVar = this.globalVars.find(v => v.name === name.renaming);
         if (globalVar) {

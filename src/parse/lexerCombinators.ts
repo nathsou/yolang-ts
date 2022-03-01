@@ -1,9 +1,9 @@
-import { Slice } from "../utils/slice";
 import { Maybe, none, some } from "../utils/maybe";
-import { firstSomeBy } from "../utils/array";
-import { Spaces } from "./token";
-import { Trie, Node } from "../utils/trie";
+import { fst } from "../utils/misc";
+import { Slice } from "../utils/slice";
 import { Char, isAlpha, isAlphaNum, isDigit, isLowerCaseLetter, isUpperCaseLetter } from "../utils/strings";
+import { Node, Trie } from "../utils/trie";
+import { Spaces } from "./token";
 
 export type Lexer<T> = (input: Slice<Char>) => Maybe<[T, Slice<Char>]>;
 
@@ -69,7 +69,7 @@ export const seq = <T>(lexers: Lexer<T>[]): Lexer<T[]> => {
 };
 
 export const alt = <T>(...lexers: Lexer<T>[]): Lexer<T> => {
-  return (input: Slice<Char>) => firstSomeBy(lexers, lexer => lexer(input));
+  return (input: Slice<Char>) => Maybe.firstSomeBy(lexers, lexer => lexer(input)).map(fst);
 };
 
 export const str = (str: string): Lexer<string> => {

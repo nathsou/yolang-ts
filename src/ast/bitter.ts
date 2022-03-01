@@ -302,7 +302,11 @@ export const Decl = {
           }
         }
 
-        return Decl.Impl(ty, typeParams, decls.map(decl => Decl.fromSweet(decl, implEnv, false, moduleStack, errors)));
+        return Decl.Impl(
+          ty,
+          typeParams,
+          decls.map(decl => Decl.fromSweet(decl, implEnv, false, [...moduleStack, MonoTy.show(ty)], errors))
+        );
       },
       TraitImpl: ({ trait, typeParams, implementee, methods }) => {
         const implEnv = NameEnv.clone(nameEnv);
@@ -313,7 +317,12 @@ export const Decl = {
           }
         }
 
-        return Decl.TraitImpl(trait, typeParams, implementee, methods.map(method => Decl.fromSweet(method, implEnv, false, moduleStack, errors)));
+        return Decl.TraitImpl(
+          trait,
+          typeParams,
+          implementee,
+          methods.map(method => Decl.fromSweet(method, implEnv, false, [...moduleStack, trait.name, MonoTy.show(implementee)], errors))
+        );
       },
       Trait: ({ name, typeParams, methods }) => Decl.Trait(name, typeParams, methods),
       Error: ({ message }) => Decl.Error(message),
