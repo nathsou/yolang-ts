@@ -294,6 +294,15 @@ export const MonoTy = {
         return Tuple.eq(s.tuple, t.tuple);
       })
       .otherwise(() => false),
+  isDetermined: (s: MonoTy): boolean => matchVariant(s, {
+    Var: ({ value }) => value.kind === 'Link' && MonoTy.isDetermined(value.to),
+    Const: () => true,
+    Fun: ({ args, ret }) => args.every(MonoTy.isDetermined) && MonoTy.isDetermined(ret),
+    Tuple: ({ tuple }) => Tuple.toArray(tuple).every(MonoTy.isDetermined),
+    Record: ({ row }) => Row.fields(row).every(([, ty]) => MonoTy.isDetermined(ty)),
+    NamedRecord: ({ row }) => Row.fields(row).every(([, ty]) => MonoTy.isDetermined(ty)),
+    Param: () => true,
+  }),
 };
 
 export type PolyTy = [TyVarId[], MonoTy];

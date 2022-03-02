@@ -27,7 +27,7 @@ export class Trie<K> {
     return trie;
   }
 
-  static fromStrings(strings: readonly string[]): Trie<string> {
+  static fromStrings<S extends string>(strings: readonly S[]): Trie<S> {
     return Trie.from(strings.map(s => [s, s]));
   }
 

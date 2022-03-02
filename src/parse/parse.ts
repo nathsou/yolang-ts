@@ -1,10 +1,12 @@
 import { match as matchVariant, VariantOf } from 'itsamatch';
 import { match, select } from 'ts-pattern';
 import { Argument, Decl, Expr, MethodSig, Pattern, Prog, Stmt } from '../ast/sweet';
+import { Inst } from '../codegen/wasm/instructions';
 import { Row } from '../infer/records';
 import { Tuple } from '../infer/tuples';
 import { MonoTy, TypeParams, TypeParamsContext } from '../infer/types';
 import { deconsLast, last } from '../utils/array';
+import { Either } from '../utils/Either';
 import { Maybe, none, some } from '../utils/maybe';
 import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
@@ -26,6 +28,11 @@ const ident = satisfyBy<string>(token => matchVariant(token, {
 }));
 
 const ident2 = (name: string) => satisfy(token => token.variant === 'Identifier' && token.name === name);
+
+const stringIn = <S extends string>(names: Set<S>) => map(
+  satisfy(token => token.variant === 'Identifier' && names.has(token.name as S)),
+  token => (token as VariantOf<Token, 'Identifier'>).name as S
+);
 
 const upperIdent = satisfyBy<string>(token => matchVariant(token, {
   Identifier: ({ name }) => isUpperCase(name[0]) ? some(name) : none,
@@ -269,6 +276,37 @@ const block: Parser<Expr> = map(
   }
 );
 
+const wasmInst: Parser<Inst> = alt(
+  map(seq(
+    ident2('i32'),
+    symbol('.'),
+    map(
+      stringIn(new Set([
+        'add', 'sub', 'mul', 'div_s', 'div_u', 'rem_s', 'rem_u', 'and', 'or',
+        'xor', 'shl', 'shr_s', 'shr_u', 'rotl', 'rotr', 'eqz', 'eq', 'ne',
+        'lt_s', 'lt_u', 'le_s', 'le_u', 'gt_s', 'gt_u', 'ge_s', 'ge_u',
+      ] as const)),
+      inst => Inst.i32[inst]()
+    )
+  ), ([_1, _2, inst]) => inst),
+);
+
+export const wasmBlock: Parser<Expr> = map(
+  seq(
+    keyword('wasm'),
+    curlyBrackets(
+      commas(alt(
+        map(wasmInst, inst => Either.left<Inst, [Expr, Maybe<MonoTy>]>(inst)),
+        map(seq(
+          expr,
+          optional(typeAnnotation),
+        ), ([expr, ann]) => Either.right<Inst, [Expr, Maybe<MonoTy>]>([expr, ann])),
+      ))
+    )
+  ),
+  ([_, insts]) => Expr.WasmBlock(insts)
+);
+
 const constExpr = map(constVal, Expr.Const);
 
 export const parenthesized = map(parens(expr), Expr.Parenthesized);
@@ -278,6 +316,7 @@ export const primary = alt(
   variable,
   parenthesized,
   block,
+  wasmBlock,
   invalid,
   // unexpected
 );

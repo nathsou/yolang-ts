@@ -28,10 +28,15 @@ export const ReferenceType = {
 const VALUE_TYPE_ENCODING = { ...NUMBER_TYPE_ENCODING, ...REFERENCE_TYPE_ENCODING };
 
 export type ValueType = NumberType | ReferenceType | 'none';
+
 export const ValueType = {
-  i32: (): ValueType => 'i32',
-  none: (): ValueType => 'none',
+  i32: 'i32' as const,
+  i64: 'i64' as const,
+  f32: 'f32' as const,
+  f64: 'f64' as const,
+  none: 'none' as const,
   encode: (ty: ValueType): Byte[] => ty === 'none' ? [] : [VALUE_TYPE_ENCODING[ty]],
+  eq: (a: ValueType, b: ValueType): boolean => a === b,
 };
 
 export type ResultType = ValueType[];

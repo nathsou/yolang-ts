@@ -1,6 +1,6 @@
 import { DataType, match as matchVariant } from "itsamatch";
-import { BitterConversionError } from "../ast/bitter";
-import { Expr } from "../ast/bitter";
+import { BitterConversionError, Expr } from "../ast/bitter";
+import { Inst } from "../codegen/wasm/instructions";
 import { TypingError } from "../infer/infer";
 import { MAX_TUPLE_INDEX, Tuple } from "../infer/tuples";
 import { MonoTy } from "../infer/types";
@@ -45,6 +45,10 @@ export const Error = {
       MissingTraitMethods: ({ trait, methods }) => `Missing methods [${methods.join(', ')}] in trait '${trait}'`,
       SuperfluousTraitMethods: ({ trait, methods }) => `Superfluous methods [${methods.join(', ')}] in trait '${trait}'`,
       WrongNumberOfTraitArgs: ({ trait, expected, actual }) => `Wrong number of parameters in trait '${trait}', expected ${expected}, got ${actual}`,
+      WasmStackUnderflow: ({ expectedLength, actualLength, inst }) => `Wasm stack underflow, expected ${expectedLength} elements, got ${actualLength} in ${Inst.showRaw(inst)}`,
+      WasmStackOverflow: ({ expectedLength, actualLength }) => `Wasm stack overflow, expected ${expectedLength} elements, got ${actualLength}`,
+      InconsistentWasmStack: ({ expectedTy, actualTy, inst }) => `Inconsistent wasm stack, expected a value of type ${expectedTy}, got ${actualTy} in ${Inst.showRaw(inst)}`,
+      WasmBlockExpressionsRequireTypeAnnotations: ({ expr }) => `Expressions inside a wasm block require type annotations, type of '${Expr.showSweet(expr)}' is not fully determined`,
     }, 'type'),
     Resolution: ({ err }) => matchVariant(err, {
       ModuleNotFound: ({ name }) => `Module '${name}' not found`,

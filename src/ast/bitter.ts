@@ -1,10 +1,13 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
+import { Inst } from "../codegen/wasm/instructions";
 import { Error } from "../errors/errors";
 import { Impl } from "../infer/impls";
 import { Tuple } from "../infer/tuples";
 import { MonoTy, PolyTy, TypeParams } from "../infer/types";
 import { Const } from "../parse/token";
+import { Either } from "../utils/Either";
 import { Maybe, none } from "../utils/maybe";
+import { id } from "../utils/misc";
 import { Name, NameEnv } from "./name";
 import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, MethodSig, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
 
@@ -77,6 +80,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   Match: { expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[] },
   NamedRecord: { path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
+  WasmBlock: { instructions: Either<Inst, [Expr, Maybe<MonoTy>]>[] },
 }>>;
 
 const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet: SweetExpr } => ({
@@ -103,6 +107,7 @@ export const Expr = {
   Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Match', expr, annotation, cases }, sweet),
   NamedRecord: (path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'NamedRecord', path, name, typeParams, fields }, sweet),
   TupleIndexing: (lhs: Expr, index: number, sweet: SweetExpr): Expr => typed({ variant: 'TupleIndexing', lhs, index }, sweet),
+  WasmBlock: (instructions: Either<Inst, [Expr, Maybe<MonoTy>]>[], sweet: SweetExpr): Expr => typed({ variant: 'WasmBlock', instructions }, sweet),
   fromSweet: (sweet: SweetExpr, nameEnv: NameEnv, errors: Error[]): Expr => {
     const go = (expr: SweetExpr, env = nameEnv) => Expr.fromSweet(expr, env, errors);
 
@@ -180,6 +185,7 @@ export const Expr = {
           sweet
         );
       },
+      WasmBlock: ({ instructions }) => Expr.WasmBlock(instructions.map(i => i.map({ left: id, right: ([expr, ty]) => [go(expr), ty] })), sweet)
     });
   },
   showSweet: (expr: Expr): string => SweetExpr.show(expr.sweet),

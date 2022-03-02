@@ -21,6 +21,7 @@ export type Expr = DataType<{
   resolveVar: { index: number, isGlobal: boolean },
   assignment: { index: number, rhs: Expr, isGlobal: boolean },
   call: { func: FuncIdx, args: Expr[] },
+  raw: { instructions: Inst[] },
 }>;
 
 export const Expr = {
@@ -39,6 +40,7 @@ export const Expr = {
   resolveVar: (index: number, { isGlobal } = { isGlobal: false }): Expr => ({ variant: 'resolveVar', index, isGlobal }),
   assignment: (index: number, rhs: Expr, { isGlobal } = { isGlobal: false }): Expr => ({ variant: 'assignment', index, rhs, isGlobal }),
   call: (func: FuncIdx, args: Expr[]): Expr => ({ variant: 'call', func, args }),
+  raw: (...instructions: Inst[]): Expr => ({ variant: 'raw', instructions }),
   compile: (expr: Expr): Inst[] => match(expr, {
     i32: ({ n }) => [Inst.i32.const(n)],
     bool: ({ b }) => [Inst.i32.const(b ? 1 : 0)],
@@ -88,6 +90,7 @@ export const Expr = {
       ...args.flatMap(Expr.compile),
       Inst.call(func)
     ],
+    raw: ({ instructions }) => instructions,
   }),
   encode: (expr: Expr): Byte[] => Expr.compile(expr).flatMap(Inst.encode),
 };

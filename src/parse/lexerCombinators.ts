@@ -19,6 +19,7 @@ export const upperLetter = satisfy(isUpperCaseLetter);
 export const letter = satisfy(isAlpha);
 export const digit = satisfy(isDigit);
 export const alphaNum = satisfy(isAlphaNum);
+export const alphaNumUnderscore = satisfy(ch => isAlphaNum(ch) || ch === '_');
 export const isSpace = (char: Char) => Spaces.set.has(char);
 export const space = satisfy(isSpace);
 
@@ -84,14 +85,14 @@ export const not = (lexer: Lexer<any>, consume = true): Lexer<string> => {
     });
 };
 
-export const trie = (strings: readonly string[]): Lexer<string> => {
-  const trie = Trie.fromStrings(strings);
+export const trie = <S extends string>(strings: readonly S[]): Lexer<S> => {
+  const trie = Trie.fromStrings<S>(strings);
   const root = trie.getRoot();
 
   return (input: Slice<Char>) => {
     let inp = { ...input };
     let next = some(root);
-    let prev: Maybe<Node<string>> = none;
+    let prev: Maybe<Node<S>> = none;
     while (!Slice.isEmpty(inp) && next.isSome()) {
       const char = Slice.head(inp).unwrap();
       inp.start += 1;

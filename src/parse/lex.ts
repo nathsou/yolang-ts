@@ -1,5 +1,5 @@
 import { Slice } from "../utils/slice";
-import { alphaNum, alt, digit, letter, many, map, not, oneOrMore, spaces, str, then, trie } from "./lexerCombinators";
+import { alphaNum, alphaNumUnderscore, alt, digit, letter, many, map, not, oneOrMore, spaces, str, then, trie } from "./lexerCombinators";
 import { Const, Keyword, Position, Space, Spaces, Symbol, Token, TokenWithPos, withPos } from "./token";
 
 export const symbol = map(trie(Symbol.values), s => Token.Symbol(s as Symbol));
@@ -16,7 +16,7 @@ const digits = map(oneOrMore(digit), digits => parseInt(digits.join(''), 10));
 
 export const u32 = map(digits, n => Token.Const(Const.u32(n)));
 export const bool = map(alt(str('true'), str('false')), b => Token.Const(Const.bool(b === 'true')));
-export const ident = map(then(letter, many(alphaNum)), ([h, tl]) => Token.Identifier(h + tl.join('')));
+export const ident = map(then(letter, many(alphaNumUnderscore)), ([h, tl]) => Token.Identifier(h + tl.join('')));
 
 export const token = alt(u32, bool, keyword, symbol, ident);
 

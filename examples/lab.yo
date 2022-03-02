@@ -4,11 +4,17 @@ trait Add {
 }
 
 impl Lab.Add for u32 {
-  fn add(self, other: u32) {
-    self + other
+  fn add(self: u32, other: u32) {
+    wasm { self, other, i32.add }
+  }
+}
+
+impl u32 {
+  fn shr(self: u32, other: u32) {
+    wasm { self, other, i32.shr_u }
   }
 }
 
 fn main() {
-  7.add(3)
+  1621.shr(3).add(7)
 }

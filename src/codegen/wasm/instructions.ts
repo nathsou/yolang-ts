@@ -1,6 +1,6 @@
 import { DataType, match } from "itsamatch";
 import { Locals } from "./sections";
-import { BlockType, Byte, FuncIdx, GlobalIdx, LabelIdx, LocalIdx, Vec } from "./types";
+import { BlockType, Byte, FuncIdx, GlobalIdx, LabelIdx, LocalIdx, ValueType, Vec } from "./types";
 import { sleb128 } from "./utils";
 
 export type Inst = DataType<{
@@ -178,6 +178,21 @@ export const Inst = {
     br_if: ({ label }) => `br_if ${label}`,
     _: () => inst.variant,
   }),
+  showRaw: (inst: Inst): string => match(inst, {
+    'i32.const': ({ n }) => `i32.const ${n}`,
+    'i64.const': ({ n }) => `i64.const ${n}`,
+    'f32.const': ({ x }) => `f32.const ${x}`,
+    'f64.const': ({ x }) => `f64.const ${x}`,
+    'local.get': ({ local }) => `local.get ${local}`,
+    'local.set': ({ local }) => `local.set ${local}`,
+    'local.tee': ({ local }) => `local.tee ${local}`,
+    'global.get': ({ global }) => `global.get ${global}`,
+    'global.set': ({ global }) => `global.set ${global}`,
+    call: ({ func }) => `call ${func}`,
+    br: ({ label }) => `br ${label}`,
+    br_if: ({ label }) => `br_if ${label}`,
+    _: () => inst.variant,
+  }),
   identationDelta: (inst: Inst): { before: number, after: number } => match(inst, {
     if: () => ({ before: 0, after: 1 }),
     block: () => ({ before: 0, after: 1 }),
@@ -185,6 +200,39 @@ export const Inst = {
     else: () => ({ before: -1, after: 1 }),
     end: () => ({ before: -1, after: 0 }),
     _: () => ({ before: 0, after: 0 }),
+  }),
+  type: (inst: Inst): ({ consumes: ValueType[], outputs: ValueType[] }) => match(inst, {
+    'i32.const': () => ({ consumes: [], outputs: [ValueType.i32] }),
+    'i64.const': () => ({ consumes: [], outputs: [ValueType.i64] }),
+    'f32.const': () => ({ consumes: [], outputs: [ValueType.f32] }),
+    'f64.const': () => ({ consumes: [], outputs: [ValueType.f64] }),
+    'i32.add': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.sub': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.mul': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.div_s': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.div_u': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.rem_s': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.rem_u': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.and': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.or': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.xor': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.shl': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.shr_s': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.shr_u': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.rotl': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.rotr': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.eqz': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.eq': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.ne': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.lt_s': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.lt_u': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.le_s': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.le_u': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.gt_s': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.gt_u': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.ge_s': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    'i32.ge_u': () => ({ consumes: [ValueType.i32, ValueType.i32], outputs: [ValueType.i32] }),
+    _: () => ({ consumes: [], outputs: [] }),
   }),
 };
 

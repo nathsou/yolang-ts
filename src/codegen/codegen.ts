@@ -6,6 +6,7 @@ import { last, reverse } from "../utils/array";
 import { Maybe } from "../utils/maybe";
 import { panic } from "../utils/misc";
 import { Func } from "./wasm/func";
+import { Inst } from "./wasm/instructions";
 import { Expr as IRExpr } from './wasm/ir';
 import { Module } from "./wasm/sections";
 import { FuncIdx, FuncType, GlobalIdx, LocalIdx } from "./wasm/types";
@@ -185,6 +186,14 @@ export class Compiler {
       MethodCall: ({ receiver, method, args, impl }) => {
         const name = impl.unwrap().methods[method].name;
         return this.call(name, [receiver, ...args]);
+      },
+      WasmBlock: ({ instructions }) => {
+        const insts: Inst[] = instructions.flatMap(inst => inst.match({
+          left: inst => [inst],
+          right: ([expr]) => IRExpr.compile(this.compileExpr(expr)),
+        }));
+
+        return IRExpr.raw(...insts);
       },
       _: () => {
         return panic(`expr ${expr.variant} not supported yet`);

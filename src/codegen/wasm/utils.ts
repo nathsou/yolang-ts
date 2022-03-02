@@ -41,16 +41,16 @@ export const sleb128 = (n: number): Byte[] => {
 export const encodeStr = (str: string): Byte[] => Vec.encode(gen(str.length, i => str.charCodeAt(i)));
 
 export const wasmTy = (ty: MonoTy): ValueType => match(ty, {
-  Const: c => matchString(c.name, {
-    'u32': () => ValueType.i32(),
-    'bool': () => ValueType.i32(),
-    '()': () => ValueType.none(),
+  Const: c => matchString<string, ValueType>(c.name, {
+    'u32': () => ValueType.i32,
+    'bool': () => ValueType.i32,
+    '()': () => ValueType.none,
     _: () => {
       return panic(`Unknown type repr for const type: ${c.name}`);
     },
   }),
   Var: v => wasmTy(MonoTy.deref(v)),
-  Fun: () => ValueType.i32(), // function index
+  Fun: () => ValueType.i32, // function index
   _: () => {
     return panic(`wasmTy: type repr not defined yet for ${MonoTy.show(ty)}`);
   },
