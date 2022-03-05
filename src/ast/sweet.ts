@@ -3,7 +3,7 @@ import { Inst } from '../codegen/wasm/instructions';
 import { MonoTy, TypeParams } from '../infer/types';
 import { Const } from '../parse/token';
 import { joinWith } from '../utils/array';
-import { Either } from '../utils/Either';
+import { Either } from '../utils/either';
 import { Maybe, none } from '../utils/maybe';
 import { id, noop, parenthesized } from '../utils/misc';
 
@@ -190,6 +190,20 @@ export const Stmt = {
   }),
 };
 
+export type Imports = DataType<{
+  names: { names: Set<string> },
+  all: {},
+}>;
+
+export const Imports = {
+  names: (names: string[]): Imports => ({ variant: 'names', names: new Set(names) }),
+  all: (): Imports => ({ variant: 'all' }),
+  show: (importType: Imports): string => matchVariant(importType, {
+    names: ({ names }) => `{${[...names].join(', ')}}`,
+    all: () => '*',
+  }),
+};
+
 export type Decl = DataType<{
   Function: { name: string, typeParams: TypeParams, args: Argument[], returnTy: Maybe<MonoTy>, body: Expr },
   Module: { name: string, decls: Decl[] },
@@ -197,6 +211,7 @@ export type Decl = DataType<{
   InherentImpl: { ty: MonoTy, typeParams: TypeParams, decls: Decl[] },
   Trait: { name: string, typeParams: TypeParams, methods: MethodSig[] },
   TraitImpl: { trait: { path: string[], name: string, args: MonoTy[] }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[] },
+  Use: { path: string[], imports: Imports },
   Error: { message: string },
 }>;
 
@@ -207,6 +222,7 @@ export const Decl = {
   Impl: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'InherentImpl', ty, typeParams, decls }),
   Trait: (name: string, typeParams: TypeParams, methods: MethodSig[]): Decl => ({ variant: 'Trait', name, typeParams, methods }),
   TraitImpl: (trait: { path: string[], name: string, args: MonoTy[] }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[]): Decl => ({ variant: 'TraitImpl', trait, typeParams, implementee, methods }),
+  Use: (path: string[], imports: Imports): Decl => ({ variant: 'Use', path, imports }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   show: (decl: Decl): string => matchVariant(decl, {
     Function: ({ name, typeParams, args, body }) => `fn ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
@@ -215,6 +231,7 @@ export const Decl = {
     InherentImpl: ({ ty, typeParams, decls }) => `impl${TypeParams.show(typeParams)} ${MonoTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     Trait: ({ name, typeParams, methods }) => `trait ${name}${TypeParams.show(typeParams)} {\n${joinWith(methods, m => '  ' + MethodSig.show(m), '\n')}\n}`,
     TraitImpl: ({ trait, typeParams, implementee, methods }) => `impl${TypeParams.show(typeParams)} ${[...trait.path, trait.name].join('.')}<${joinWith(trait.args, MonoTy.show)}> for ${MonoTy.show(implementee)} {\n${joinWith(methods, m => '  ' + Decl.show(m), '\n')}\n}`,
+    Use: ({ path, imports }) => `use ${path.join('.')}.${Imports.show(imports)}`,
     Error: ({ message }) => `<Error: ${message}> `,
   }),
   rewrite: (decl: Decl, rfs: RewriteFuncs): Decl => {
@@ -226,6 +243,7 @@ export const Decl = {
       InherentImpl: ({ ty, typeParams, decls }) => g(Decl.Impl(ty, typeParams, decls.map(d => Decl.rewrite(d, rfs)))),
       Trait: ({ name, typeParams, methods }) => g(Decl.Trait(name, typeParams, methods)),
       TraitImpl: ({ trait, typeParams, implementee, methods }) => g(Decl.TraitImpl(trait, typeParams, implementee, methods.map(m => Decl.rewrite(m, rfs)))),
+      Use: ({ path, imports }) => g(Decl.Use(path, imports)),
       Error: ({ message }) => g(Decl.Error(message)),
     });
   },

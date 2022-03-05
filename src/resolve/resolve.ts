@@ -184,13 +184,15 @@ const resolveAux = async (
         }));
       },
       _: () => { },
-    },
-    ),
+    }),
     traverseDecl: decl => matchVariant(decl, {
       TraitImpl: ({ trait: { path } }) => {
         if (path.length > 0) {
           registerModule(moduleName(path[0]));
         }
+      },
+      Use: ({ path }) => {
+        registerModule(moduleName(path[0]));
       },
       _: () => { },
     }),

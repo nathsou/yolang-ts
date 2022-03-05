@@ -5,14 +5,16 @@ export type Name = {
   renaming: string,
   ty: MonoTy,
   readonly mutable: boolean,
+  isUndeclared: boolean,
 };
 
 export const Name = {
-  fresh: (name: string, mutable: boolean): Name => ({
+  fresh: (name: string, mutable: boolean, isUndeclared = false): Name => ({
     original: name,
     renaming: name,
     ty: MonoTy.fresh(),
     mutable,
+    isUndeclared,
   }),
 };
 
@@ -31,8 +33,9 @@ export const NameEnv = {
       return env[name];
     }
 
-    // TODO: return a dummy value
-    // so that this error gets handled in the inferencer
-    throw `Name '${name}' not found`;
+    return Name.fresh(name, false, true);
+  },
+  isUndeclared: (name: Name): boolean => {
+    return name.renaming === '<__!undeclared!__>';
   },
 };

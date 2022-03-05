@@ -1,0 +1,14 @@
+
+trait Add {
+  fn add(self: Self, other: Self) -> Self
+}
+
+impl Add for u32 {
+  fn add(self: u32, other: u32) {
+    wasm { self, other, i32.add }
+  }
+}
+
+fn yolo() {
+  17
+}

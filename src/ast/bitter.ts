@@ -5,11 +5,11 @@ import { Impl } from "../infer/impls";
 import { Tuple } from "../infer/tuples";
 import { MonoTy, PolyTy, TypeParams } from "../infer/types";
 import { Const } from "../parse/token";
-import { Either } from "../utils/Either";
+import { Either } from "../utils/either";
 import { Maybe, none } from "../utils/maybe";
 import { id } from "../utils/misc";
 import { Name, NameEnv } from "./name";
-import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, MethodSig, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
+import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Imports, MethodSig, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
 
 // Bitter expressions are *unsugared* representations
 // of the structure of yolang source code
@@ -229,6 +229,7 @@ export type Decl = DataType<{
   Impl: { ty: MonoTy, typeParams: TypeParams, decls: Decl[] },
   TraitImpl: { trait: { path: string[], name: string, args: MonoTy[] }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[] },
   Trait: { name: string, typeParams: TypeParams, methods: MethodSig[] },
+  Use: { path: string[], imports: Imports },
   Error: { message: string },
 }>;
 
@@ -258,6 +259,7 @@ export const Decl = {
         Trait: trait => {
           mod.members[trait.name] = trait;
         },
+        Use: () => { },
         Error: () => { },
       });
     }
@@ -268,6 +270,7 @@ export const Decl = {
   Impl: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'Impl', ty, typeParams, decls }),
   TraitImpl: (trait: { path: string[], name: string, args: MonoTy[] }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[]): Decl => ({ variant: 'TraitImpl', trait, typeParams, implementee, methods }),
   Trait: (name: string, typeParams: TypeParams, methods: MethodSig[]): Decl => ({ variant: 'Trait', name, typeParams, methods }),
+  Use: (path: string[], imports: Imports): Decl => ({ variant: 'Use', path, imports }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, moduleStack: string[], errors: Error[]): Decl =>
     matchVariant(sweet, {
@@ -331,6 +334,7 @@ export const Decl = {
         );
       },
       Trait: ({ name, typeParams, methods }) => Decl.Trait(name, typeParams, methods),
+      Use: ({ path, imports }) => Decl.Use(path, imports),
       Error: ({ message }) => Decl.Error(message),
     }),
 };

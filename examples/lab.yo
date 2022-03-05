@@ -1,20 +1,13 @@
+use Add.{ Add, yolo }
 
-trait Add {
-  fn add(self: Self, other: Self) -> Self
-}
-
-impl Add for u32 {
-  fn add(self: u32, other: u32) {
-    wasm { self, other, i32.add }
-  }
-}
-
-impl u32 {
-  fn shr(self: u32, other: u32) {
-    wasm { self, other, i32.shr_u }
+fn fib(n) {
+  if n <= 0 {
+    1
+  } else {
+    fib(n - 2) + fib(n - 1)
   }
 }
 
 fn main() {
-  1621.shr(3).add(7)
+  fib(20.add(yolo()))
 }

@@ -51,14 +51,18 @@ export const inferExpr = (
 
   matchVariant(expr, {
     Const: () => { },
-    Variable: ({ name }) => {
-      Env.lookup(env, name.original).match({
-        Some: ty => {
+    Variable: v => {
+      Env.lookup(env, v.name.original).match({
+        Some: ({ ty, name: declaredName }) => {
+          if (v.name.isUndeclared) {
+            v.name = declaredName;
+          }
+
           const instTy = PolyTy.instantiate(ty);
           unify(instTy, tau);
         },
         None: () => {
-          errors.push(Error.Typing({ type: 'UnboundVariable', name: name.original }));
+          errors.push(Error.Typing({ type: 'UnboundVariable', name: v.name.original }));
         },
       });
     },
@@ -133,10 +137,10 @@ export const inferExpr = (
     Closure: ({ args, body }) => {
       const bodyCtx = TypeContext.clone(ctx);
 
-      args.forEach(arg => {
-        Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
-        arg.annotation.do(ann => {
-          unify(arg.name.ty, ann);
+      args.forEach(({ name, annotation }) => {
+        Env.addMono(bodyCtx.env, name, name.ty);
+        annotation.do(ann => {
+          unify(name.ty, ann);
         });
       });
 
@@ -241,7 +245,7 @@ export const inferExpr = (
 
           for (const v of Pattern.vars(pattern)) {
             const genTy = MonoTy.generalize(ctx.env, v.ty);
-            Env.addPoly(bodyCtx.env, v.original, genTy);
+            Env.addPoly(bodyCtx.env, v, genTy);
           }
 
           inferExpr(body, bodyCtx, errors);
@@ -387,7 +391,7 @@ export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): Error[
       });
 
       const genTy = MonoTy.generalize(ctx.env, expr.ty);
-      Env.addPoly(ctx.env, name.original, genTy);
+      Env.addPoly(ctx.env, name, genTy);
     },
     Expr: ({ expr }) => {
       inferExpr(expr, ctx, errors);
@@ -411,12 +415,12 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
       const bodyCtx = TypeContext.clone(ctx);
       TypeContext.declareTypeParams(bodyCtx, ...typeParams);
 
-      args.forEach(arg => {
-        arg.annotation.do(ann => {
-          unify(arg.name.ty, ann, bodyCtx);
+      args.forEach(({ annotation, name }) => {
+        annotation.do(ann => {
+          unify(name.ty, ann, bodyCtx);
         });
 
-        Env.addMono(bodyCtx.env, arg.name.original, arg.name.ty);
+        Env.addMono(bodyCtx.env, name, name.ty);
       });
 
       inferExpr(body, bodyCtx, errors);
@@ -434,7 +438,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
 
       const genFunTy = MonoTy.generalize(ctx.env, funTy);
       func.funTy = genFunTy;
-      Env.addPoly(ctx.env, name.original, genFunTy);
+      Env.addPoly(ctx.env, name, genFunTy);
     },
     Module: mod => {
       TypeContext.declareModule(ctx, mod);
@@ -446,7 +450,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
       for (const decl of mod.decls) {
         matchVariant(decl, {
           Function: ({ name, funTy }) => {
-            Env.addPoly(modCtx.env, name.original, funTy);
+            Env.addPoly(modCtx.env, name, funTy);
           },
           _: decl => {
             inferDecl(decl, modCtx, true, errors);
@@ -547,6 +551,11 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
     Trait: trait => {
       if (declare) {
         TypeContext.declareTrait(ctx, trait);
+      }
+    },
+    Use: ({ path, imports }) => {
+      if (declare) {
+        TypeContext.bringInScope(ctx, path, imports);
       }
     },
     Error: ({ message }) => {

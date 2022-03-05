@@ -73,6 +73,7 @@ export class Compiler {
       _: () => {
         panic('unhandled decl variant: ' + decl.variant);
       },
+      Use: () => { },
     });
   }
 

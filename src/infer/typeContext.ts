@@ -1,7 +1,7 @@
-import { VariantOf } from "itsamatch";
+import { match, VariantOf } from "itsamatch";
 import { Decl } from "../ast/bitter";
 import { Context } from "../ast/context";
-import { Error } from "../errors/errors";
+import { Imports } from "../ast/sweet";
 import { Maybe, none, some } from "../utils/maybe";
 import { pushRecord } from "../utils/misc";
 import { Env } from "./env";
@@ -113,6 +113,10 @@ export const TypeContext = {
     );
   },
   findTrait(ctx: TypeContext, path: string[], name: string): Maybe<Trait> {
+    if (path.length === 0 && name in ctx.traits) {
+      return some(ctx.traits[name]);
+    }
+
     const mod = TypeContext.resolveModule(ctx, path);
 
     return mod.flatMap(mod => {
@@ -177,5 +181,49 @@ export const TypeContext = {
     }
 
     return none;
+  },
+  bringInScope: (ctx: TypeContext, path: string[], imports: Imports): Maybe<VariantOf<Decl, 'Module'>> => {
+    const mod = TypeContext.resolveModule(ctx, path);
+    const isImported = (name: string) => imports.variant === 'all' || imports.names.has(name);
+
+    mod.do(mod => {
+      for (const decl of mod.decls) {
+        match(decl, {
+          Module: m => {
+            if (isImported(m.name)) {
+              TypeContext.declareModule(ctx, m);
+            }
+          },
+          Trait: trait => {
+            if (isImported(trait.name)) {
+              TypeContext.declareTrait(ctx, trait);
+            }
+          },
+          TraitImpl: impl => {
+            if (isImported(impl.trait.name)) {
+              TypeContext.declareTraitImpl(ctx, impl);
+              TypeContext.declareImpl(ctx, Impl.from(impl.implementee, impl.typeParams, impl.methods));
+            }
+          },
+          Impl: ({ ty, typeParams, decls }) => {
+            TypeContext.declareImpl(ctx, Impl.from(ty, typeParams, decls));
+          },
+          TypeAlias: ({ alias, typeParams, name }) => {
+            if (isImported(name)) {
+              TypeContext.declareTypeAlias(ctx, name, typeParams, alias);
+            }
+          },
+          Use: () => { },
+          Function: ({ name }) => {
+            if (isImported(name.original)) {
+              Env.addMono(ctx.env, name, name.ty);
+            }
+          },
+          Error: () => { },
+        });
+      }
+    });
+
+    return mod;
   },
 };

@@ -1,6 +1,6 @@
 import { match as matchVariant, VariantOf } from 'itsamatch';
 import { match, select } from 'ts-pattern';
-import { Argument, Decl, Expr, MethodSig, Pattern, Prog, Stmt } from '../ast/sweet';
+import { Argument, Decl, Expr, Imports, MethodSig, Pattern, Prog, Stmt } from '../ast/sweet';
 import { Inst } from '../codegen/wasm/instructions';
 import { Row } from '../infer/records';
 import { Tuple } from '../infer/tuples';
@@ -720,6 +720,20 @@ const traitDecl = map(
   ([_, name, [params, methods]]) => Decl.Trait(name, params, methods)
 );
 
+const useDecl = map(
+  seq(
+    keyword('use'),
+    expect(modulePath, `Expected module path after 'use' keyword`),
+    expect(symbol('.'), `Expected '.' after module path`),
+    alt(
+      map(curlyBrackets(commas(alt(upperIdent, ident))), Imports.names),
+      map(symbol('*'), Imports.all),
+    ),
+    optional(symbol(';')),
+  ),
+  ([_, path, _dot, imports]) => Decl.Use(path, imports)
+);
+
 initParser(decl, alt(
   funcDecl,
   typeAliasDecl,
@@ -727,6 +741,7 @@ initParser(decl, alt(
   inherentImplDecl,
   traitImplDecl,
   traitDecl,
+  useDecl,
 ));
 
 export const parse = (tokens: Slice<Token>): [Prog, ParserError[]] => {
