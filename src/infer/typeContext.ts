@@ -20,6 +20,7 @@ export type TypeContext = {
   traits: Record<string, Trait>,
   traitImpls: Record<string, TraitImpl[]>,
   topLevelDecls: Decl[],
+  currentPath: string[],
 };
 
 export const TypeContext = {
@@ -32,6 +33,7 @@ export const TypeContext = {
     traits: {},
     traitImpls: {},
     topLevelDecls,
+    currentPath: [],
   }),
   clone: (ctx: TypeContext): TypeContext => ({
     env: Env.clone(ctx.env),
@@ -42,9 +44,16 @@ export const TypeContext = {
     traits: { ...ctx.traits },
     traitImpls: { ...ctx.traitImpls },
     topLevelDecls: [...ctx.topLevelDecls],
+    currentPath: [...ctx.currentPath],
   }),
   declareModule: (ctx: TypeContext, mod: VariantOf<Decl, 'Module'>): void => {
     ctx.modules[mod.name] = mod;
+  },
+  enterModule: (ctx: TypeContext, name: string): void => {
+    ctx.currentPath.push(name);
+  },
+  exitModule: (ctx: TypeContext): void => {
+    ctx.currentPath.pop();
   },
   declareTypeAlias: (
     ctx: TypeContext,
@@ -81,7 +90,7 @@ export const TypeContext = {
     }
   },
   // TODO: cleanup
-  resolveModule: (ctx: TypeContext, path: string[]): Maybe<VariantOf<Decl, 'Module'>> => {
+  __resolveModuleAux: (ctx: TypeContext, path: string[]): Maybe<VariantOf<Decl, 'Module'>> => {
     let members: Record<string, Decl> = ctx.modules;
     let mod: VariantOf<Decl, 'Module'> | undefined;
 
@@ -96,6 +105,12 @@ export const TypeContext = {
     }
 
     return mod ? some(mod) : none;
+  },
+  resolveModule: (ctx: TypeContext, path: string[]): Maybe<VariantOf<Decl, 'Module'>> => {
+    // try to resolve in local scope or in global module
+    return TypeContext.__resolveModuleAux(ctx, [...ctx.currentPath, ...path]).or(
+      TypeContext.__resolveModuleAux(ctx, path)
+    );
   },
   findTrait(ctx: TypeContext, path: string[], name: string): Maybe<Trait> {
     const mod = TypeContext.resolveModule(ctx, path);

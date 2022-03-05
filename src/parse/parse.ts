@@ -6,7 +6,7 @@ import { Row } from '../infer/records';
 import { Tuple } from '../infer/tuples';
 import { MonoTy, TypeParams, TypeParamsContext } from '../infer/types';
 import { deconsLast, last } from '../utils/array';
-import { Either } from '../utils/Either';
+import { Either } from '../utils/either';
 import { Maybe, none, some } from '../utils/maybe';
 import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';

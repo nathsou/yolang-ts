@@ -439,6 +439,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
     Module: mod => {
       TypeContext.declareModule(ctx, mod);
       const modCtx = TypeContext.clone(ctx);
+      TypeContext.enterModule(modCtx, mod.name);
 
       // declare all the functions and modules so
       // that they can be used before being defined
