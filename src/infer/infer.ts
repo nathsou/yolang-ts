@@ -361,6 +361,12 @@ export const inferExpr = (
 
       unify(tau, ty);
     },
+    While: ({ condition, body }) => {
+      inferExpr(condition, ctx, errors);
+      unify(condition.ty, MonoTy.bool());
+      inferExpr(body, ctx, errors);
+      unify(tau, MonoTy.unit());
+    },
     Error: ({ message }) => {
       errors.push(Error.Typing({ type: 'ParsingError', message }));
     },

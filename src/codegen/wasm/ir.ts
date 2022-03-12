@@ -22,6 +22,7 @@ export type Expr = DataType<{
   assignment: { index: number, rhs: Expr, isGlobal: boolean },
   call: { func: FuncIdx, args: Expr[] },
   raw: { instructions: Inst[] },
+  while: { cond: Expr, body: Expr[] },
 }>;
 
 export const Expr = {
@@ -41,6 +42,7 @@ export const Expr = {
   assignment: (index: number, rhs: Expr, { isGlobal } = { isGlobal: false }): Expr => ({ variant: 'assignment', index, rhs, isGlobal }),
   call: (func: FuncIdx, args: Expr[]): Expr => ({ variant: 'call', func, args }),
   raw: (...instructions: Inst[]): Expr => ({ variant: 'raw', instructions }),
+  while: (cond: Expr, body: Expr[]): Expr => ({ variant: 'while', cond, body }),
   compile: (expr: Expr): Inst[] => match(expr, {
     i32: ({ n }) => [Inst.i32.const(n)],
     bool: ({ b }) => [Inst.i32.const(b ? 1 : 0)],
@@ -91,6 +93,17 @@ export const Expr = {
       Inst.call(func)
     ],
     raw: ({ instructions }) => instructions,
+    while: ({ cond, body }) => [
+      Inst.block(BlockType.Void()),
+      Inst.loop(BlockType.Void()),
+      ...Expr.compile(cond),
+      Inst.i32.eqz(),
+      Inst.br_if(1),
+      ...body.flatMap(Expr.compile),
+      Inst.br(0),
+      Inst.end(),
+      Inst.end(),
+    ],
   }),
   encode: (expr: Expr): Byte[] => Expr.compile(expr).flatMap(Inst.encode),
 };
@@ -101,6 +114,8 @@ const BINOP_MAPPING: { [op in Exclude<BinaryOperator, '&&' | '||'>]: () => Inst 
   '*': Inst.i32.mul,
   '/': Inst.i32.div_s,
   '%': Inst.i32.rem_s,
+  '&': Inst.i32.and,
+  '|': Inst.i32.or,
   '==': Inst.i32.eq,
   '!=': Inst.i32.ne,
   '<': Inst.i32.lt_s,

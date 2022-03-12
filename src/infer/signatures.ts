@@ -21,6 +21,8 @@ const binaryOpSignature: Record<BinaryOperator, PolyTy> = {
   '*': u32OpSig,
   '/': u32OpSig,
   '%': u32OpSig,
+  '&': u32OpSig,
+  '|': u32OpSig,
   '==': comparisonOpSig,
   '!=': comparisonOpSig,
   '<': u32BoolOpSig,

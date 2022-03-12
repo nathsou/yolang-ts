@@ -1,13 +1,36 @@
-use Add.{ Add, yolo }
 
 fn fib(n) {
-  if n <= 0 {
-    1
-  } else {
-    fib(n - 2) + fib(n - 1)
+  mut a = 1
+  mut b = 0
+  mut i = 0
+
+  while i < n {
+    let c = a + b
+    b = a
+    a = c
+    i += 1
   }
+
+  b
+}
+
+fn euler2() {
+  mut nextFib = fib(0)
+  mut i = 0
+  mut sum = 0
+
+  while nextFib < 4000000 {
+    if nextFib & 1 == 0 {
+      sum += nextFib
+    }
+
+    i += 1 
+    nextFib = fib(i)
+  }
+
+  sum
 }
 
 fn main() {
-  fib(20.add(yolo()))
+  euler2()
 }

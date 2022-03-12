@@ -246,6 +246,11 @@ const logicalOp = alt(
   map(symbol('||'), () => '||' as const),
 );
 
+const bitwiseOp = alt(
+  map(symbol('&'), () => '&' as const),
+  map(symbol('|'), () => '|' as const),
+);
+
 const equalityOp = alt(
   map(symbol('=='), () => '==' as const),
   map(symbol('!='), () => '!=' as const),
@@ -451,8 +456,15 @@ const relational = chainLeft(
   (a, op, b) => Expr.BinaryOp(a, op, b)
 );
 
-const equality = chainLeft(
+const bitwise = chainLeft(
   relational,
+  bitwiseOp,
+  expect(relational, 'Expected expression after bitwise operator'),
+  (a, op, b) => Expr.BinaryOp(a, op, b)
+);
+
+const equality = chainLeft(
+  bitwise,
   equalityOp,
   expect(relational, 'Expected expression after equality operator'),
   (a, op, b) => Expr.BinaryOp(a, op, b)
@@ -483,6 +495,18 @@ const ifThenElse = alt(
   binaryExpr
 );
 
+const whileExpr = alt(
+  map(
+    seq(
+      keyword('while'),
+      expectOrDefault(expr, `Expected condition after 'while'`, Expr.Error),
+      expectOrDefault(block, `Expected block after condidtion`, Expr.Block([])),
+    ),
+    ([_, cond, body]) => Expr.While(cond, body)
+  ),
+  ifThenElse
+);
+
 const letIn = alt(
   map(seq(
     keyword('let'),
@@ -495,7 +519,7 @@ const letIn = alt(
   ),
     ([_let, pattern, ann, _eq, val, _in, body]) => Expr.LetIn(pattern, ann, val, body)
   ),
-  ifThenElse
+  whileExpr
 );
 
 const assignment = alt(

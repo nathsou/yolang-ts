@@ -20,10 +20,12 @@ export const TyVar = {
   fresh: (): TyVar => TyVar.Unbound(Context.freshTyVarIndex()),
 };
 
+export type TraitBound = string;
+
 // Monomorphic types
 export type MonoTy = DataType<{
   Var: { value: TyVar },
-  Param: { name: string },
+  Param: { name: string, traitBounds: TraitBound[] },
   Const: { path: string[], name: string, args: MonoTy[] },
   Fun: { args: MonoTy[], ret: MonoTy },
   Tuple: { tuple: Tuple },
@@ -41,7 +43,7 @@ export const MonoTy = {
     Unbound: (tv): MonoTy => ({ variant: 'Var', value: tv }),
     Link: ({ to }): MonoTy => ({ variant: 'Var', value: { kind: 'Link', to: MonoTy.deref(to) } }),
   }, 'kind'),
-  Param: (name: string): MonoTy => ({ variant: 'Param', name }),
+  Param: (name: string, traitBounds: TraitBound[] = []): MonoTy => ({ variant: 'Param', name, traitBounds }),
   Const: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', path: [], name, args }),
   ConstWithPath: (path: string[], name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', path, name, args }),
   Fun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'Fun', args, ret }),

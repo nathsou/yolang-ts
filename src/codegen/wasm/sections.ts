@@ -1,6 +1,7 @@
 import { DataType, match } from "itsamatch";
 import { joinWith, last } from "../../utils/array";
-import { ident, panic, proj } from "../../utils/misc";
+import { panic, proj } from "../../utils/misc";
+import { ident } from "../../utils/strings";
 import { Inst } from "./instructions";
 import { Byte, FuncIdx, FuncType, LocalIdx, TypeIdx, ValueType, Vec } from "./types";
 import { encodeStr, uleb128 } from "./utils";

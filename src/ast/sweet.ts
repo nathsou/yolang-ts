@@ -11,7 +11,7 @@ import { id, noop, parenthesized } from '../utils/misc';
 // of the structure of yolang source code.
 
 export type UnaryOperator = '-' | '!';
-export type BinaryOperator = '+' | '-' | '*' | '/' | '%' | '==' | '!=' | '<' | '>' | '<=' | '>=' | '&&' | '||';
+export type BinaryOperator = '+' | '-' | '*' | '/' | '%' | '==' | '!=' | '<' | '>' | '<=' | '>=' | '&&' | '||' | '&' | '|';
 export type CompoundAssignmentOperator = '+=' | '-=' | '*=' | '/=' | '%=' | '&&=' | '||=';
 
 export type Argument = { pattern: Pattern, mutable: boolean, annotation: Maybe<MonoTy> };
@@ -58,6 +58,7 @@ export type Expr = DataType<{
   TupleIndexing: { lhs: Expr, index: number },
   LetIn: { pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr },
   WasmBlock: { instructions: Either<Inst, [Expr, Maybe<MonoTy>]>[] },
+  While: { condition: Expr, body: Expr },
 }>;
 
 export const Expr = {
@@ -82,6 +83,7 @@ export const Expr = {
   TupleIndexing: (lhs: Expr, index: number): Expr => ({ variant: 'TupleIndexing', lhs, index }),
   LetIn: (pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr): Expr => ({ variant: 'LetIn', pattern, annotation, value, body }),
   WasmBlock: (instructions: Either<Inst, [Expr, Maybe<MonoTy>]>[]): Expr => ({ variant: 'WasmBlock', instructions }),
+  While: (condition: Expr, body: Expr): Expr => ({ variant: 'While', condition, body }),
   show: (expr: Expr): string => matchVariant(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
@@ -104,6 +106,7 @@ export const Expr = {
     TupleIndexing: ({ lhs, index }) => `${Expr.show(lhs)}.${index}`,
     LetIn: ({ pattern, value, body }) => `let ${Pattern.show(pattern)} = ${Expr.show(value)} in ${Expr.show(body)}`,
     WasmBlock: ({ instructions }) => `wasm {\n${joinWith(instructions, i => `  ${i.match({ left: Inst.showRaw, right: ([expr]) => Expr.show(expr) })}\n`, '\n')}\n}`,
+    While: ({ condition, body }) => `while ${Expr.show(condition)} ${Expr.show(body)}`,
   }),
   rewrite: (expr: Expr, f: (expr: Expr) => Expr): Expr => {
     const go = (e: Expr) => Expr.rewrite(e, f);
@@ -129,6 +132,7 @@ export const Expr = {
       TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index),
       LetIn: ({ pattern, annotation, value, body }) => Expr.LetIn(pattern, annotation, go(value), go(body)),
       WasmBlock: ({ instructions }) => Expr.WasmBlock(instructions.map(i => i.map({ left: id, right: ([expr, ty]) => [go(expr), ty] }))),
+      While: ({ condition, body }) => Expr.While(go(condition), go(body)),
     }))
   },
 };

@@ -81,6 +81,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   NamedRecord: { path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
   WasmBlock: { instructions: Either<Inst, [Expr, Maybe<MonoTy>]>[] },
+  While: { condition: Expr, body: Expr },
 }>>;
 
 const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet: SweetExpr } => ({
@@ -108,6 +109,7 @@ export const Expr = {
   NamedRecord: (path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'NamedRecord', path, name, typeParams, fields }, sweet),
   TupleIndexing: (lhs: Expr, index: number, sweet: SweetExpr): Expr => typed({ variant: 'TupleIndexing', lhs, index }, sweet),
   WasmBlock: (instructions: Either<Inst, [Expr, Maybe<MonoTy>]>[], sweet: SweetExpr): Expr => typed({ variant: 'WasmBlock', instructions }, sweet),
+  While: (condition: Expr, body: Expr, sweet: SweetExpr): Expr => typed({ variant: 'While', condition, body }, sweet),
   fromSweet: (sweet: SweetExpr, nameEnv: NameEnv, errors: Error[]): Expr => {
     const go = (expr: SweetExpr, env = nameEnv) => Expr.fromSweet(expr, env, errors);
 
@@ -185,7 +187,8 @@ export const Expr = {
           sweet
         );
       },
-      WasmBlock: ({ instructions }) => Expr.WasmBlock(instructions.map(i => i.map({ left: id, right: ([expr, ty]) => [go(expr), ty] })), sweet)
+      WasmBlock: ({ instructions }) => Expr.WasmBlock(instructions.map(i => i.map({ left: id, right: ([expr, ty]) => [go(expr), ty] })), sweet),
+      While: ({ condition, body }) => Expr.While(go(condition), go(body), sweet),
     });
   },
   showSweet: (expr: Expr): string => SweetExpr.show(expr.sweet),

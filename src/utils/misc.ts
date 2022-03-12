@@ -62,6 +62,8 @@ export const forEach = <T>(it: Iterable<T>, f: (value: T) => void): void => {
   }
 };
 
-export const ident = (str: string, count: number): string => {
-  return `${'  '.repeat(Math.max(count, 0))}${str}`;
-};
+export function assert(test: boolean, message = ''): asserts test {
+  if (!test) {
+    throw new Error(`assertion failed: ${message}`);
+  }
+}

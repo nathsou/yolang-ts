@@ -9,7 +9,7 @@ import { Func } from "./wasm/func";
 import { Inst } from "./wasm/instructions";
 import { Expr as IRExpr } from './wasm/ir';
 import { Module } from "./wasm/sections";
-import { FuncIdx, FuncType, GlobalIdx, LocalIdx } from "./wasm/types";
+import { BlockType, FuncIdx, FuncType, GlobalIdx, LocalIdx } from "./wasm/types";
 import { blockRetTy, wasmTy } from "./wasm/utils";
 
 export class Compiler {
@@ -195,6 +195,18 @@ export class Compiler {
         }));
 
         return IRExpr.raw(...insts);
+      },
+      While: ({ condition, body }) => {
+        const block = (body as VariantOf<Expr, 'Block'>);
+        const stmts = block.statements;
+        block.lastExpr.do(expr => {
+          stmts.push(Stmt.Expr(expr));
+        });
+
+        return IRExpr.while(
+          this.compileExpr(condition),
+          stmts.flatMap(s => this.compileStmt(s)),
+        );
       },
       _: () => {
         return panic(`expr ${expr.variant} not supported yet`);

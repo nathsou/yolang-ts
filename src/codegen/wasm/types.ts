@@ -88,7 +88,7 @@ export const BlockType = {
   TypeIdx: (idx: TypeIdx): BlockType => ({ variant: 'TypeIdx', idx }),
   Void: (): BlockType => ({ variant: 'Void' }),
   encode: (ty: BlockType): Byte[] => match(ty, {
-    ValueType: ({ ty }) => ValueType.encode(ty),
+    ValueType: ({ ty }) => ty === 'none' ? [0x40] : ValueType.encode(ty),
     TypeIdx: ({ idx }) => TypeIdx.encode(idx),
     Void: () => [0x40],
   }),
