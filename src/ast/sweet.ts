@@ -12,7 +12,7 @@ import { id, noop, parenthesized } from '../utils/misc';
 
 export type UnaryOperator = '-' | '!';
 export type BinaryOperator = '+' | '-' | '*' | '/' | '%' | '==' | '!=' | '<' | '>' | '<=' | '>=' | '&&' | '||' | '&' | '|';
-export type CompoundAssignmentOperator = '+=' | '-=' | '*=' | '/=' | '%=' | '&&=' | '||=';
+export type CompoundAssignmentOperator = '+=' | '-=' | '*=' | '/=' | '%=' | '&&=' | '||=' | '&=' | '|=';
 
 export type Argument = { pattern: Pattern, mutable: boolean, annotation: Maybe<MonoTy> };
 
@@ -39,7 +39,7 @@ export const ArgumentList = {
 export type Expr = DataType<{
   Const: { value: Const },
   Variable: { name: string },
-  Call: { lhs: Expr, args: Expr[] },
+  Call: { lhs: Expr, typeParams: MonoTy[], args: Expr[] },
   BinaryOp: { lhs: Expr, op: BinaryOperator, rhs: Expr },
   UnaryOp: { op: UnaryOperator, expr: Expr },
   Error: { message: string },
@@ -64,7 +64,7 @@ export type Expr = DataType<{
 export const Expr = {
   Const: (c: Const): Expr => ({ variant: 'Const', value: c }),
   Variable: (name: string): Expr => ({ variant: 'Variable', name }),
-  Call: (lhs: Expr, args: Expr[]): Expr => ({ variant: 'Call', lhs, args }),
+  Call: (lhs: Expr, typeParams: MonoTy[], args: Expr[]): Expr => ({ variant: 'Call', lhs, typeParams, args }),
   BinaryOp: (lhs: Expr, op: BinaryOperator, rhs: Expr): Expr => ({ variant: 'BinaryOp', lhs, op, rhs }),
   UnaryOp: (op: UnaryOperator, expr: Expr): Expr => ({ variant: 'UnaryOp', op, expr }),
   Error: (message: string): Expr => ({ variant: 'Error', message }),
@@ -87,7 +87,7 @@ export const Expr = {
   show: (expr: Expr): string => matchVariant(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
-    Call: ({ lhs, args }) => `${Expr.show(lhs)}(${joinWith(args, Expr.show, ', ')})`,
+    Call: ({ lhs, typeParams, args }) => `${Expr.show(lhs)}${typeParams.length > 0 ? `<${joinWith(typeParams, MonoTy.show)}>` : ''}(${joinWith(args, Expr.show, ', ')})`,
     UnaryOp: ({ op, expr }) => `${op}${Expr.show(expr)}`,
     BinaryOp: ({ lhs, op, rhs }) => `${Expr.show(lhs)} ${op} ${Expr.show(rhs)}`,
     Error: ({ message }) => `<Error: ${message}>`,
@@ -113,7 +113,7 @@ export const Expr = {
     return f(matchVariant(expr, {
       Const: ({ value: expr }) => Expr.Const(expr),
       Variable: ({ name }) => Expr.Variable(name),
-      Call: ({ lhs, args }) => Expr.Call(f(lhs), args.map(go)),
+      Call: ({ lhs, typeParams, args }) => Expr.Call(f(lhs), typeParams, args.map(go)),
       UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, go(expr)),
       BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(go(lhs), op, go(rhs)),
       Error: ({ message }) => Expr.Error(message),

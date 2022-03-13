@@ -65,6 +65,7 @@ export const Argument = {
 export type Expr = DataType<WithSweetRefAndType<{
   Const: { value: Const },
   Variable: { name: Name },
+  NamedFuncCall: { name: Name, typeParams: MonoTy[], args: Expr[] },
   Call: { lhs: Expr, args: Expr[] },
   BinaryOp: { lhs: Expr, op: BinaryOperator, rhs: Expr },
   UnaryOp: { op: UnaryOperator, expr: Expr },
@@ -93,6 +94,7 @@ const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet:
 export const Expr = {
   Const: (c: Const, sweet: SweetExpr): Expr => ({ variant: 'Const', value: c, sweet, ty: Const.type(c) }),
   Variable: (name: Name, sweet: SweetExpr): Expr => typed({ variant: 'Variable', name }, sweet),
+  NamedFuncCall: (name: Name, typeParams: MonoTy[], args: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'NamedFuncCall', name, typeParams, args }, sweet),
   Call: (lhs: Expr, args: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Call', lhs, args }, sweet),
   BinaryOp: (lhs: Expr, op: BinaryOperator, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'BinaryOp', lhs, op, rhs }, sweet),
   UnaryOp: (op: UnaryOperator, expr: Expr, sweet: SweetExpr): Expr => typed({ variant: 'UnaryOp', op, expr }, sweet),
@@ -116,7 +118,10 @@ export const Expr = {
     return matchVariant(sweet, {
       Const: ({ value }) => Expr.Const(value, sweet),
       Variable: ({ name }) => Expr.Variable(NameEnv.resolve(nameEnv, name), sweet),
-      Call: ({ lhs, args }) => Expr.Call(go(lhs), args.map(arg => go(arg)), sweet),
+      Call: ({ lhs, typeParams, args }) => matchVariant(lhs, {
+        Variable: ({ name }) => Expr.NamedFuncCall(NameEnv.resolve(nameEnv, name), typeParams, args.map(arg => go(arg)), sweet),
+        _: () => Expr.Call(go(lhs), args.map(arg => go(arg)), sweet)
+      }),
       BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(go(lhs), op, go(rhs), sweet),
       UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, go(expr), sweet),
       Error: ({ message }) => Expr.Error(message, sweet),
@@ -141,6 +146,8 @@ export const Expr = {
           '*=': '*',
           '/=': '/',
           '%=': '%',
+          '&=': '&',
+          '|=': '|',
           '&&=': '&&',
           '||=': '||',
         };

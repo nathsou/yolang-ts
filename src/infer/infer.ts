@@ -1,12 +1,13 @@
 import { DataType, match as matchVariant } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
+import { Name } from '../ast/name';
 import { MethodSig } from '../ast/sweet';
 import { Inst } from '../codegen/wasm/instructions';
 import { ValueType } from '../codegen/wasm/types';
 import { wasmTy } from '../codegen/wasm/utils';
 import { Error } from '../errors/errors';
 import { gen, zip } from '../utils/array';
-import { some } from '../utils/maybe';
+import { Maybe, none, some } from '../utils/maybe';
 import { panic, proj } from '../utils/misc';
 import { diffSet } from '../utils/set';
 import { Env } from './env';
@@ -49,35 +50,59 @@ export const inferExpr = (
   const { env } = ctx;
   const tau = expr.ty;
 
+  const resolveVar = (name: Name): Maybe<PolyTy> => {
+    return Env.lookup(env, name.original).match({
+      Some: ({ ty, name: declaredName }) => {
+        if (name.isUndeclared) {
+          name = declaredName;
+        }
+
+        return some(ty);
+      },
+      None: () => {
+        errors.push(Error.Typing({ type: 'UnboundVariable', name: name.original }));
+        return none;
+      },
+    });
+  };
+
   matchVariant(expr, {
     Const: () => { },
     Variable: v => {
-      Env.lookup(env, v.name.original).match({
-        Some: ({ ty, name: declaredName }) => {
-          if (v.name.isUndeclared) {
-            v.name = declaredName;
-          }
-
-          const instTy = PolyTy.instantiate(ty);
-          unify(instTy, tau);
-        },
-        None: () => {
-          errors.push(Error.Typing({ type: 'UnboundVariable', name: v.name.original }));
-        },
+      resolveVar(v.name).do(ty => {
+        const instTy = PolyTy.instantiate(ty);
+        unify(instTy.ty, tau);
       });
     },
     UnaryOp: ({ op, expr }) => {
       inferExpr(expr, ctx, errors);
       const opTy1 = PolyTy.instantiate(signatures.unaryOp[op]);
       const opTy2 = MonoTy.Fun([expr.ty], tau);
-      unify(opTy1, opTy2);
+      unify(opTy1.ty, opTy2);
     },
     BinaryOp: ({ lhs, op, rhs }) => {
       inferExpr(lhs, ctx, errors);
       inferExpr(rhs, ctx, errors);
       const opTy1 = PolyTy.instantiate(signatures.binaryOp[op]);
       const opTy2 = MonoTy.Fun([lhs.ty, rhs.ty], tau);
-      unify(opTy1, opTy2);
+      unify(opTy1.ty, opTy2);
+    },
+    NamedFuncCall: f => {
+      const { name, typeParams, args } = f;
+      resolveVar(name).do(ty => {
+        args.forEach(arg => {
+          inferExpr(arg, ctx, errors);
+        });
+
+        const partiallyInstTy = PolyTy.instantiatePartially(ty, typeParams);
+        const expectedFunTy = PolyTy.instantiate(partiallyInstTy);
+
+        const allTyVars = [...typeParams, ...partiallyInstTy[0].map(t => expectedFunTy.subst.get(t)!)];
+        const actualFunTy = MonoTy.Fun(args.map(proj('ty')), tau);
+
+        unify(expectedFunTy.ty, actualFunTy);
+        f.typeParams = allTyVars;
+      });
     },
     Call: ({ lhs, args }) => {
       inferExpr(lhs, ctx, errors);
@@ -196,7 +221,7 @@ export const inferExpr = (
             matchVariant(m, {
               Function: ({ funTy }) => {
                 const instTy = PolyTy.instantiate(funTy);
-                unify(instTy, tau);
+                unify(instTy.ty, tau);
               },
               _: () => {
                 errors.push(Error.Typing({ type: 'TEMP_OnlyFunctionModuleAccessAllowed', path, member }));
@@ -440,9 +465,9 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
         body.ty
       )));
 
-      unify(funTy, name.ty);
+      unify(funTy.ty, name.ty);
 
-      const genFunTy = MonoTy.generalize(ctx.env, funTy);
+      const genFunTy = MonoTy.generalize(ctx.env, funTy.ty);
       func.funTy = genFunTy;
       Env.addPoly(ctx.env, name, genFunTy);
     },
@@ -538,7 +563,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
                 const methodSig = trait.methods.find(m => m.name === method)!;
                 const methodTy = MonoTy.substituteTyParams(MethodSig.asMonoTy(methodSig), tyParamsSubst);
                 inferDecl(implMethod, implCtx, false, errors);
-                const instTy = MonoTy.substituteTyParams(PolyTy.instantiate(implMethod.funTy), tyParamsSubst);
+                const instTy = MonoTy.substituteTyParams(PolyTy.instantiate(implMethod.funTy).ty, tyParamsSubst);
 
                 unify(methodTy, instTy, implCtx);
               }
@@ -561,7 +586,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
     },
     Use: ({ path, imports }) => {
       if (declare) {
-        TypeContext.bringInScope(ctx, path, imports);
+        TypeContext.bringIntoScope(ctx, path, imports);
       }
     },
     Error: ({ message }) => {

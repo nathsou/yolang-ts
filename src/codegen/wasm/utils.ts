@@ -2,7 +2,7 @@ import { match } from "itsamatch";
 import { MonoTy } from "../../infer/types";
 import { gen } from "../../utils/array";
 import { matchString, panic } from "../../utils/misc";
-import { BlockType, Byte, ValueType, Vec } from "./types"
+import { BlockType, Byte, ValueType, Vec } from "./types";
 
 export const uleb128 = (n: number): Byte[] => {
   const bytes: Byte[] = [];
@@ -61,15 +61,13 @@ export const blockRetTy = (ty: MonoTy): BlockType => match(ty, {
     'u32': () => BlockType.ValueType('i32'),
     'bool': () => BlockType.ValueType('i32'),
     '()': () => BlockType.ValueType('none'),
-    _: () => {
-      panic(`Unknown type repr for const type: ${c.name}`);
-      return BlockType.Void();
-    },
+    _: () => panic(`Unknown type repr for const type: ${c.name}`),
   }),
-  Var: v => blockRetTy(MonoTy.deref(v)),
+  Var: v => match(v.value, {
+    Unbound: () => panic(`blockRetTy: Unbound type variable: ${MonoTy.show(ty)}`),
+    Link: ({ to }) => blockRetTy(to),
+  }, 'kind'),
   Fun: () => BlockType.ValueType('i32'), // function index
-  _: () => {
-    panic(`blockRetTy: type repr not defined yet for ${MonoTy.show(ty)}`);
-    return BlockType.Void();
-  },
+  Param: () => panic(`blockRetTy: Type parameter ${MonoTy.show(ty)}`),
+  _: () => panic(`blockRetTy: type repr not defined yet for ${MonoTy.show(ty)}`),
 });

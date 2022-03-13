@@ -9,7 +9,7 @@ import { Func } from "./wasm/func";
 import { Inst } from "./wasm/instructions";
 import { Expr as IRExpr } from './wasm/ir';
 import { Module } from "./wasm/sections";
-import { BlockType, FuncIdx, FuncType, GlobalIdx, LocalIdx } from "./wasm/types";
+import { FuncIdx, FuncType, GlobalIdx, LocalIdx } from "./wasm/types";
 import { blockRetTy, wasmTy } from "./wasm/utils";
 
 export class Compiler {
@@ -178,11 +178,11 @@ export class Compiler {
           _: () => panic('unhandled assignment target: ' + Expr.showSweet(lhs)),
         });
       },
-      Call: ({ lhs, args }) => {
-        return match(lhs, {
-          Variable: ({ name }) => this.call(name, args),
-          _: () => panic('unhandled call target: ' + Expr.showSweet(lhs)),
-        });
+      NamedFuncCall: ({ name, args }) => {
+        return this.call(name, args);
+      },
+      Call: ({ lhs }) => {
+        return panic('unhandled call target: ' + Expr.showSweet(lhs));
       },
       MethodCall: ({ receiver, method, args, impl }) => {
         const name = impl.unwrap().methods[method].name;

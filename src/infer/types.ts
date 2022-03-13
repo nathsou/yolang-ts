@@ -228,7 +228,7 @@ export const MonoTy = {
       Unbound: ({ id }) => showTyVarId(id),
       Link: ({ to }) => MonoTy.show(to),
     }, 'kind'),
-    Param: ({ name }) => `'${name}'`,
+    Param: ({ name }) => `?${name}`,
     Const: ({ path, name, args }) => (path.length > 0 ? `${path.join('.')}.` : '') + cond(args.length === 0, {
       then: () => name,
       else: () => `${name}<${joinWith(args, MonoTy.show, ', ')}>`,
@@ -296,15 +296,7 @@ export const MonoTy = {
         return Tuple.eq(s.tuple, t.tuple);
       })
       .otherwise(() => false),
-  isDetermined: (s: MonoTy): boolean => matchVariant(s, {
-    Var: ({ value }) => value.kind === 'Link' && MonoTy.isDetermined(value.to),
-    Const: () => true,
-    Fun: ({ args, ret }) => args.every(MonoTy.isDetermined) && MonoTy.isDetermined(ret),
-    Tuple: ({ tuple }) => Tuple.toArray(tuple).every(MonoTy.isDetermined),
-    Record: ({ row }) => Row.fields(row).every(([, ty]) => MonoTy.isDetermined(ty)),
-    NamedRecord: ({ row }) => Row.fields(row).every(([, ty]) => MonoTy.isDetermined(ty)),
-    Param: () => true,
-  }),
+  isDetermined: (s: MonoTy): boolean => PolyTy.isDetermined([[], s]),
 };
 
 export type PolyTy = [TyVarId[], MonoTy];
@@ -312,14 +304,20 @@ export type PolyTy = [TyVarId[], MonoTy];
 export const PolyTy = {
   make: (quantifiedVars: TyVarId[], monoTy: MonoTy): PolyTy => [quantifiedVars, monoTy],
   fresh: () => MonoTy.toPoly(MonoTy.fresh()),
-  instantiate: ([quantifiedVars, ty]: PolyTy): MonoTy => {
+  instantiate: ([quantifiedVars, ty]: PolyTy) => {
     // replace all bound type variables with fresh type variables
     const subst = new Map<TyVarId, MonoTy>();
     quantifiedVars.forEach(id => {
       subst.set(id, MonoTy.fresh());
     });
 
-    return MonoTy.substitute(ty, subst);
+    return { ty: MonoTy.substitute(ty, subst), subst };
+  },
+  instantiatePartially: ([quantifiedVars, ty]: PolyTy, inst: MonoTy[]): PolyTy => {
+    const subst = new Map<TyVarId, MonoTy>(zip(quantifiedVars, inst));
+    const remainingVars = quantifiedVars.slice(inst.length);
+
+    return [remainingVars, MonoTy.substitute(ty, subst)];
   },
   instantiateTyParams: (tyParams: TypeParams, ty: MonoTy): PolyTy => {
     const quantifiedVars = gen(tyParams.length, id);
@@ -354,6 +352,19 @@ export const PolyTy = {
   eq: (s: PolyTy, t: PolyTy): boolean => {
     return PolyTy.show(PolyTy.canonicalize(s)) === PolyTy.show(PolyTy.canonicalize(t));
   },
+  isDetermined: ([vars, monoTy]: PolyTy): boolean => matchVariant(monoTy, {
+    Var: ({ value }) => matchVariant(value, {
+      Unbound: ({ id }) => vars.includes(id),
+      Link: ({ to }) => PolyTy.isDetermined([vars, to]),
+    }, 'kind'),
+    Const: () => true,
+    Fun: ({ args, ret }) => args.every(arg => PolyTy.isDetermined([vars, arg])) && PolyTy.isDetermined([vars, ret]),
+    Tuple: ({ tuple }) => Tuple.toArray(tuple).every(t => PolyTy.isDetermined([vars, t])),
+    Record: ({ row }) => Row.fields(row).every(([, ty]) => PolyTy.isDetermined([vars, ty])),
+    NamedRecord: ({ row }) => Row.fields(row).every(([, ty]) => PolyTy.isDetermined([vars, ty])),
+    Param: () => true,
+  }),
+  isPolymorphic: ([quantified, _]: PolyTy): boolean => quantified.length > 0,
 };
 
 export type TypeParams = string[];

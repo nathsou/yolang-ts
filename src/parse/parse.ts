@@ -145,6 +145,7 @@ initParser(monoTy, alt(
 ));
 
 const typeParams: Parser<TypeParams> = angleBrackets(commas(upperIdent));
+const typeParamsInst: Parser<MonoTy[]> = angleBrackets(commas(monoTy));
 
 const scopedTypeParams = <T>(p: Parser<T>): Parser<[TypeParams, T]> =>
   withContext(ctx =>
@@ -344,8 +345,8 @@ const moduleAccess = alt(
 
 const app = leftAssoc(
   moduleAccess,
-  parens(map(optional(commas(expr)), args => args.orDefault([]))),
-  (lhs, rhs) => Expr.Call(lhs, rhs)
+  seq(optionalOrDefault(typeParamsInst, []), parens(optionalOrDefault(commas(expr), []))),
+  (lhs, [tyParams, args]) => Expr.Call(lhs, tyParams, args)
 );
 
 export const tuple = alt(

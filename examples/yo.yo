@@ -1,8 +1,6 @@
 
-fn id<T>(x: T) -> T {
-  x
-}
+fn id(x) { x }
 
 fn yo() {
-  id(7)
+  id<u32>(7)
 }

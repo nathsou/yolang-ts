@@ -136,7 +136,7 @@ export const TypeContext = {
     if (funcName in ctx.impls) {
       for (const impl of ctx.impls[funcName]) {
         const newCtx = TypeContext.clone(ctx);
-        const instTy = PolyTy.instantiate(PolyTy.instantiateTyParams(impl.typeParams, impl.ty));
+        const instTy = PolyTy.instantiate(PolyTy.instantiateTyParams(impl.typeParams, impl.ty)).ty;
         TypeContext.declareTypeParams(newCtx, ...impl.typeParams);
         const res = unifyPure(ty, instTy, newCtx);
         if (res.isOk()) {
@@ -182,7 +182,7 @@ export const TypeContext = {
 
     return none;
   },
-  bringInScope: (ctx: TypeContext, path: string[], imports: Imports): Maybe<VariantOf<Decl, 'Module'>> => {
+  bringIntoScope: (ctx: TypeContext, path: string[], imports: Imports): Maybe<VariantOf<Decl, 'Module'>> => {
     const mod = TypeContext.resolveModule(ctx, path);
     const isImported = (name: string) => imports.variant === 'all' || imports.names.has(name);
 
