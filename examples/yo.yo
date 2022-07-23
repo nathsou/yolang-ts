@@ -1,6 +1,7 @@
+fn id(x) {
+  x
+}
 
-fn id(x) { x }
-
-fn yo() {
-  id<u32>(7)
+fn main() {
+  if id(true) { id(7) } else { id(id(3)) }
 }

@@ -325,6 +325,7 @@ export const PolyTy = {
 
     return [quantifiedVars, MonoTy.substituteTyParams(ty, subst)];
   },
+  typeVars: ([quantified, _]: PolyTy) => quantified,
   freeTypeVars: ([quantified, monoTy]: PolyTy): Set<TyVarId> => {
     const freeVarsMonoTy = MonoTy.freeTypeVars(monoTy);
     return diffSet(freeVarsMonoTy, new Set(quantified));

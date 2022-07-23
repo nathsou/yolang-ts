@@ -162,8 +162,8 @@ export const Pattern = {
     Const: () => false,
     Variable: () => true,
     Tuple: ({ elements }) => elements.every(Pattern.isIrrefutable),
-    Any: (): boolean => true,
-    Error: (): boolean => false,
+    Any: () => true,
+    Error: () => false,
   }),
 };
 
@@ -240,16 +240,16 @@ export const Decl = {
   }),
   rewrite: (decl: Decl, rfs: RewriteFuncs): Decl => {
     const { rewriteExpr: f = id, rewriteDecl: g = id } = rfs;
-    return matchVariant(decl, {
-      Function: ({ name, typeParams, args, returnTy, body }) => g(Decl.Function(name, typeParams, args, returnTy, Expr.rewrite(body, f))),
-      Module: ({ name, decls }) => g(Decl.Module(name, decls.map(d => Decl.rewrite(d, rfs)))),
-      TypeAlias: ({ name, typeParams, alias }) => g(Decl.TypeAlias(name, typeParams, alias)),
-      InherentImpl: ({ ty, typeParams, decls }) => g(Decl.Impl(ty, typeParams, decls.map(d => Decl.rewrite(d, rfs)))),
-      Trait: ({ name, typeParams, methods }) => g(Decl.Trait(name, typeParams, methods)),
-      TraitImpl: ({ trait, typeParams, implementee, methods }) => g(Decl.TraitImpl(trait, typeParams, implementee, methods.map(m => Decl.rewrite(m, rfs)))),
-      Use: ({ path, imports }) => g(Decl.Use(path, imports)),
-      Error: ({ message }) => g(Decl.Error(message)),
-    });
+    return g(matchVariant(decl, {
+      Function: ({ name, typeParams, args, returnTy, body }) => Decl.Function(name, typeParams, args, returnTy, Expr.rewrite(body, f)),
+      Module: ({ name, decls }) => Decl.Module(name, decls.map(d => Decl.rewrite(d, rfs))),
+      TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias(name, typeParams, alias),
+      InherentImpl: ({ ty, typeParams, decls }) => Decl.Impl(ty, typeParams, decls.map(d => Decl.rewrite(d, rfs))),
+      Trait: ({ name, typeParams, methods }) => Decl.Trait(name, typeParams, methods),
+      TraitImpl: ({ trait, typeParams, implementee, methods }) => Decl.TraitImpl(trait, typeParams, implementee, methods.map(m => Decl.rewrite(m, rfs))),
+      Use: ({ path, imports }) => Decl.Use(path, imports),
+      Error: ({ message }) => Decl.Error(message),
+    }));
   },
   traverse: (decl: Decl, { traverseExpr = noop, traverseDecl = noop }: TraverseFuncs): Decl => Decl.rewrite(decl, {
     rewriteExpr: (expr: Expr): Expr => { traverseExpr(expr); return expr; },

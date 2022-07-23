@@ -3,6 +3,7 @@ import { Inst } from "../codegen/wasm/instructions";
 import { Error } from "../errors/errors";
 import { Impl } from "../infer/impls";
 import { Tuple } from "../infer/tuples";
+import { TypeContext } from "../infer/typeContext";
 import { MonoTy, PolyTy, TypeParams } from "../infer/types";
 import { Const } from "../parse/token";
 import { Either } from "../utils/either";
@@ -16,7 +17,7 @@ import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, 
 // with attached type information and lexically resolved identifier references
 
 type WithSweetRefAndType<T> = {
-  [K in keyof T]: T[K] & { sweet: SweetExpr, ty: MonoTy }
+  [K in keyof T]: T[K] & { sweet: SweetExpr, ty: MonoTy, typeContext?: TypeContext }
 };
 
 export type Pattern = DataType<{
@@ -199,6 +200,35 @@ export const Expr = {
     });
   },
   showSweet: (expr: Expr): string => SweetExpr.show(expr.sweet),
+  rewrite: (expr: Expr, nameEnv: NameEnv, rewriteExpr: (expr: Expr) => Expr): Expr => {
+    const go = (expr: Expr): Expr => Expr.rewrite(expr, nameEnv, rewriteExpr);
+
+    const newExpr = matchVariant(expr, {
+      Const: ({ value }) => Expr.Const(value, expr.sweet),
+      Variable: ({ name }) => Expr.Variable(NameEnv.resolve(nameEnv, name.original, name.renaming), expr.sweet),
+      NamedFuncCall: ({ name, typeParams, args }) => Expr.NamedFuncCall(name, typeParams, args.map(arg => go(arg)), expr.sweet),
+      Call: ({ lhs, args }) => Expr.Call(go(lhs), args.map(arg => go(arg)), expr.sweet),
+      BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(go(lhs), op, go(rhs), expr.sweet),
+      UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, go(expr), expr.sweet),
+      Error: ({ message }) => Expr.Error(message, expr.sweet),
+      Closure: ({ args, body }) => Expr.Closure(args.map(arg => ({ ...arg, name: NameEnv.resolve(nameEnv, arg.name.original, arg.name.renaming) })), go(body), expr.sweet),
+      Block: ({ statements, lastExpr }) => Expr.Block(statements.map(s => Stmt.rewrite(s, nameEnv, rewriteExpr)), lastExpr.map(e => go(e)), expr.sweet),
+      IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(go), expr.sweet),
+      Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs), expr.sweet),
+      MethodCall: ({ receiver, method, args }) => Expr.MethodCall(go(receiver), method, args.map(arg => go(arg)), expr.sweet),
+      ModuleAccess: ({ path, member }) => Expr.ModuleAccess(path, member, expr.sweet),
+      FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field, expr.sweet),
+      Tuple: ({ elements }) => Expr.Tuple(elements.map(e => go(e)), expr.sweet),
+      Match: ({ expr, annotation, cases }) => Expr.Match(go(expr), annotation, cases.map(c => ({ ...c, body: go(c.body) })), expr.sweet),
+      NamedRecord: ({ path, name, typeParams, fields }) => Expr.NamedRecord(path, name, typeParams, fields.map(f => ({ ...f, value: go(f.value) })), expr.sweet),
+      TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index, expr.sweet),
+      WasmBlock: ({ instructions }) => Expr.WasmBlock(instructions.map(i => i.map({ left: id, right: ([expr, ty]) => [go(expr), ty] })), expr.sweet),
+      While: ({ condition, body }) => Expr.While(go(condition), go(body), expr.sweet),
+    });
+
+    newExpr.typeContext = expr.typeContext;
+    return rewriteExpr(newExpr);
+  },
 };
 
 export type Stmt = DataType<{
@@ -223,9 +253,25 @@ export const Stmt = {
       Error: ({ message }) => Stmt.Error(message),
     });
   },
+  rewrite: (stmt: Stmt, nameEnv: NameEnv, f: (expr: Expr) => Expr): Stmt => {
+    return matchVariant(stmt, {
+      Let: ({ name, expr, mutable, annotation }) => Stmt.Let(
+        NameEnv.resolve(nameEnv, name.original),
+        Expr.rewrite(expr, nameEnv, f),
+        mutable,
+        annotation
+      ),
+      Expr: ({ expr }) => Stmt.Expr(Expr.rewrite(expr, nameEnv, f)),
+      Error: ({ message }) => Stmt.Error(message),
+    });
+  },
 };
 
-export type Decl = DataType<{
+type WithTypeContext<T> = {
+  [K in keyof T]: T[K] & { typeContext?: TypeContext }
+};
+
+export type Decl = DataType<WithTypeContext<{
   Function: {
     name: Name,
     typeParams: TypeParams,
@@ -241,7 +287,7 @@ export type Decl = DataType<{
   Trait: { name: string, typeParams: TypeParams, methods: MethodSig[] },
   Use: { path: string[], imports: Imports },
   Error: { message: string },
-}>;
+}>>;
 
 export const Decl = {
   Function: (name: Name, typeParams: TypeParams, args: { name: Name, mutable: boolean, annotation: Maybe<MonoTy> }[], returnTy: Maybe<MonoTy>, body: Expr): Decl => ({ variant: 'Function', name, typeParams, args, body, returnTy, funTy: PolyTy.fresh() }),
@@ -286,7 +332,7 @@ export const Decl = {
     matchVariant(sweet, {
       Function: ({ name, typeParams, args, returnTy, body }) => {
         const withoutPatterns = removeFuncArgsPatternMatching(args, body, nameEnv, errors);
-        const nameRef = declareFuncNames ? NameEnv.declare(nameEnv, name, false) : NameEnv.resolve(nameEnv, name);
+        const nameRef: Name = declareFuncNames ? NameEnv.declare(nameEnv, name, false) : NameEnv.resolve(nameEnv, name);
         nameRef.renaming = [...moduleStack, name].join('_');
 
         return Decl.Function(
@@ -347,6 +393,29 @@ export const Decl = {
       Use: ({ path, imports }) => Decl.Use(path, imports),
       Error: ({ message }) => Decl.Error(message),
     }),
+  rewrite: (decl: Decl, nameEnv: NameEnv, rewriteExpr: (expr: Expr) => Expr, rewriteDecl: (decl: Decl) => Decl): Decl => {
+    const go = (decl: Decl): Decl => Decl.rewrite(decl, nameEnv, rewriteExpr, rewriteDecl);
+
+    const newDecl = matchVariant(decl, {
+      Function: ({ name, typeParams, args, body, returnTy }) => Decl.Function(
+        NameEnv.resolve(nameEnv, name.original, name.renaming),
+        typeParams,
+        args.map(arg => ({ ...arg, name: NameEnv.resolve(nameEnv, arg.name.original, arg.name.renaming) })),
+        returnTy,
+        Expr.rewrite(body, nameEnv, rewriteExpr),
+      ),
+      Module: ({ name, decls }) => Decl.Module(name, decls.map(decl => go(decl))),
+      TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias(name, typeParams, alias),
+      Impl: ({ ty, typeParams, decls }) => Decl.Impl(ty, typeParams, decls.map(decl => go(decl))),
+      TraitImpl: ({ trait, typeParams, implementee, methods }) => Decl.TraitImpl(trait, typeParams, implementee, methods.map(method => go(method))),
+      Trait: ({ name, typeParams, methods }) => Decl.Trait(name, typeParams, methods),
+      Use: ({ path, imports }) => Decl.Use(path, imports),
+      Error: ({ message }) => Decl.Error(message),
+    });
+
+    newDecl.typeContext = decl.typeContext;
+    return rewriteDecl(newDecl);
+  },
 };
 
 export type Prog = Decl[];
@@ -378,6 +447,9 @@ export const Prog = {
     ));
 
     return [bitterProg, errors];
+  },
+  rewrite: (prog: Prog, nameEnv: NameEnv, rewriteExpr: (expr: Expr) => Expr, rewriteDecl: (decl: Decl) => Decl): Prog => {
+    return prog.map(decl => Decl.rewrite(decl, nameEnv, rewriteExpr, rewriteDecl));
   },
 };
 

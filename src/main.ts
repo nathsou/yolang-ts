@@ -6,6 +6,8 @@ import { Compiler } from "./codegen/codegen";
 import { Module } from "./codegen/wasm/sections";
 import { Error } from './errors/errors';
 import { infer } from "./infer/infer";
+import { monomorphize } from "./infer/monomorphize";
+import { TypeContext } from "./infer/typeContext";
 import { MonoTy, PolyTy, TypeParams } from "./infer/types";
 import { createNodeFileSystem } from './resolve/nodefs';
 import { resolve } from './resolve/resolve';
@@ -24,7 +26,7 @@ let debugLevel = DebugLvl.nothing;
 // <string> -> parse -> <sweet> -> desugar & resolve modules -> <bitter> -> infer ->
 // monomorphize -> inject reference counting -> emit code
 
-const typeCheck = (sweetProg: SweetProg): [Prog, Error[]] => {
+const typeCheck = (sweetProg: SweetProg): [Prog, TypeContext, Error[]] => {
   Context.clear();
   const errors: Error[] = [];
 
@@ -36,16 +38,17 @@ const typeCheck = (sweetProg: SweetProg): [Prog, Error[]] => {
   const [prog, bitterErrors] = Prog.fromSweet(sweetProg);
   errors.push(...bitterErrors);
 
-  const typingErrors = infer(prog);
+  const [typingErrors, typeCtx] = infer(prog);
   errors.push(...typingErrors);
 
-  return [prog, errors];
+  return [prog, typeCtx, errors];
 };
 
 const run = async (source: string): Promise<boolean> => {
   const nfs = await createNodeFileSystem();
   const [sweetProg, errs1] = await resolve(source, nfs);
-  const [prog, errs2] = typeCheck(sweetProg);
+  const [typedProg, _, errs2] = typeCheck(sweetProg);
+  const prog = monomorphize(typedProg);
   const errors = [...errs1, ...errs2];
 
   errors.forEach(err => {

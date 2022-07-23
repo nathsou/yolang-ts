@@ -38,7 +38,7 @@ export type TypingError = DataType<{
   WasmBlockExpressionsRequireTypeAnnotations: { expr: Expr },
 }, 'type'>;
 
-export const inferExpr = (
+const inferExpr = (
   expr: Expr,
   ctx: TypeContext,
   errors: Error[]
@@ -49,6 +49,7 @@ export const inferExpr = (
 
   const { env } = ctx;
   const tau = expr.ty;
+  expr.typeContext = ctx;
 
   const resolveVar = (name: Name): Maybe<PolyTy> => {
     return Env.lookup(env, name.original).match({
@@ -400,7 +401,7 @@ export const inferExpr = (
   return errors;
 };
 
-export const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors: Error[]): Error[] => {
+const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors: Error[]): Error[] => {
   const unify = (s: MonoTy, t: MonoTy): void => {
     errors.push(...unifyMut(s, t, ctx));
   };
@@ -412,7 +413,7 @@ export const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors:
   return errors;
 };
 
-export const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): Error[] => {
+const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): Error[] => {
   matchVariant(stmt, {
     Let: ({ name, expr, annotation }) => {
       inferExpr(expr, ctx, errors);
@@ -439,6 +440,8 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
   const unify = (s: MonoTy, t: MonoTy, context = ctx): void => {
     errors.push(...unifyMut(s, t, context));
   };
+
+  decl.typeContext = ctx;
 
   matchVariant(decl, {
     Function: func => {
@@ -597,7 +600,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
   return errors;
 };
 
-export const infer = (prog: Prog): Error[] => {
+export const infer = (prog: Prog): [Error[], TypeContext] => {
   const errors: Error[] = [];
   const ctx = TypeContext.make(prog);
 
@@ -605,5 +608,5 @@ export const infer = (prog: Prog): Error[] => {
     inferDecl(decl, ctx, true, errors);
   }
 
-  return errors;
+  return [errors, ctx];
 };

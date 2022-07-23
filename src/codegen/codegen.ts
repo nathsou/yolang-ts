@@ -1,7 +1,7 @@
 import { DataType, match, VariantOf } from "itsamatch";
 import { Decl, Expr, Prog, Stmt } from "../ast/bitter";
 import { Name } from "../ast/name";
-import { MonoTy } from "../infer/types";
+import { MonoTy, PolyTy } from "../infer/types";
 import { last, reverse } from "../utils/array";
 import { Maybe } from "../utils/maybe";
 import { panic } from "../utils/misc";
@@ -28,14 +28,18 @@ export class Compiler {
   private compileDecl(decl: Decl): void {
     match(decl, {
       Function: f => {
-        this.compileFunction(f);
+        if (!PolyTy.isPolymorphic(f.funTy)) {
+          this.compileFunction(f);
+        }
       },
       Module: mod => {
         // declare top-level functions first
         mod.decls.forEach(decl => {
           match(decl, {
             Function: f => {
-              this.declareFunction(f);
+              if (!PolyTy.isPolymorphic(f.funTy)) {
+                this.declareFunction(f);
+              }
             },
             Impl: impl => {
               impl.decls.forEach(decl => {

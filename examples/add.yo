@@ -9,6 +9,6 @@ impl Add for u32 {
   }
 }
 
-fn yolo() {
-  17
+fn main() {
+  3.add(4)
 }
