@@ -114,8 +114,8 @@ describe('Parser', () => {
       ]));
 
       expectExpr(tuple, '(f(), g(1, ())))', Expr.Tuple([
-        Expr.Call(Expr.Variable('f'), []),
-        Expr.Call(Expr.Variable('g'), [
+        Expr.Call(Expr.Variable('f'), [], []),
+        Expr.Call(Expr.Variable('g'), [], [
           Expr.Const(Const.u32(1)),
           Expr.Const(Const.unit()),
         ]),
