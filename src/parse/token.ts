@@ -86,7 +86,7 @@ export type Const = DataType<{
   unit: {},
 }>;
 
-const { u32, bool, unit } = genConstructors<Const>()('u32', 'bool', 'unit');
+const { u32, bool, unit } = genConstructors<Const>(['u32', 'bool', 'unit']);
 
 export const Const = {
   u32: (value: number) => u32({ value }),

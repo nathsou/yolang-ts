@@ -1,4 +1,4 @@
-import { DataType, match as matchVariant, VariantOf } from 'itsamatch';
+import { DataType, match, VariantOf } from 'itsamatch';
 import { Inst } from '../codegen/wasm/instructions';
 import { MonoTy, TypeParams } from '../infer/types';
 import { Const } from '../parse/token';
@@ -48,7 +48,6 @@ export type Expr = DataType<{
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
   Assignment: { lhs: Expr, rhs: Expr },
   CompoundAssignment: { lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr },
-  MethodCall: { receiver: Expr, method: string, args: Expr[] },
   ModuleAccess: { path: string[], member: string },
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
@@ -73,7 +72,6 @@ export const Expr = {
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>): Expr => ({ variant: 'IfThenElse', condition, then, else_ }),
   Assignment: (lhs: Expr, rhs: Expr): Expr => ({ variant: 'Assignment', lhs, rhs }),
   CompoundAssignment: (lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr): Expr => ({ variant: 'CompoundAssignment', lhs, op, rhs }),
-  MethodCall: (receiver: Expr, method: string, args: Expr[]): Expr => ({ variant: 'MethodCall', receiver, method, args }),
   ModuleAccess: (path: string[], member: string): Expr => ({ variant: 'ModuleAccess', path, member }),
   FieldAccess: (lhs: Expr, field: string): Expr => ({ variant: 'FieldAccess', lhs, field }),
   Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
@@ -84,7 +82,7 @@ export const Expr = {
   LetIn: (pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr): Expr => ({ variant: 'LetIn', pattern, annotation, value, body }),
   WasmBlock: (instructions: Either<Inst, [Expr, Maybe<MonoTy>]>[]): Expr => ({ variant: 'WasmBlock', instructions }),
   While: (condition: Expr, body: Expr): Expr => ({ variant: 'While', condition, body }),
-  show: (expr: Expr): string => matchVariant(expr, {
+  show: (expr: Expr): string => match(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
     Call: ({ lhs, typeParams, args }) => `${Expr.show(lhs)}${typeParams.length > 0 ? `<${joinWith(typeParams, MonoTy.show)}>` : ''}(${joinWith(args, Expr.show, ', ')})`,
@@ -96,7 +94,6 @@ export const Expr = {
     IfThenElse: ({ condition, then, else_ }) => `if ${Expr.show(condition)} ${Expr.show(then)}${else_.map(e => ` else ${Expr.show(e)}`).orDefault('')}`,
     Assignment: ({ lhs, rhs }) => `${Expr.show(lhs)} = ${Expr.show(rhs)}`,
     CompoundAssignment: ({ lhs, op, rhs }) => `${Expr.show(lhs)} ${op} ${Expr.show(rhs)}`,
-    MethodCall: ({ receiver, method, args }) => `${Expr.show(receiver)}.${method}(${joinWith(args, Expr.show, ', ')})`,
     ModuleAccess: ({ path, member }) => `${path.join('.')}.${member}`,
     FieldAccess: ({ lhs, field }) => `${Expr.show(lhs)}.${field}`,
     Tuple: ({ elements }) => `(${joinWith(elements, Expr.show, ', ')})`,
@@ -110,7 +107,7 @@ export const Expr = {
   }),
   rewrite: (expr: Expr, f: (expr: Expr) => Expr): Expr => {
     const go = (e: Expr) => Expr.rewrite(e, f);
-    return f(matchVariant(expr, {
+    return f(match(expr, {
       Const: ({ value: expr }) => Expr.Const(expr),
       Variable: ({ name }) => Expr.Variable(name),
       Call: ({ lhs, typeParams, args }) => Expr.Call(f(lhs), typeParams, args.map(go)),
@@ -122,7 +119,6 @@ export const Expr = {
       IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(f)),
       Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs)),
       CompoundAssignment: ({ lhs, op, rhs }) => Expr.CompoundAssignment(go(lhs), op, go(rhs)),
-      MethodCall: ({ receiver, method, args }) => Expr.MethodCall(go(receiver), method, args.map(go)),
       ModuleAccess: ({ path, member }) => Expr.ModuleAccess(path, member),
       FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field),
       Tuple: ({ elements }) => Expr.Tuple(elements.map(go)),
@@ -133,7 +129,7 @@ export const Expr = {
       LetIn: ({ pattern, annotation, value, body }) => Expr.LetIn(pattern, annotation, go(value), go(body)),
       WasmBlock: ({ instructions }) => Expr.WasmBlock(instructions.map(i => i.map({ left: id, right: ([expr, ty]) => [go(expr), ty] }))),
       While: ({ condition, body }) => Expr.While(go(condition), go(body)),
-    }))
+    }));
   },
 };
 
@@ -151,14 +147,14 @@ export const Pattern = {
   Tuple: (elements: Pattern[]): Pattern => ({ variant: 'Tuple', elements }),
   Any: (): Pattern => ({ variant: 'Any' }),
   Error: (message: string): Pattern => ({ variant: 'Error', message }),
-  show: (pattern: Pattern): string => matchVariant(pattern, {
+  show: (pattern: Pattern): string => match(pattern, {
     Const: ({ value }) => `${Const.show(value)}`,
     Variable: ({ name }) => `${name}`,
     Tuple: ({ elements }) => `(${joinWith(elements, Pattern.show)})`,
     Any: () => '_',
     Error: ({ message }) => `<Error: ${message}>`,
   }),
-  isIrrefutable: (pattern: Pattern): boolean => matchVariant(pattern, {
+  isIrrefutable: (pattern: Pattern): boolean => match(pattern, {
     Const: () => false,
     Variable: () => true,
     Tuple: ({ elements }) => elements.every(Pattern.isIrrefutable),
@@ -182,12 +178,12 @@ export const Stmt = {
   Let: (name: string, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
-  show: (stmt: Stmt): string => matchVariant(stmt, {
+  show: (stmt: Stmt): string => match(stmt, {
     Let: ({ name, expr, mutable, annotation }) => `${mutable ? 'mut' : 'let'} ${name}${annotation.mapWithDefault(ty => ': ' + MonoTy.show(ty), '')} = ${Expr.show(expr)}`,
     Expr: ({ expr }) => Expr.show(expr),
     Error: ({ message }) => `<Error: ${message}>`,
   }),
-  rewrite: (stmt: Stmt, f: (expr: Expr) => Expr): Stmt => matchVariant(stmt, {
+  rewrite: (stmt: Stmt, f: (expr: Expr) => Expr): Stmt => match(stmt, {
     Let: ({ name, expr, mutable, annotation }) => Stmt.Let(name, Expr.rewrite(expr, f), mutable, annotation),
     Expr: ({ expr }) => Stmt.Expr(Expr.rewrite(expr, f)),
     Error: ({ message }) => Stmt.Error(message),
@@ -202,7 +198,7 @@ export type Imports = DataType<{
 export const Imports = {
   names: (names: string[]): Imports => ({ variant: 'names', names: new Set(names) }),
   all: (): Imports => ({ variant: 'all' }),
-  show: (importType: Imports): string => matchVariant(importType, {
+  show: (importType: Imports): string => match(importType, {
     names: ({ names }) => `{${[...names].join(', ')}}`,
     all: () => '*',
   }),
@@ -212,9 +208,6 @@ export type Decl = DataType<{
   Function: { name: string, typeParams: TypeParams, args: Argument[], returnTy: Maybe<MonoTy>, body: Expr },
   Module: { name: string, decls: Decl[] },
   TypeAlias: { name: string, typeParams: TypeParams, alias: MonoTy },
-  InherentImpl: { ty: MonoTy, typeParams: TypeParams, decls: Decl[] },
-  Trait: { name: string, typeParams: TypeParams, methods: MethodSig[] },
-  TraitImpl: { trait: { path: string[], name: string, args: MonoTy[] }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[] },
   Use: { path: string[], imports: Imports },
   Error: { message: string },
 }>;
@@ -223,30 +216,21 @@ export const Decl = {
   Function: (name: string, typeParams: TypeParams, args: Argument[], returnTy: Maybe<MonoTy>, body: Expr): VariantOf<Decl, 'Function'> => ({ variant: 'Function', name, typeParams, args, returnTy, body }),
   Module: (name: string, decls: Decl[]): Decl => ({ variant: 'Module', name, decls }),
   TypeAlias: (name: string, typeParams: TypeParams, alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
-  Impl: (ty: MonoTy, typeParams: TypeParams, decls: Decl[]): Decl => ({ variant: 'InherentImpl', ty, typeParams, decls }),
-  Trait: (name: string, typeParams: TypeParams, methods: MethodSig[]): Decl => ({ variant: 'Trait', name, typeParams, methods }),
-  TraitImpl: (trait: { path: string[], name: string, args: MonoTy[] }, typeParams: TypeParams, implementee: MonoTy, methods: Decl[]): Decl => ({ variant: 'TraitImpl', trait, typeParams, implementee, methods }),
   Use: (path: string[], imports: Imports): Decl => ({ variant: 'Use', path, imports }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
-  show: (decl: Decl): string => matchVariant(decl, {
+  show: (decl: Decl): string => match(decl, {
     Function: ({ name, typeParams, args, body }) => `fn ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
     Module: ({ name, decls }) => `module ${name} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)}`,
-    InherentImpl: ({ ty, typeParams, decls }) => `impl${TypeParams.show(typeParams)} ${MonoTy.show(ty)} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
-    Trait: ({ name, typeParams, methods }) => `trait ${name}${TypeParams.show(typeParams)} {\n${joinWith(methods, m => '  ' + MethodSig.show(m), '\n')}\n}`,
-    TraitImpl: ({ trait, typeParams, implementee, methods }) => `impl${TypeParams.show(typeParams)} ${[...trait.path, trait.name].join('.')}<${joinWith(trait.args, MonoTy.show)}> for ${MonoTy.show(implementee)} {\n${joinWith(methods, m => '  ' + Decl.show(m), '\n')}\n}`,
     Use: ({ path, imports }) => `use ${path.join('.')}.${Imports.show(imports)}`,
     Error: ({ message }) => `<Error: ${message}> `,
   }),
   rewrite: (decl: Decl, rfs: RewriteFuncs): Decl => {
     const { rewriteExpr: f = id, rewriteDecl: g = id } = rfs;
-    return g(matchVariant(decl, {
+    return g(match(decl, {
       Function: ({ name, typeParams, args, returnTy, body }) => Decl.Function(name, typeParams, args, returnTy, Expr.rewrite(body, f)),
       Module: ({ name, decls }) => Decl.Module(name, decls.map(d => Decl.rewrite(d, rfs))),
       TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias(name, typeParams, alias),
-      InherentImpl: ({ ty, typeParams, decls }) => Decl.Impl(ty, typeParams, decls.map(d => Decl.rewrite(d, rfs))),
-      Trait: ({ name, typeParams, methods }) => Decl.Trait(name, typeParams, methods),
-      TraitImpl: ({ trait, typeParams, implementee, methods }) => Decl.TraitImpl(trait, typeParams, implementee, methods.map(m => Decl.rewrite(m, rfs))),
       Use: ({ path, imports }) => Decl.Use(path, imports),
       Error: ({ message }) => Decl.Error(message),
     }));

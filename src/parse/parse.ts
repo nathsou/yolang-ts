@@ -12,7 +12,7 @@ import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, squareBrackets, symbol, uninitialized, withContext } from './combinators';
+import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized, withContext } from './combinators';
 import { Const, Token } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -411,18 +411,10 @@ const fieldAccess = chainLeft(
       map(ident, name => ({ variant: 'ident', name })),
       map(integer, n => ({ variant: 'int', value: n })),
     ), `Expected identifier or integer after '.'`, { variant: 'ident', name: '<?>' }),
-    optional(parens(map(optional(commas(expr)), args => args.orDefault([])))),
   ),
-  (lhs, _, [field, args]) => args.match({
-    Some: args => matchVariant(field, {
-      ident: ({ name }) => Expr.MethodCall(lhs, name, args),
-      // this will fail in the inferencer as integers are not valid method names
-      int: ({ value: n }) => Expr.MethodCall(lhs, `${n}`, args),
-    }),
-    None: () => matchVariant(field, {
-      ident: ({ name }) => Expr.FieldAccess(lhs, name),
-      int: ({ value: n }) => Expr.TupleIndexing(lhs, n),
-    }),
+  (lhs, _, [field]) => matchVariant(field, {
+    ident: ({ name }) => Expr.FieldAccess(lhs, name),
+    int: ({ value: n }) => Expr.TupleIndexing(lhs, n),
   })
 );
 
@@ -675,30 +667,6 @@ const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
   ([_, name, [typeParams, [args, returnTy, body]]]) => Decl.Function(name, typeParams, args, returnTy.map(snd), body)
 );
 
-const inherentImplDecl = map(seq(
-  keyword('impl'),
-  scopedTypeParams(seq(
-    expectOrDefault(monoTy, `Expected type after 'impl' keyword`, MonoTy.Const('()')),
-    not(keyword('for'), { consume: false }),
-    expectOrDefault(curlyBrackets(many(decl)), `Expected declarations`, []),
-  ))
-),
-  ([_, [tyParams, [ty, _2, decls]]]) => Decl.Impl(ty, tyParams, decls)
-);
-
-const traitImplDecl = map(seq(
-  keyword('impl'),
-  scopedTypeParams(seq(
-    typePath,
-    optionalOrDefault(angleBrackets(commas(monoTy)), []),
-    expect(keyword('for'), `Expected 'for' keyword after trait name`),
-    expect(monoTy, `Expected type after 'impl' keyword`),
-    expectOrDefault(curlyBrackets(many(funcDecl)), `Expected declarations`, []),
-  ))
-),
-  ([_impl, [tyParams, [[path, name], args, _for, ty, decls]]]) => Decl.TraitImpl({ path, name, args }, tyParams, ty, decls)
-);
-
 const moduleDecl = map(seq(
   keyword('module'),
   expectOrDefault(upperIdent, `Expected an uppercase identifier after 'module' keyword`, '<?>'),
@@ -730,21 +698,6 @@ const methodSignature = map(seq(
   ([_, name, [typeParams, [args, _arrow, ty]]]) => MethodSig.make(name, typeParams, args, ty)
 );
 
-const traitDecl = map(
-  seq(
-    keyword('trait'),
-    expectOrDefault(upperIdent, `Expected identifier after 'trait' keyword`, '<?>'),
-    scopedTypeParams(
-      withContext(ctx => {
-        // the Self type parameter is implicit
-        TypeParamsContext.declare(ctx, 'Self');
-        return curlyBrackets(many(methodSignature));
-      })
-    )
-  ),
-  ([_, name, [params, methods]]) => Decl.Trait(name, params, methods)
-);
-
 const useDecl = map(
   seq(
     keyword('use'),
@@ -763,9 +716,6 @@ initParser(decl, alt(
   funcDecl,
   typeAliasDecl,
   moduleDecl,
-  inherentImplDecl,
-  traitImplDecl,
-  traitDecl,
   useDecl,
 ));
 

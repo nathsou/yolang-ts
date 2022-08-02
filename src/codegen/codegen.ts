@@ -41,20 +41,6 @@ export class Compiler {
                 this.declareFunction(f);
               }
             },
-            Impl: impl => {
-              impl.decls.forEach(decl => {
-                if (decl.variant === 'Function') {
-                  this.declareFunction(decl);
-                }
-              });
-            },
-            TraitImpl: impl => {
-              impl.methods.forEach(method => {
-                if (method.variant === 'Function') {
-                  this.declareFunction(method);
-                }
-              });
-            },
             _: () => { },
           });
         });
@@ -63,17 +49,7 @@ export class Compiler {
           this.compileDecl(decl);
         });
       },
-      Impl: ({ decls }) => {
-        decls.forEach(decl => {
-          this.compileDecl(decl);
-        });
-      },
-      TraitImpl: ({ methods }) => {
-        methods.forEach(method => {
-          this.compileDecl(method);
-        });
-      },
-      Trait: () => { },
+      TypeAlias: () => { },
       _: () => {
         panic('unhandled decl variant: ' + decl.variant);
       },
@@ -187,10 +163,6 @@ export class Compiler {
       },
       Call: ({ lhs }) => {
         return panic('unhandled call target: ' + Expr.showSweet(lhs));
-      },
-      MethodCall: ({ receiver, method, args, impl }) => {
-        const name = impl.unwrap().methods[method].name;
-        return this.call(name, [receiver, ...args]);
       },
       WasmBlock: ({ instructions }) => {
         const insts: Inst[] = instructions.flatMap(inst => inst.match({
