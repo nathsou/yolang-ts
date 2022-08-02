@@ -1,5 +1,4 @@
-import { DataType, genConstructors, VariantOf, match as matchVariant } from "itsamatch";
-import { match, __ } from 'ts-pattern';
+import { DataType, genConstructors, VariantOf, match, matchMany } from "itsamatch";
 import { MonoTy } from "../infer/types";
 
 export type Token = DataType<{
@@ -18,7 +17,7 @@ export const Token = {
   Identifier: (name: string): Token => ({ variant: 'Identifier', name }),
   Invalid: (lexeme: string): Token => ({ variant: 'Invalid', lexeme }),
   EOF: (): Token => ({ variant: 'EOF' }),
-  show: (token: Token) => matchVariant(token, {
+  show: (token: Token) => match(token, {
     Symbol: ({ value }) => value,
     Keyword: ({ value }) => value,
     Const: ({ value }) => Const.show(value),
@@ -26,14 +25,15 @@ export const Token = {
     Invalid: ({ lexeme: message }) => `Invalid token: '${message}'`,
     EOF: () => '<EOF>',
   }),
-  eq: (a: Token, b: Token) => match<[Token, Token]>([a, b])
-    .with([{ variant: 'Symbol' }, { variant: 'Symbol' }], ([a, b]) => Symbol.eq(a.value, b.value))
-    .with([{ variant: 'Keyword' }, { variant: 'Keyword' }], ([a, b]) => Keyword.eq(a.value, b.value))
-    .with([{ variant: 'Const' }, { variant: 'Const' }], ([a, b]) => Const.eq(a.value, b.value))
-    .with([{ variant: 'Identifier' }, { variant: 'Identifier' }], ([a, b]) => a.name === b.name)
-    .with([{ variant: 'Invalid' }, { variant: 'Invalid' }], ([a, b]) => a.lexeme === b.lexeme)
-    .with([{ variant: 'EOF' }, { variant: 'EOF' }], () => true)
-    .otherwise(() => false),
+  eq: (a: Token, b: Token) => matchMany([a, b], {
+    'Symbol Symbol': (a, b) => Symbol.eq(a.value, b.value),
+    'Keyword Keyword': (a, b) => Keyword.eq(a.value, b.value),
+    'Const Const': (a, b) => Const.eq(a.value, b.value),
+    'Identifier Identifier': (a, b) => a.name === b.name,
+    'Invalid Invalid': (a, b) => a.lexeme === b.lexeme,
+    'EOF EOF': () => true,
+    _: () => false,
+  }),
 };
 
 export type Position = {
@@ -92,18 +92,18 @@ export const Const = {
   u32: (value: number) => u32({ value }),
   bool: (value: boolean) => bool({ value }),
   unit: () => unit({}),
-  show: (c: Const) => matchVariant(c, {
+  show: (c: Const) => match(c, {
     u32: ({ value }) => `${value}`,
     bool: ({ value }) => `${value}`,
     unit: () => '()',
   }),
-  eq: (a: Const, b: Const) =>
-    match<[Const, Const]>([a, b])
-      .with([{ variant: 'u32' }, { variant: 'u32' }], ([a, b]) => a.value === b.value)
-      .with([{ variant: 'bool' }, { variant: 'bool' }], ([a, b]) => a.value === b.value)
-      .with([{ variant: 'unit' }, { variant: 'unit' }], () => true)
-      .otherwise(() => false),
-  type: (c: Const) => matchVariant(c, {
+  eq: (a: Const, b: Const) => matchMany([a, b], {
+    'u32 u32': (a, b) => a.value === b.value,
+    'bool bool': (a, b) => a.value === b.value,
+    'unit unit': () => true,
+    _: () => false,
+  }),
+  type: (c: Const) => match(c, {
     u32: MonoTy.u32,
     bool: MonoTy.bool,
     unit: MonoTy.unit,

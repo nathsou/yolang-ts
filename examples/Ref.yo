@@ -1,6 +1,6 @@
 
 type Ref<T> = { ref: T }
 
-fn deref<U>(r: Ref<U>) {
+fun deref<U>(r: Ref<U>) {
   r.ref
 }

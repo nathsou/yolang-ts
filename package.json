@@ -10,11 +10,11 @@
     "typeCheck": "npx tsc --noEmit"
   },
   "devDependencies": {
-    "esbuild": "^0.14.7",
-    "itsamatch": "^1.1.0",
-    "jest": "^27.4.5",
+    "esbuild": "^0.14.51",
+    "itsamatch": "^1.1.2",
+    "jest": "^28.1.3",
     "ts-pattern": "^3.3.4",
-    "typescript": "^4.5.4",
+    "typescript": "^4.7.4",
     "ts-jest": "^27.1.2",
     "@types/jest": "^27.0.3",
     "fast-check": "^2.20.0"
