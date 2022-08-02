@@ -2,7 +2,7 @@ import fc from 'fast-check';
 import { Context } from '../ast/context';
 import { Expr, Pattern } from '../ast/sweet';
 import { Row } from '../infer/records';
-import { MonoTy, TypeParamsContext } from '../infer/types';
+import { MonoTy } from '../infer/types';
 import { Parser } from '../parse/combinators';
 import { lex } from '../parse/lex';
 import { binaryExpr, expr, recordTy, tuple, unary } from '../parse/parse';
@@ -14,14 +14,14 @@ import { Arb } from './arbitraries/arb';
 const tokens = (input: string): Slice<Token> => Slice.from(lex(input));
 
 const expectExpr = (parser: Parser<Expr>, input: string, expected: Expr): void => {
-  const [res, _, errs] = parser.ref(tokens(input), TypeParamsContext.make());
+  const [res, _, errs] = parser.ref(tokens(input));
   expect(res.isOk()).toBe(true);
   expect(errs).toHaveLength(0);
   expect(res.unwrap()).toEqual(expected);
 };
 
 const expectType = (parser: Parser<MonoTy>, input: string, expected: MonoTy): void => {
-  const [res, _, errs] = parser.ref(tokens(input), TypeParamsContext.make());
+  const [res, _, errs] = parser.ref(tokens(input));
   expect(res.isOk()).toBe(true);
   expect(errs).toHaveLength(0);
   expect(MonoTy.show(res.unwrap())).toEqual(MonoTy.show(expected));
