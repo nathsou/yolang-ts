@@ -1,10 +1,10 @@
 import { match as matchVariant, VariantOf } from 'itsamatch';
 import { match, select } from 'ts-pattern';
-import { Argument, Decl, Expr, Imports, MethodSig, Pattern, Prog, Stmt } from '../ast/sweet';
+import { Argument, Decl, Expr, Imports, Pattern, Prog, Stmt } from '../ast/sweet';
 import { Inst } from '../codegen/wasm/instructions';
 import { Row } from '../infer/records';
 import { Tuple } from '../infer/tuples';
-import { MonoTy, TypeParams, TypeParamsContext } from '../infer/types';
+import { MonoTy, TypeParams } from '../infer/types';
 import { deconsLast, last } from '../utils/array';
 import { Either } from '../utils/either';
 import { Maybe, none, some } from '../utils/maybe';
@@ -12,7 +12,7 @@ import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized, withContext } from './combinators';
+import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
 import { Const, Token } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -74,6 +74,9 @@ const unexpected = mapParserResult(
   }
 );
 
+const modulePath = sepBy(symbol('.'))(upperIdent);
+const typePath = map(sepBy(symbol('.'))(upperIdent), path => [path.slice(0, -1), last(path)] as const);
+
 // TYPES
 export const monoTy = uninitialized<MonoTy>();
 const parenthesizedTy = map(parens(monoTy), ty => ty);
@@ -81,7 +84,7 @@ const unitTy = map(seq(symbol('('), symbol(')')), () => MonoTy.Const('()'));
 const boolTy = map(ident2('bool'), () => MonoTy.Const('bool'));
 const u32Ty = map(ident2('u32'), () => MonoTy.Const('u32'));
 const constTy = alt(unitTy, boolTy, u32Ty);
-const namedTy = withContext(ctx => map(
+const namedTy = map(
   seq(
     alt(
       map<[string, null], [string[], string]>(seq(upperIdent, not(symbol('.'))), ([name]) => [[], name]),
@@ -91,16 +94,12 @@ const namedTy = withContext(ctx => map(
   ),
   ([[path, name], args]) => {
     if (path.length === 0 && args.length === 0) {
-      if (TypeParamsContext.has(ctx, name)) {
-        return MonoTy.Param(name);
-      } else {
-        return MonoTy.Const(name);
-      }
+      return MonoTy.Const(name);
     } else {
       return MonoTy.ConstWithPath(path, name, ...args);
     }
   }
-));
+);
 
 const tupleTy = map(
   parens(seq(
@@ -148,14 +147,10 @@ const typeParams: Parser<TypeParams> = angleBrackets(commas(upperIdent));
 const typeParamsInst: Parser<MonoTy[]> = angleBrackets(commas(monoTy));
 
 const scopedTypeParams = <T>(p: Parser<T>): Parser<[TypeParams, T]> =>
-  withContext(ctx =>
-    flatMap(optionalOrDefault(typeParams, []), params => {
-      return ref((tokens: Slice<Token>) => {
-        const subCtx = TypeParamsContext.clone(ctx);
-        TypeParamsContext.declare(subCtx, ...params);
-        return map<T, [TypeParams, T]>(p, t => [params, t]).ref(tokens, subCtx);
-      });
-    })
+  flatMap(optionalOrDefault(typeParams, []), params =>
+    ref((tokens: Slice<Token>) =>
+      map<T, [TypeParams, T]>(p, t => [params, t]).ref(tokens)
+    )
   );
 
 const typeAnnotation: Parser<MonoTy> = map(seq(
@@ -326,9 +321,6 @@ export const primary = alt(
   invalid,
   // unexpected
 );
-
-const modulePath = sepBy(symbol('.'))(upperIdent);
-const typePath = map(sepBy(symbol('.'))(upperIdent), path => [path.slice(0, -1), last(path)] as const);
 
 // e.g Main.Yolo.yo
 const moduleAccess = alt(
@@ -658,13 +650,13 @@ const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
   scopedTypeParams(seq(
     expectOrDefault(argumentList, 'Expected arguments after function name', []),
     optional(seq(
-      symbol('->'),
-      expect(monoTy, `Expected type after '->'`),
+      symbol(':'),
+      expect(monoTy, `Expected type after ':'`),
     )),
     expectOrDefault(block, 'Expected block after function arguments', Expr.Error),
   ))
 ),
-  ([_, name, [typeParams, [args, returnTy, body]]]) => Decl.Function(name, typeParams, args, returnTy.map(snd), body)
+  ([_, name, [typeParams, [args, returnTy, body]]]) => Decl.Function({ name, typeParams, args, returnTy: returnTy.map(snd), body })
 );
 
 const moduleDecl = map(seq(
@@ -672,10 +664,10 @@ const moduleDecl = map(seq(
   expectOrDefault(upperIdent, `Expected an uppercase identifier after 'module' keyword`, '<?>'),
   curlyBrackets(many(decl)),
 ),
-  ([_, name, decls]) => Decl.Module(name, decls)
+  ([_, name, decls]) => Decl.Module({ name, decls })
 );
 
-const typeAliasDecl = map(seq(
+const typeAliasDecl: Parser<Decl> = map(seq(
   keyword('type'),
   expectOrDefault(upperIdent, `Expected identifier after 'type' keyword`, '<?>'),
   scopedTypeParams(seq(
@@ -683,19 +675,7 @@ const typeAliasDecl = map(seq(
     monoTy,
   ))
 ),
-  ([_t, name, [params, [_eq, rhs]]]) => Decl.TypeAlias(name, params, rhs)
-);
-
-const methodSignature = map(seq(
-  keyword('fn'),
-  expectOrDefault(ident, `Expected identifier after 'fn' keyword`, '<?>'),
-  scopedTypeParams(seq(
-    expectOrDefault(argumentList, 'Expected arguments after function name', []),
-    expect(symbol('->'), `Expected '->' after function arguments`),
-    expect(monoTy, `Expected type after '->'`),
-  ))
-),
-  ([_, name, [typeParams, [args, _arrow, ty]]]) => MethodSig.make(name, typeParams, args, ty)
+  ([_t, name, [typeParams, [_eq, alias]]]) => Decl.TypeAlias({ name, typeParams, alias })
 );
 
 const useDecl = map(
@@ -709,7 +689,7 @@ const useDecl = map(
     ),
     optional(symbol(';')),
   ),
-  ([_, path, _dot, imports]) => Decl.Use(path, imports)
+  ([_, path, _dot, imports]) => Decl.Use({ path, imports })
 );
 
 initParser(decl, alt(
@@ -720,8 +700,7 @@ initParser(decl, alt(
 ));
 
 export const parse = (tokens: Slice<Token>): [Prog, ParserError[]] => {
-  const ctx = TypeParamsContext.make();
-  const [res, _, errs] = consumeAll(many(decl)).ref(tokens, ctx);
+  const [res, _, errs] = consumeAll(many(decl)).ref(tokens);
 
   return res.match({
     Ok: decls => [decls, errs],

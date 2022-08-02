@@ -1,4 +1,3 @@
-import { TypeParamsContext } from "../infer/types";
 import { Maybe, none, some } from "../utils/maybe";
 import { Ref, ref, snd } from "../utils/misc";
 import { error, ok, Result } from "../utils/result";
@@ -8,7 +7,7 @@ import { Keyword, Symbol, Token, TokenWithPos } from "./token";
 
 // Syntax Error Recovery in Parsing Expression Grammars - https://arxiv.org/abs/1806.11150
 
-export type Parser<T, Ctx = TypeParamsContext> = Ref<(tokens: Slice<Token>, context: Ctx) => ParserResult<T>>;
+export type Parser<T> = Ref<(tokens: Slice<Token>) => ParserResult<T>>;
 
 export type ParserResult<T> = [res: Result<T, ParserError>, remaining: Slice<Token>, errors: ParserError[]];
 
@@ -32,8 +31,6 @@ export const formatError = (error: ParserError, tokens: TokenWithPos[]): string 
 };
 
 const fail: ParserError['message'] = '<fail>';
-
-const farthest = <T>(a: Slice<T>, b: Slice<T>) => a.start > b.start ? a : b;
 
 export const satisfy = (pred: (t: Token) => boolean): Parser<Token> => {
   return ref(tokens => {
@@ -71,25 +68,25 @@ export const symbol = (symb: Symbol) => token(Token.Symbol(symb));
 export const keyword = (keyword: Keyword) => token(Token.Keyword(keyword));
 
 export const map = <T, U>(p: Parser<T>, f: (t: T, tokens: Slice<Token>) => U): Parser<U> => {
-  return ref((tokens, ctx) => {
-    const [t, rem, errs] = p.ref(tokens, ctx);
+  return ref(tokens => {
+    const [t, rem, errs] = p.ref(tokens);
     return [t.map(x => f(x, tokens)), rem, errs];
   });
 };
 
 export const flatMap = <T, U>(p: Parser<T>, f: (t: T, tokens: Slice<Token>) => Parser<U>): Parser<U> => {
-  return ref((tokens, ctx) => {
-    const [t, rem, errs] = p.ref(tokens, ctx);
+  return ref(tokens => {
+    const [t, rem, errs] = p.ref(tokens);
     return t.match({
-      Ok: t => f(t, rem).ref(rem, ctx),
+      Ok: t => f(t, rem).ref(rem),
       Error: err => [error({ message: fail, pos: rem.start }), rem, [...errs, err]],
     });
   });
 };
 
 export const mapParserResult = <T, U>(p: Parser<T>, f: (r: ParserResult<T>) => ParserResult<U>): Parser<U> => {
-  return ref((tokens, ctx) => {
-    return f(p.ref(tokens, ctx));
+  return ref(tokens => {
+    return f(p.ref(tokens));
   });
 };
 
@@ -99,13 +96,13 @@ type MapP<Ts extends readonly any[]> =
   Ts extends [Parser<infer A>] ? [A] : [];
 
 export const seq = <T extends readonly Parser<any>[]>(...parsers: T): Parser<[...MapP<T>]> => {
-  return ref((tokens, ctx) => {
+  return ref(tokens => {
     const originalTokens = tokens;
     const errors: ParserError[] = [];
     const tuple = [];
 
     for (const p of parsers) {
-      const [t, rem, errs] = p.ref(tokens, ctx);
+      const [t, rem, errs] = p.ref(tokens);
       errors.push(...errs);
       tokens = rem;
 
@@ -121,11 +118,11 @@ export const seq = <T extends readonly Parser<any>[]>(...parsers: T): Parser<[..
 };
 
 export const alt = <T>(...parsers: Parser<T>[]): Parser<T> => {
-  return ref((tokens, ctx) => {
+  return ref(tokens => {
     const errors: ParserError[] = [];
 
     for (const p of parsers) {
-      const [t, rem, errs] = p.ref(tokens, ctx);
+      const [t, rem, errs] = p.ref(tokens);
       errors.push(...errs);
 
       if (t.raw.type === 'ok') {
@@ -142,13 +139,13 @@ export const alt = <T>(...parsers: Parser<T>[]): Parser<T> => {
 };
 
 export const many = <T>(p: Parser<T>): Parser<T[]> => {
-  return ref((tokens, ctx) => {
+  return ref(tokens => {
     const errors: ParserError[] = [];
     const ts: T[] = [];
     let isFirst = true;
 
     while (true) {
-      const [t, rem, errs] = p.ref(tokens, ctx);
+      const [t, rem, errs] = p.ref(tokens);
       errors.push(...errs);
       tokens = rem;
 
@@ -171,8 +168,8 @@ export const oneOrMore = <T>(p: Parser<T>): Parser<T[]> => {
 };
 
 export const optional = <T>(p: Parser<T>): Parser<Maybe<T>> => {
-  return ref((tokens, ctx) => {
-    const [t, rem, errs] = p.ref(tokens, ctx);
+  return ref(tokens => {
+    const [t, rem, errs] = p.ref(tokens);
     return t.match({
       Ok: t => [ok(some(t)), rem, errs],
       Error: () => [ok(none), rem, errs],
@@ -212,8 +209,8 @@ export const commas = sepBy(symbol(','));
 export const semicolons = sepBy(symbol(';'));
 
 export const not = <T>(p: Parser<T>, { consume } = { consume: true }): Parser<null> => {
-  return ref((tokens, ctx) => {
-    const [t, rem] = p.ref(tokens, ctx);
+  return ref(tokens => {
+    const [t, rem] = p.ref(tokens);
     return t.match({
       Ok: () => [error({ message: fail, pos: tokens.start }), consume ? rem : tokens, []], // not.2
       Error: () => [ok(null), consume ? rem : tokens, []], // not.1
@@ -222,12 +219,12 @@ export const not = <T>(p: Parser<T>, { consume } = { consume: true }): Parser<nu
 };
 
 export const recover = (err: ParserError): Parser<null> => {
-  return ref((tokens, ctx) => {
+  return ref(tokens => {
     if (err.recovery === undefined) {
       return [error(err), tokens, [err]]; // throw.1
     }
 
-    const recoveredRem = err.recovery(tokens, ctx);
+    const recoveredRem = err.recovery(tokens);
     return [ok(null), recoveredRem, [err]]; // throw.2
   });
 };
@@ -237,8 +234,8 @@ export const expect = <T>(
   message: ParserError['message'],
   recovery?: ParserError['recovery'],
 ): Parser<T> => {
-  return ref((tokens, ctx) => {
-    const [t, rem, errs] = p.ref(tokens, ctx);
+  return ref(tokens => {
+    const [t, rem, errs] = p.ref(tokens);
     return t.match({
       Ok: t => [ok(t), rem, errs],
       Error: e => {
@@ -246,7 +243,7 @@ export const expect = <T>(
           message,
           pos: e.pos,
           recovery: recovery ?? e.recovery
-        }).ref(tokens, ctx);
+        }).ref(tokens);
 
         return [error({ message: fail, pos: tokens.start }), rem2, errs2];
       },
@@ -259,8 +256,8 @@ export const expectOrDefault = <T>(
   message: ParserError['message'],
   defaultValue: T | ((message: string) => T)
 ): Parser<T> => {
-  return ref((tokens, ctx) => {
-    const [t, rem, errs] = p.ref(tokens, ctx);
+  return ref(tokens => {
+    const [t, rem, errs] = p.ref(tokens);
     return t.match({
       Ok: t => [ok(t), rem, errs],
       Error: () => [
@@ -273,8 +270,8 @@ export const expectOrDefault = <T>(
 };
 
 export const conditionalError = <T>(parser: Parser<T>, pred: (data: T) => boolean, message: ParserError['message']): Parser<T> => {
-  return ref((tokens, ctx) => {
-    const [t, rem, errs] = parser.ref(tokens, ctx);
+  return ref(tokens => {
+    const [t, rem, errs] = parser.ref(tokens);
     return t.match({
       Ok: t => {
         if (!pred(t)) {
@@ -299,8 +296,8 @@ export const lookahead = (check: (tokens: Slice<Token>) => boolean): Parser<null
 };
 
 export const consumeAll = <T>(p: Parser<T>): Parser<T> => {
-  return ref((tokens, ctx) => {
-    const [t, rem, errs] = p.ref(tokens, ctx);
+  return ref(tokens => {
+    const [t, rem, errs] = p.ref(tokens);
 
     return Slice.head(rem).match({
       Some: lastToken => {
@@ -328,13 +325,6 @@ export const consumeAll = <T>(p: Parser<T>): Parser<T> => {
       },
       None: () => [t, rem, errs]
     });
-  });
-};
-
-export const withContext = <T>(f: (ctx: TypeParamsContext) => Parser<T>): Parser<T> => {
-  return ref((tokens, ctx) => {
-    const p = f(ctx);
-    return p.ref(tokens, ctx);
   });
 };
 

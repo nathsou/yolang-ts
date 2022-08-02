@@ -1,4 +1,4 @@
-import { DataType, match, VariantOf } from 'itsamatch';
+import { DataType, genConstructors, match } from 'itsamatch';
 import { Inst } from '../codegen/wasm/instructions';
 import { MonoTy, TypeParams } from '../infer/types';
 import { Const } from '../parse/token';
@@ -213,11 +213,7 @@ export type Decl = DataType<{
 }>;
 
 export const Decl = {
-  Function: (name: string, typeParams: TypeParams, args: Argument[], returnTy: Maybe<MonoTy>, body: Expr): VariantOf<Decl, 'Function'> => ({ variant: 'Function', name, typeParams, args, returnTy, body }),
-  Module: (name: string, decls: Decl[]): Decl => ({ variant: 'Module', name, decls }),
-  TypeAlias: (name: string, typeParams: TypeParams, alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
-  Use: (path: string[], imports: Imports): Decl => ({ variant: 'Use', path, imports }),
-  Error: (message: string): Decl => ({ variant: 'Error', message }),
+  ...genConstructors<Decl>(['Function', 'Module', 'TypeAlias', 'Use', 'Error']),
   show: (decl: Decl): string => match(decl, {
     Function: ({ name, typeParams, args, body }) => `fn ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
     Module: ({ name, decls }) => `module ${name} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
@@ -228,11 +224,11 @@ export const Decl = {
   rewrite: (decl: Decl, rfs: RewriteFuncs): Decl => {
     const { rewriteExpr: f = id, rewriteDecl: g = id } = rfs;
     return g(match(decl, {
-      Function: ({ name, typeParams, args, returnTy, body }) => Decl.Function(name, typeParams, args, returnTy, Expr.rewrite(body, f)),
-      Module: ({ name, decls }) => Decl.Module(name, decls.map(d => Decl.rewrite(d, rfs))),
-      TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias(name, typeParams, alias),
-      Use: ({ path, imports }) => Decl.Use(path, imports),
-      Error: ({ message }) => Decl.Error(message),
+      Function: ({ name, typeParams, args, returnTy, body }) => Decl.Function({ name, typeParams, args, returnTy, body: Expr.rewrite(body, f) }),
+      Module: ({ name, decls }) => Decl.Module({ name, decls: decls.map(d => Decl.rewrite(d, rfs)) }),
+      TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias({ name, typeParams, alias }),
+      Use: ({ path, imports }) => Decl.Use({ path, imports }),
+      Error: ({ message }) => Decl.Error({ message }),
     }));
   },
   traverse: (decl: Decl, { traverseExpr = noop, traverseDecl = noop }: TraverseFuncs): Decl => Decl.rewrite(decl, {

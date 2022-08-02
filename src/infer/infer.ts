@@ -1,4 +1,4 @@
-import { DataType, genConstructors, match as matchVariant } from 'itsamatch';
+import { DataType, match as matchVariant } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
 import { Name } from '../ast/name';
 import { Inst } from '../codegen/wasm/instructions';
@@ -419,7 +419,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
       inferExpr(body, bodyCtx, errors);
 
       returnTy.do(retTy => {
-        unify(body.ty, retTy);
+        unify(body.ty, retTy, bodyCtx);
       });
 
       const funTy = PolyTy.instantiate(PolyTy.instantiateTyParams(typeParams, MonoTy.Fun(

@@ -124,7 +124,7 @@ export const Expr = {
       UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, go(expr), sweet),
       Error: ({ message }) => Expr.Error(message, sweet),
       Closure: ({ args, body }) => {
-        const withoutPatterns = removeFuncArgsPatternMatching(args, body, nameEnv, errors);
+        const withoutPatterns = rewriteFuncArgsPatternMatching(args, body, nameEnv, errors);
         return Expr.Closure(
           withoutPatterns.args,
           withoutPatterns.body,
@@ -329,7 +329,7 @@ export const Decl = {
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, moduleStack: string[], errors: Error[]): Decl =>
     match(sweet, {
       Function: ({ name, typeParams, args, returnTy, body }) => {
-        const withoutPatterns = removeFuncArgsPatternMatching(args, body, nameEnv, errors);
+        const withoutPatterns = rewriteFuncArgsPatternMatching(args, body, nameEnv, errors);
         const nameRef: Name = declareFuncNames ? NameEnv.declare(nameEnv, name, false) : NameEnv.resolve(nameEnv, name);
         nameRef.renaming = [...moduleStack, name].join('_');
 
@@ -416,7 +416,7 @@ export const Prog = {
   },
 };
 
-export const removeFuncArgsPatternMatching = (
+export const rewriteFuncArgsPatternMatching = (
   args: SweetArgument[],
   body: SweetExpr,
   nameEnv: NameEnv,

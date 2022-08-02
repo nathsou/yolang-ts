@@ -1,14 +1,13 @@
 import { match, VariantOf } from "itsamatch";
 import { Decl } from "../ast/bitter";
-import { Context } from "../ast/context";
 import { Imports } from "../ast/sweet";
 import { Maybe, none, some } from "../utils/maybe";
 import { Env } from "./env";
-import { MonoTy, TypeParams, TyVar } from "./types";
+import { MonoTy, TypeParams } from "./types";
 
 export type TypeContext = {
   env: Env,
-  typeParamsEnv: Record<string, TyVar>,
+  typeParamsEnv: Record<string, MonoTy>,
   modules: Record<string, VariantOf<Decl, 'Module'>>,
   typeAliases: Record<string, { ty: MonoTy, params: TypeParams }>,
   topLevelDecls: Decl[],
@@ -55,8 +54,15 @@ export const TypeContext = {
   },
   declareTypeParams: (ctx: TypeContext, ...names: string[]): void => {
     for (const name of names) {
-      ctx.typeParamsEnv[name] = TyVar.Unbound(Context.freshTyVarIndex());
+      ctx.typeParamsEnv[name] = MonoTy.Param(name);
     }
+  },
+  resolveTypeParam: (ctx: TypeContext, name: string): Maybe<MonoTy> => {
+    if (name in ctx.typeParamsEnv) {
+      return some(ctx.typeParamsEnv[name]);
+    }
+
+    return none;
   },
   // TODO: cleanup
   __resolveModuleAux: (ctx: TypeContext, path: string[]): Maybe<VariantOf<Decl, 'Module'>> => {

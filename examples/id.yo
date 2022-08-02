@@ -1,7 +1,11 @@
-fn id(x) {
-  x
+fn id<T>(x: T): T {
+    x
 }
 
 fn main() {
-  if id(true) { id(7) } else { id(id(3)) }
+    if id(true) {
+        id(7)
+    } else {
+        id(id(3))
+    }
 }

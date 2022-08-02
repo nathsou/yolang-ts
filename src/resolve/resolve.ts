@@ -129,7 +129,7 @@ const resolveAux = async (
     _: (): Maybe<string> => none,
   })));
 
-  const prog: Prog = [Decl.Module(mod.name, decls)];
+  const prog: Prog = [Decl.Module({ name: mod.name, decls })];
 
   mod.resolved = true;
 

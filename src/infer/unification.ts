@@ -2,7 +2,7 @@ import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { match, __ } from "ts-pattern";
 import { Error } from "../errors/errors";
 import { zip } from "../utils/array";
-import { Maybe, none } from "../utils/maybe";
+import { Maybe, none, some } from "../utils/maybe";
 import { panic } from "../utils/misc";
 import { Result } from "../utils/result";
 import { Row } from "./records";
@@ -58,10 +58,16 @@ const unifyMany = (
   };
 
   const instantiateGenericTyConst = (c: VariantOf<MonoTy, 'Const'>): Maybe<MonoTy> => {
-    return resolveTypeAlias(c).map(({ ty: genericTy, params }) => {
+    // Type parameters are parsed as Const types
+    // if the type parameters environment contains this Const name
+    // then interpret it as a type parameter
+    const typeParam = TypeContext.resolveTypeParam(ctx, c.name);
+    const typeAlias = () => resolveTypeAlias(c).map(({ ty: genericTy, params }) => {
       const subst = new Map<string, MonoTy>(zip(params, c.args));
       return MonoTy.substituteTyParams(genericTy, subst);
     });
+
+    return typeParam.or(typeAlias);
   };
 
   while (eqs.length > 0) {

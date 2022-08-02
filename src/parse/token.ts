@@ -68,7 +68,7 @@ const keywords = [
   'let', 'mut', 'in', 'if', 'else', 'fn', 'while',
   'return', 'as', 'unsafe', 'impl', 'extern',
   'module', 'match', 'type', 'trait', 'for',
-  'wasm', 'use',
+  'wasm', 'use', 'sugar',
 ] as const;
 
 export type Keyword = (typeof keywords)[number];
