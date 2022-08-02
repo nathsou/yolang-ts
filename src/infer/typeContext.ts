@@ -1,24 +1,15 @@
 import { match, VariantOf } from "itsamatch";
 import { Decl } from "../ast/bitter";
-import { Context } from "../ast/context";
 import { Imports } from "../ast/sweet";
 import { Maybe, none, some } from "../utils/maybe";
-import { pushRecord } from "../utils/misc";
 import { Env } from "./env";
-import { Impl, TraitImpl } from "./impls";
-import { Subst } from "./subst";
-import { Trait } from "./traits";
-import { MonoTy, PolyTy, TypeParams, TyVar } from "./types";
-import { unifyPure } from "./unification";
+import { MonoTy, TypeParams } from "./types";
 
 export type TypeContext = {
   env: Env,
-  typeParamsEnv: Record<string, TyVar>,
+  typeParamsEnv: Record<string, MonoTy>,
   modules: Record<string, VariantOf<Decl, 'Module'>>,
   typeAliases: Record<string, { ty: MonoTy, params: TypeParams }>,
-  impls: Record<string, Impl[]>,
-  traits: Record<string, Trait>,
-  traitImpls: Record<string, TraitImpl[]>,
   topLevelDecls: Decl[],
   currentPath: string[],
 };
@@ -29,9 +20,6 @@ export const TypeContext = {
     typeParamsEnv: {},
     modules: {},
     typeAliases: {},
-    impls: {},
-    traits: {},
-    traitImpls: {},
     topLevelDecls,
     currentPath: [],
   }),
@@ -40,9 +28,6 @@ export const TypeContext = {
     typeParamsEnv: {},
     modules: { ...ctx.modules },
     typeAliases: { ...ctx.typeAliases },
-    impls: { ...ctx.impls },
-    traits: { ...ctx.traits },
-    traitImpls: { ...ctx.traitImpls },
     topLevelDecls: [...ctx.topLevelDecls],
     currentPath: [...ctx.currentPath],
   }),
@@ -67,27 +52,17 @@ export const TypeContext = {
       params: typeParams,
     };
   },
-  declareImpl: (ctx: TypeContext, impl: Impl): void => {
-    for (const name of Object.keys(impl.methods)) {
-      pushRecord(ctx.impls, name, impl);
-    }
-  },
-  declareTraitImpl: (ctx: TypeContext, impl: VariantOf<Decl, 'TraitImpl'>): Maybe<TraitImpl> => {
-    const trait = TypeContext.findTrait(ctx, impl.trait.path, impl.trait.name);
-
-    return trait.map(trait => {
-      const imp = TraitImpl.from(impl, trait);
-      pushRecord(ctx.traitImpls, TraitImpl.hash(impl), imp);
-      return imp;
-    });
-  },
-  declareTrait: (ctx: TypeContext, trait: Trait): void => {
-    ctx.traits[trait.name] = trait;
-  },
   declareTypeParams: (ctx: TypeContext, ...names: string[]): void => {
     for (const name of names) {
-      ctx.typeParamsEnv[name] = TyVar.Unbound(Context.freshTyVarIndex());
+      ctx.typeParamsEnv[name] = MonoTy.Param(name);
     }
+  },
+  resolveTypeParam: (ctx: TypeContext, name: string): Maybe<MonoTy> => {
+    if (name in ctx.typeParamsEnv) {
+      return some(ctx.typeParamsEnv[name]);
+    }
+
+    return none;
   },
   // TODO: cleanup
   __resolveModuleAux: (ctx: TypeContext, path: string[]): Maybe<VariantOf<Decl, 'Module'>> => {
@@ -111,41 +86,6 @@ export const TypeContext = {
     return TypeContext.__resolveModuleAux(ctx, [...ctx.currentPath, ...path]).or(
       TypeContext.__resolveModuleAux(ctx, path)
     );
-  },
-  findTrait(ctx: TypeContext, path: string[], name: string): Maybe<Trait> {
-    if (path.length === 0 && name in ctx.traits) {
-      return some(ctx.traits[name]);
-    }
-
-    const mod = TypeContext.resolveModule(ctx, path);
-
-    return mod.flatMap(mod => {
-      const trait = mod.decls.find(decl =>
-        decl.variant === 'Trait' &&
-        decl.name === name
-      );
-
-      if (trait) {
-        return some(trait);
-      }
-
-      return none;
-    });
-  },
-  findImplMethod: (ctx: TypeContext, funcName: string, ty: MonoTy): Maybe<[Impl, Subst, MonoTy, TypeContext]> => {
-    if (funcName in ctx.impls) {
-      for (const impl of ctx.impls[funcName]) {
-        const newCtx = TypeContext.clone(ctx);
-        const instTy = PolyTy.instantiate(PolyTy.instantiateTyParams(impl.typeParams, impl.ty)).ty;
-        TypeContext.declareTypeParams(newCtx, ...impl.typeParams);
-        const res = unifyPure(ty, instTy, newCtx);
-        if (res.isOk()) {
-          return some([impl, res.unwrap(), instTy, newCtx]);
-        }
-      }
-    }
-
-    return none;
   },
   findTypeAlias: (ctx: TypeContext, path: string[], name: string): Maybe<[MonoTy, TypeParams]> => {
     const aux = (path: string[], decls: Decl[]): Maybe<[MonoTy, TypeParams]> => {
@@ -193,20 +133,6 @@ export const TypeContext = {
             if (isImported(m.name)) {
               TypeContext.declareModule(ctx, m);
             }
-          },
-          Trait: trait => {
-            if (isImported(trait.name)) {
-              TypeContext.declareTrait(ctx, trait);
-            }
-          },
-          TraitImpl: impl => {
-            if (isImported(impl.trait.name)) {
-              TypeContext.declareTraitImpl(ctx, impl);
-              TypeContext.declareImpl(ctx, Impl.from(impl.implementee, impl.typeParams, impl.methods));
-            }
-          },
-          Impl: ({ ty, typeParams, decls }) => {
-            TypeContext.declareImpl(ctx, Impl.from(ty, typeParams, decls));
           },
           TypeAlias: ({ alias, typeParams, name }) => {
             if (isImported(name)) {

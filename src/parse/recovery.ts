@@ -1,14 +1,13 @@
-import { TypeParamsContext } from "../infer/types";
 import { Slice } from "../utils/slice";
 import { Parser } from "./combinators";
 import { Symbol, Token } from "./token";
 
-export type RecoveryStrategy = (tokens: Slice<Token>, ctx: TypeParamsContext) => Slice<Token>;
+export type RecoveryStrategy = (tokens: Slice<Token>) => Slice<Token>;
 
 export const RecoveryStrategy = {
   stay: (tokens: Slice<Token>) => tokens,
-  skip: (p: Parser<any>): RecoveryStrategy => (tokens, ctx) => {
-    const [_, rem] = p.ref(tokens, ctx);
+  skip: (p: Parser<any>): RecoveryStrategy => tokens => {
+    const [_, rem] = p.ref(tokens);
     return rem;
   },
   reachNearest: (token: Token): RecoveryStrategy => {

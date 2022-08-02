@@ -52,12 +52,12 @@ export class Maybe<T> {
     return none;
   }
 
-  or(other: Maybe<T>): Maybe<T> {
+  or(other: Maybe<T> | (() => Maybe<T>)): Maybe<T> {
     if (this.raw.type === 'some') {
       return this;
     }
 
-    return other;
+    return typeof other === 'function' ? other() : other;
   }
 
   orDefault(defaultValue: T | (() => T)): T {

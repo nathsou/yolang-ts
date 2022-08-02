@@ -1,0 +1,12 @@
+
+fun f(a: u32, b: u32) {
+  a + b
+}
+
+fun f2(a: bool, b: bool) {
+  a && b
+}
+
+fun main() {
+  f(1, 2)
+}

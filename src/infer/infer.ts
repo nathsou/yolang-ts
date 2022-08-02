@@ -1,7 +1,6 @@
 import { DataType, match as matchVariant } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
 import { Name } from '../ast/name';
-import { MethodSig } from '../ast/sweet';
 import { Inst } from '../codegen/wasm/instructions';
 import { ValueType } from '../codegen/wasm/types';
 import { wasmTy } from '../codegen/wasm/utils';
@@ -9,9 +8,7 @@ import { Error } from '../errors/errors';
 import { gen, zip } from '../utils/array';
 import { Maybe, none, some } from '../utils/maybe';
 import { panic, proj } from '../utils/misc';
-import { diffSet } from '../utils/set';
 import { Env } from './env';
-import { Impl } from './impls';
 import { Row } from './records';
 import { signatures } from './signatures';
 import { MAX_TUPLE_INDEX, Tuple } from './tuples';
@@ -28,9 +25,6 @@ export type TypingError = DataType<{
   UnknownModuleMember: { path: string[], member: string },
   TEMP_OnlyFunctionModuleAccessAllowed: { path: string[], member: string },
   TupleIndexTooBig: { index: number },
-  MissingTraitMethods: { trait: string, methods: string[] },
-  SuperfluousTraitMethods: { trait: string, methods: string[] },
-  WrongNumberOfTraitArgs: { trait: string, expected: number, actual: number },
   ParsingError: { message: string },
   WasmStackUnderflow: { expectedLength: number, actualLength: number, inst: Inst },
   WasmStackOverflow: { expectedLength: number, actualLength: number },
@@ -178,41 +172,6 @@ const inferExpr = (
       );
 
       unify(tau, funTy);
-    },
-    MethodCall: expr => {
-      const { receiver, method, args } = expr;
-      inferExpr(receiver, ctx, errors);
-      args.forEach(arg => {
-        inferExpr(arg, ctx, errors);
-      });
-
-      TypeContext.findImplMethod(ctx, method, receiver.ty).match({
-        Some: ([impl, _subst, implInstTy]) => {
-          const isMethod = method in impl.methods;
-          if (!isMethod) {
-            errors.push(Error.Typing({ type: 'UnknownMethod', method, ty: receiver.ty }));
-          } else {
-            expr.impl = some(impl);
-
-            unify(implInstTy, receiver.ty);
-            const func = impl.methods[method];
-            const expectedFunTy = MonoTy.instantiateTyParams(
-              MonoTy.Fun(func.args.map(arg => arg.name.ty), func.body.ty),
-              impl.typeParams
-            );
-
-            const argsTysWithSelf = [receiver.ty, ...args.map(proj('ty'))];
-            const actualFunTy = MonoTy.Fun(argsTysWithSelf, tau);
-
-
-            unify(expectedFunTy, actualFunTy);
-            unify(func.body.ty, tau);
-          }
-        },
-        None: () => {
-          errors.push(Error.Typing({ type: 'UnknownMethod', method, ty: receiver.ty }));
-        },
-      });
     },
     ModuleAccess: ({ path, member }) => {
       TypeContext.resolveModule(ctx, path).match({
@@ -460,7 +419,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
       inferExpr(body, bodyCtx, errors);
 
       returnTy.do(retTy => {
-        unify(body.ty, retTy);
+        unify(body.ty, retTy, bodyCtx);
       });
 
       const funTy = PolyTy.instantiate(PolyTy.instantiateTyParams(typeParams, MonoTy.Fun(
@@ -499,92 +458,6 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
     TypeAlias: ({ name, typeParams, alias }) => {
       if (declare) {
         TypeContext.declareTypeAlias(ctx, name, typeParams, alias);
-      }
-    },
-    Impl: impl => {
-      if (declare) {
-        TypeContext.declareImpl(ctx, Impl.from(impl.ty, impl.typeParams, impl.decls));
-
-        const implCtx = TypeContext.clone(ctx);
-        TypeContext.declareTypeParams(implCtx, ...impl.typeParams);
-
-        for (const decl of impl.decls) {
-          inferDecl(decl, implCtx, declare, errors);
-        }
-      }
-    },
-    TraitImpl: impl => {
-      if (declare) {
-        const traitImpl = TypeContext.declareTraitImpl(ctx, impl);
-
-        const implCtx = TypeContext.clone(ctx);
-        TypeContext.declareTypeParams(implCtx, ...impl.typeParams);
-
-        traitImpl.match({
-          Some: impl => {
-            const { trait, methods } = impl;
-            const traitMethods = trait.methods.map(m => m.name);
-            const implMethods = Object.keys(methods);
-
-            // ensure that there is a one to one correspondence between
-            // the trait and the impl
-            const missing = diffSet(new Set(traitMethods), new Set(implMethods));
-            const superfluous = diffSet(new Set(implMethods), new Set(traitMethods));
-
-            if (missing.size > 0) {
-              errors.push(Error.Typing({
-                type: 'MissingTraitMethods',
-                trait: trait.name,
-                methods: [...missing],
-              }));
-            }
-
-            if (superfluous.size > 0) {
-              errors.push(Error.Typing({
-                type: 'SuperfluousTraitMethods',
-                trait: trait.name,
-                methods: [...superfluous],
-              }));
-            }
-
-            if (missing.size === 0 && superfluous.size === 0) {
-              TypeContext.declareImpl(ctx, impl);
-              const tyParamNamesWithSelf = ['Self', ...trait.typeParams];
-              const argsWithSelf = [impl.implementee, ...impl.args];
-              const tyParamsSubst = new Map<string, MonoTy>(zip(tyParamNamesWithSelf, argsWithSelf));
-
-              if (argsWithSelf.length !== tyParamNamesWithSelf.length) {
-                errors.push(Error.Typing({
-                  type: 'WrongNumberOfTraitArgs',
-                  trait: trait.name,
-                  expected: tyParamNamesWithSelf.length,
-                  actual: argsWithSelf.length,
-                }));
-              }
-
-              for (const [method, implMethod] of Object.entries(methods)) {
-                const methodSig = trait.methods.find(m => m.name === method)!;
-                const methodTy = MonoTy.substituteTyParams(MethodSig.asMonoTy(methodSig), tyParamsSubst);
-                inferDecl(implMethod, implCtx, false, errors);
-                const instTy = MonoTy.substituteTyParams(PolyTy.instantiate(implMethod.funTy).ty, tyParamsSubst);
-
-                unify(methodTy, instTy, implCtx);
-              }
-            }
-          },
-          None: () => {
-            errors.push(Error.Resolution({
-              type: 'TypeNotFound',
-              path: impl.trait.path,
-              name: impl.trait.name,
-            }));
-          }
-        });
-      }
-    },
-    Trait: trait => {
-      if (declare) {
-        TypeContext.declareTrait(ctx, trait);
       }
     },
     Use: ({ path, imports }) => {
