@@ -1,5 +1,5 @@
 
-fn fib(n) {
+fun fib(n) {
   mut a = 1
   mut b = 0
   mut i = 0
@@ -14,7 +14,7 @@ fn fib(n) {
   b
 }
 
-fn euler2() {
+fun euler2() {
   mut nextFib = fib(0)
   mut i = 0
   mut sum = 0
@@ -31,6 +31,6 @@ fn euler2() {
   sum
 }
 
-fn main() {
+fun main() {
   euler2()
 }

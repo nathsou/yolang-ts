@@ -1,5 +1,16 @@
 # Yolang
 
+## Syntax
+
+```rust
+// expressions
+3 * 7 + 1
+// functions
+fn main() {
+
+}
+```
+
 ## References
 
 - Sérgio Medeiros, Fabio Mascarenhas, 2018, [Syntax Error Recovery in Parsing Expression Grammars](https://arxiv.org/abs/1806.11150)

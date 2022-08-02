@@ -140,7 +140,13 @@ const unifyMany = (
         { variant: 'Record', row: { type: 'empty' } },
         { variant: 'Record', row: { type: 'empty' } }
       ], () => {
-        // do nothing
+        // the records have the same fields
+      })
+      .with([
+        { variant: 'Record', row: { type: 'empty' } },
+        { variant: 'Record', row: { type: 'extend' } }
+      ], () => {
+        // the lhs record is assignable to the rhs record
       })
       .with([
         { variant: 'Record', row: { type: 'extend' } },

@@ -645,7 +645,7 @@ initParser(
 // DECLARATIONS
 
 const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
-  keyword('fn'),
+  keyword('fun'),
   expectOrDefault(ident, `Expected identifier after 'fn' keyword`, '<?>'),
   scopedTypeParams(seq(
     expectOrDefault(argumentList, 'Expected arguments after function name', []),

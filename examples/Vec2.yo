@@ -4,11 +4,11 @@ type Vec2 = {
   y: u32
 }
 
-fn eq(a, b) {
+fun eq(a, b) {
   a.x == b.x && a.y == b.y
 }
 
-fn yo() {
+fun yo() {
   let u = Vec2 { x: 3, y: 4 }
   let v = Vec2 { x: 7, y: 11 }
 

@@ -422,6 +422,7 @@ export const rewriteFuncArgsPatternMatching = (
   nameEnv: NameEnv,
   errors: Error[],
 ): { args: Argument[], body: Expr } => {
+  const bodyEnv = NameEnv.make();
   const firstRefuttableArg = args.find(({ pattern }) => !SweetPattern.isIrrefutable(pattern));
   if (firstRefuttableArg !== undefined) {
     errors.push(Error.BitterConversion({
@@ -433,7 +434,7 @@ export const rewriteFuncArgsPatternMatching = (
   if (args.every(arg => arg.pattern.variant === 'Variable' || arg.pattern.variant === 'Any')) {
     return {
       args: args.map(({ pattern, mutable, annotation }, index) => ({
-        name: NameEnv.declare(nameEnv, pattern.variant === 'Variable' ? pattern.name : `_${index}`, mutable),
+        name: NameEnv.declare(bodyEnv, pattern.variant === 'Variable' ? pattern.name : `_${index}`, mutable),
         mutable,
         annotation
       })),
@@ -443,7 +444,6 @@ export const rewriteFuncArgsPatternMatching = (
 
   // transform (p1, p2, ...) -> body into (arg1, arg2, ...) -> match { (p1, p2, ...) => body }
   // where arg1, arg2, ... are variables
-  const bodyEnv = NameEnv.make();
   const varNames = args.map(({ mutable }, index) => NameEnv.declare(bodyEnv, `arg${index}`, mutable));
   const matchedExpr = args.length === 0 ?
     SweetExpr.Variable(varNames[0].original) :
@@ -452,6 +452,7 @@ export const rewriteFuncArgsPatternMatching = (
   const pattern = args.length === 0 ?
     args[0].pattern :
     SweetPattern.Tuple(args.map(({ pattern }) => pattern));
+
 
   const newBody = Expr.fromSweet(
     SweetExpr.Match(matchedExpr, none, [{ pattern, annotation: none, body }]),
