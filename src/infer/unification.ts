@@ -1,5 +1,5 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
-import { match, __ } from "ts-pattern";
+import { match, P } from "ts-pattern";
 import { Error } from "../errors/errors";
 import { zip } from "../utils/array";
 import { Maybe, none } from "../utils/maybe";
@@ -111,7 +111,7 @@ const unifyMany = (
       // Delete
       .when(([s, t]) => MonoTy.eq(s, t), () => { })
       // Eliminate
-      .with([{ variant: 'Var', value: { kind: 'Unbound' } }, __], ([s, t]) => {
+      .with([{ variant: 'Var', value: { kind: 'Unbound' } }, P._], ([s, t]) => {
         if (MonoTy.occurs(s.value.id, t)) {
           errors.push(Error.Unification({ type: 'RecursiveType', s, t }));
         } else {
@@ -119,10 +119,10 @@ const unifyMany = (
         }
       })
       // Orient
-      .with([__, { variant: 'Var' }], ([s, t]) => {
+      .with([P._, { variant: 'Var' }], ([s, t]) => {
         pushEqs([t, s]);
       })
-      .with([{ variant: 'Var', value: { kind: 'Link' } }, __], ([s, t]) => {
+      .with([{ variant: 'Var', value: { kind: 'Link' } }, P._], ([s, t]) => {
         pushEqs([s, t]);
       })
       .with([{ variant: 'Fun' }, { variant: 'Fun' }], ([s, t]) => {
