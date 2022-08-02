@@ -2,7 +2,7 @@ import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { match, __ } from "ts-pattern";
 import { Error } from "../errors/errors";
 import { zip } from "../utils/array";
-import { Maybe, none, some } from "../utils/maybe";
+import { Maybe, none } from "../utils/maybe";
 import { panic } from "../utils/misc";
 import { Result } from "../utils/result";
 import { Row } from "./records";
@@ -44,20 +44,20 @@ const unifyMany = (
     eqs.push(...newEqs.map(([s, t]) => [MonoTy.deref(s), MonoTy.deref(t)] as [MonoTy, MonoTy]));
   };
 
-  const resolveTypeAlias = (ty: VariantOf<MonoTy, 'Const'>): Maybe<{ ty: MonoTy, params: TypeParams }> => {
-    if (MonoTy.isPrimitive(ty)) {
-      return none;
-    }
-
-    const res = TypeContext.findTypeAlias(ctx, ty.path, ty.name).map(([ty, params]) => ({ ty, params }));
-    if (res.isNone()) {
-      errors.push(Error.Unification({ type: 'CouldNotResolveType', ty }));
-    }
-
-    return res;
-  };
-
   const instantiateGenericTyConst = (c: VariantOf<MonoTy, 'Const'>): Maybe<MonoTy> => {
+    const resolveTypeAlias = (ty: VariantOf<MonoTy, 'Const'>): Maybe<{ ty: MonoTy, params: TypeParams }> => {
+      if (MonoTy.isPrimitive(ty)) {
+        return none;
+      }
+
+      const res = TypeContext.findTypeAlias(ctx, ty.path, ty.name).map(([ty, params]) => ({ ty, params }));
+      if (res.isNone()) {
+        errors.push(Error.Unification({ type: 'CouldNotResolveType', ty }));
+      }
+
+      return res;
+    };
+
     // Type parameters are parsed as Const types
     // if the type parameters environment contains this Const name
     // then interpret it as a type parameter

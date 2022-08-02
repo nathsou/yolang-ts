@@ -1,5 +1,4 @@
-import { DataType, match as matchVariant } from "itsamatch";
-import { match } from "ts-pattern";
+import { DataType, match, matchMany } from "itsamatch";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
 import { cond, id, panic, parenthesized } from "../utils/misc";
@@ -37,7 +36,7 @@ export const showTyVarId = (n: TyVarId): string => {
 };
 
 export const MonoTy = {
-  Var: (tv: TyVar) => matchVariant(tv, {
+  Var: (tv: TyVar) => match(tv, {
     Unbound: (tv): MonoTy => ({ variant: 'Var', value: tv }),
     Link: ({ to }): MonoTy => ({ variant: 'Var', value: { kind: 'Link', to: MonoTy.deref(to) } }),
   }, 'kind'),
@@ -55,7 +54,7 @@ export const MonoTy = {
   primitiveTypes: new Set(['u32', 'bool', '()']),
   isPrimitive: (ty: MonoTy): boolean => ty.variant === 'Const' && ty.path.length === 0 && MonoTy.primitiveTypes.has(ty.name),
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
-    matchVariant(ty, {
+    match(ty, {
       Var: ({ value }) => {
         if (value.kind === 'Unbound') {
           fvs.add(value.id);
@@ -115,7 +114,7 @@ export const MonoTy = {
     return PolyTy.make(quantified, ty);
   },
   fresh: () => MonoTy.Var(TyVar.Unbound(Context.freshTyVarIndex())),
-  occurs: (x: TyVarId, t: MonoTy): boolean => matchVariant(t, {
+  occurs: (x: TyVarId, t: MonoTy): boolean => match(t, {
     Var: ({ value }) => {
       if (value.kind === 'Unbound') {
         return value.id === x;
@@ -151,8 +150,8 @@ export const MonoTy = {
       );
     };
 
-    return matchVariant(ty, {
-      Var: ({ value }) => matchVariant(value, {
+    return match(ty, {
+      Var: ({ value }) => match(value, {
         Unbound: ({ id }) => subst.has(id) ? subst.get(id)! : ty,
         Link: ({ to }) => MonoTy.substitute(to, subst),
       }, 'kind'),
@@ -187,7 +186,7 @@ export const MonoTy = {
       );
     };
 
-    return matchVariant(ty, {
+    return match(ty, {
       Var: () => {
         if (ty.variant === 'Var' && ty.value.kind === 'Link') {
           return MonoTy.substituteTyParams(ty.value.to, subst);
@@ -221,8 +220,8 @@ export const MonoTy = {
     const subst = new Map(zip(tyParams, tyParams.map(MonoTy.fresh)));
     return MonoTy.substituteTyParams(ty, subst);
   },
-  show: (ty: MonoTy): string => matchVariant(ty, {
-    Var: ({ value }) => matchVariant(value, {
+  show: (ty: MonoTy): string => match(ty, {
+    Var: ({ value }) => match(value, {
       Unbound: ({ id }) => showTyVarId(id),
       Link: ({ to }) => MonoTy.show(to),
     }, 'kind'),
@@ -249,51 +248,40 @@ export const MonoTy = {
     },
     NamedRecord: ({ name }) => name,
   }),
-  eq: (s: MonoTy, t: MonoTy): boolean =>
-    match<[MonoTy, MonoTy]>([MonoTy.deref(s), MonoTy.deref(t)])
-      .with(
-        [
-          { variant: 'Var', value: { kind: 'Unbound' } },
-          { variant: 'Var', value: { kind: 'Unbound' } },
-        ],
-        ([{ value: s }, { value: t }]) => s.id === t.id
-      )
-      .with(
-        [{ variant: 'Var' }, { variant: 'Var' }],
-        () => MonoTy.eq(s, t),
-      )
-      .with(
-        [{ variant: 'Const' }, { variant: 'Const' }],
-        ([s, t]) => {
-          if (
-            s.name === t.name &&
-            s.args.length === t.args.length &&
-            s.path.length === t.path.length &&
-            zip(s.path, t.path).every(([s, t]) => s === t)
-          ) {
-            return s.args.every((arg, i) => MonoTy.eq(arg, t.args[i]));
-          }
+  eq: (s: MonoTy, t: MonoTy): boolean => matchMany([MonoTy.deref(s), MonoTy.deref(t)], {
+    "Var Var": ({ value: v1 }, { value: v2 }) => {
+      if (v1.kind === 'Unbound' && v2.kind === 'Unbound') {
+        return v1.id === v2.id;
+      }
 
-          return false;
-        }
-      )
-      .with(
-        [{ variant: 'Fun' }, { variant: 'Fun' }],
-        ([s, t]) => {
-          if (s.args.length === t.args.length && MonoTy.eq(s.ret, t.ret)) {
-            return s.args.every((arg, i) => MonoTy.eq(arg, t.args[i]));
-          }
+      if (v1.kind === 'Link' && v2.kind === 'Link') {
+        return MonoTy.eq(v1.to, v2.to);
+      }
 
-          return false;
-        }
-      )
-      .with([{ variant: 'Record' }, { variant: 'Record' }], ([s, t]) => {
-        return Row.strictEq(s.row, t.row);
-      })
-      .with([{ variant: 'Tuple' }, { variant: 'Tuple' }], ([s, t]) => {
-        return Tuple.eq(s.tuple, t.tuple);
-      })
-      .otherwise(() => false),
+      return false;
+    },
+    'Const Const': (c1, c2) => {
+      if (
+        c1.name === c2.name &&
+        c1.args.length === c2.args.length &&
+        zip(c1.path, c2.path).every(([s, t]) => s === t)
+      ) {
+        return zip(c1.args, c2.args).every(([s, t]) => MonoTy.eq(s, t));
+      }
+
+      return false;
+    },
+    'Fun Fun': (f, g) => {
+      if (f.args.length === g.args.length && MonoTy.eq(f.ret, g.ret)) {
+        return zip(f.args, g.args).every(([s, t]) => MonoTy.eq(s, t));
+      }
+
+      return false;
+    },
+    'Record Record': (r1, r2) => Row.strictEq(r1.row, r2.row),
+    'Tuple Tuple': (t1, t2) => Tuple.eq(t1.tuple, t2.tuple),
+    _: () => false,
+  }),
   isDetermined: (s: MonoTy): boolean => PolyTy.isDetermined([[], s]),
 };
 
@@ -351,8 +339,8 @@ export const PolyTy = {
   eq: (s: PolyTy, t: PolyTy): boolean => {
     return PolyTy.show(PolyTy.canonicalize(s)) === PolyTy.show(PolyTy.canonicalize(t));
   },
-  isDetermined: ([vars, monoTy]: PolyTy): boolean => matchVariant(monoTy, {
-    Var: ({ value }) => matchVariant(value, {
+  isDetermined: ([vars, monoTy]: PolyTy): boolean => match(monoTy, {
+    Var: ({ value }) => match(value, {
       Unbound: ({ id }) => vars.includes(id),
       Link: ({ to }) => PolyTy.isDetermined([vars, to]),
     }, 'kind'),

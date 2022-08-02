@@ -1,5 +1,4 @@
-import { match as matchVariant, VariantOf } from 'itsamatch';
-import { match, select } from 'ts-pattern';
+import { match, VariantOf } from 'itsamatch';
 import { Argument, Decl, Expr, Imports, Pattern, Prog, Stmt } from '../ast/sweet';
 import { Inst } from '../codegen/wasm/instructions';
 import { Row } from '../infer/records';
@@ -22,7 +21,7 @@ const pattern = uninitialized<Pattern>();
 
 // MISC
 
-const ident = satisfyBy<string>(token => matchVariant(token, {
+const ident = satisfyBy<string>(token => match(token, {
   Identifier: ({ name }) => isLowerCase(name[0]) ? some(name) : none,
   _: () => none
 }));
@@ -34,7 +33,7 @@ const stringIn = <S extends string>(names: Set<S>) => map(
   token => (token as VariantOf<Token, 'Identifier'>).name as S
 );
 
-const upperIdent = satisfyBy<string>(token => matchVariant(token, {
+const upperIdent = satisfyBy<string>(token => match(token, {
   Identifier: ({ name }) => isUpperCase(name[0]) ? some(name) : none,
   _: () => none
 }));
@@ -178,34 +177,20 @@ const argumentList = map(parens(optional(commas(argument))), args => args.orDefa
 // EXPRESSIONS
 
 const integer = satisfyBy<number>(token =>
-  match(token)
-    .with({
-      variant: 'Const',
-      value: {
-        variant: 'u32',
-        value: select()
-      }
-    },
-      n => some(n)
-    )
-    .otherwise(() => none)
+  token.variant === 'Const' &&
+    token.value.variant === 'u32' ?
+    some(token.value.value) :
+    none
+);
+
+const boolConst = satisfyBy<Const>(token =>
+  token.variant === 'Const' &&
+    token.value.variant === 'bool' ?
+    some(Const.bool(token.value.value)) :
+    none
 );
 
 const integerConst = map(integer, Const.u32);
-
-const boolConst = satisfyBy<Const>(token =>
-  match(token)
-    .with({
-      variant: 'Const',
-      value: {
-        variant: 'bool',
-        value: select()
-      }
-    },
-      b => some(Const.bool(b))
-    )
-    .otherwise(() => none)
-);
 
 const unitConst: Parser<Const> = map(
   seq(symbol('('), symbol(')')),
@@ -404,7 +389,7 @@ const fieldAccess = chainLeft(
       map(integer, n => ({ variant: 'int', value: n })),
     ), `Expected identifier or integer after '.'`, { variant: 'ident', name: '<?>' }),
   ),
-  (lhs, _, [field]) => matchVariant(field, {
+  (lhs, _, [field]) => match(field, {
     ident: ({ name }) => Expr.FieldAccess(lhs, name),
     int: ({ value: n }) => Expr.TupleIndexing(lhs, n),
   })
