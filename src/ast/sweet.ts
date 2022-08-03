@@ -237,19 +237,6 @@ export const Decl = {
   }),
 };
 
-export type MethodSig = {
-  name: string,
-  typeParams: TypeParams,
-  args: Argument[],
-  ret: MonoTy,
-};
-
-export const MethodSig = {
-  make: (name: string, typeParams: TypeParams, args: Argument[], ret: MonoTy): MethodSig => ({ name, typeParams, args, ret }),
-  show: (method: MethodSig): string => `fn ${method.name}${TypeParams.show(method.typeParams)}(${joinWith(method.args, Argument.show, ', ')}) -> ${MonoTy.show(method.ret)}`,
-  asMonoTy: (method: MethodSig): MonoTy => MonoTy.Fun(method.args.map(Argument.asMonoTy), method.ret),
-};
-
 export type Prog = Decl[];
 
 type RewriteFuncs = {

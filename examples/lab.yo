@@ -1,12 +1,12 @@
 
-fun f(a: u32, b: u32) {
-  a + b
-}
+fun f(a, b) { a + b }
 
-fun f2(a: bool, b: bool) {
-  a && b
-}
+fun f(a, b) { a && b }
+
+fun f(a) { a + 1 }
+
+fun f(b) { !b }
 
 fun main() {
-  f(1, 2)
+  f(true, false)
 }

@@ -142,7 +142,7 @@ export const TypeContext = {
           Use: () => { },
           Function: ({ name }) => {
             if (isImported(name.original)) {
-              Env.addMono(ctx.env, name, name.ty);
+              Env.addPolyFunc(ctx.env, name, MonoTy.toPoly(name.ty));
             }
           },
           Error: () => { },

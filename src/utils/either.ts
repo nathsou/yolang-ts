@@ -1,3 +1,4 @@
+import { panic } from "./misc";
 
 type Raw<L, R> = { type: 'left', value: L } | { type: 'right', value: R };
 
@@ -37,5 +38,25 @@ export class Either<L, R> {
 
   public isRight(): boolean {
     return this.raw.type === 'right';
+  }
+
+  public unwrapLeft(message?: string): L {
+    if (this.raw.type === 'left') {
+      return this.raw.value;
+    }
+
+    return panic(`Called unwrapLeft on a right either: ${message}`);
+  }
+
+  public unwrapRight(message?: string): R {
+    if (this.raw.type === 'right') {
+      return this.raw.value;
+    }
+
+    return panic(`Called unwrapRight on a left either: ${message}`);
+  }
+
+  public value(): Readonly<L | R> {
+    return this.raw.value;
   }
 }

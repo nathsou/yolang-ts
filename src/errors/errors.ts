@@ -3,7 +3,7 @@ import { BitterConversionError, Expr } from "../ast/bitter";
 import { Inst } from "../codegen/wasm/instructions";
 import { TypingError } from "../infer/infer";
 import { MAX_TUPLE_INDEX, Tuple } from "../infer/tuples";
-import { MonoTy } from "../infer/types";
+import { MonoTy, PolyTy } from "../infer/types";
 import { UnificationError } from "../infer/unification";
 import { ParserError } from "../parse/combinators";
 import { ResolutionError } from '../resolve/resolve';
@@ -15,6 +15,10 @@ export type Error = DataType<{
   Typing: { err: TypingError },
   Unification: { err: UnificationError },
 }>;
+
+const formatOverloadingCandidates = (types: PolyTy[]): string => {
+  return types.map(ty => `  ${PolyTy.show(ty)}`).join('\n');
+};
 
 export const Error = {
   Resolution: (err: ResolutionError): Error => ({ variant: 'Resolution', err }),
@@ -35,9 +39,9 @@ export const Error = {
     Typing: ({ err }) => matchVariant(err, {
       ParsingError: ({ message }) => `Parsing error: ${message}`,
       UnboundVariable: ({ name }) => `Unbound variable: '${name}'`,
+      UnknownFunction: ({ name }) => `Unknown function: '${name}'`,
       ImmutableVariable: ({ name }) => `Cannot update immutable variable '${name}'`,
-      UnassignableExpression: ({ expr }) => `${Expr.showSweet(expr)} is not an assignable expression `,
-      UnknownMethod: ({ method, ty }) => `Unknown method '${method}' in type ${MonoTy.show(ty)}`,
+      UnassignableExpression: ({ expr }) => `${Expr.showSweet(expr)} is not an assignable expression`,
       UnknownModule: ({ path }) => `Unknown module '${path.join('.')}'`,
       UnknownModuleMember: ({ path, member }) => `Unknown member '${member}' in module '${path.join('.')}'`,
       TEMP_OnlyFunctionModuleAccessAllowed: ({ path }) => `(temp) Only functions can be accessed from module '${path.join('.')}'`,
@@ -46,6 +50,8 @@ export const Error = {
       WasmStackOverflow: ({ expectedLength, actualLength }) => `Wasm stack overflow, expected ${expectedLength} elements, got ${actualLength}`,
       InconsistentWasmStack: ({ expectedTy, actualTy, inst }) => `Inconsistent wasm stack, expected a value of type ${expectedTy}, got ${actualTy} in ${Inst.showRaw(inst)}`,
       WasmBlockExpressionsRequireTypeAnnotations: ({ expr }) => `Expressions inside a wasm block require type annotations, type of '${Expr.showSweet(expr)}' is not fully determined`,
+      NoOverloadMatchesCallSignature: ({ name, f, candidates }) => `No overload of '${name}' matches the call signature '${MonoTy.show(f)}', candidates:\n${formatOverloadingCandidates(candidates)}`,
+      AmbiguousOverload: ({ name, f, matches }) => `Ambiguous overload for '${name}' with call signature '${MonoTy.show(f)}', matches:\n${formatOverloadingCandidates(matches)}`,
     }, 'type'),
     Resolution: ({ err }) => matchVariant(err, {
       ModuleNotFound: ({ name }) => `Module '${name}' not found`,

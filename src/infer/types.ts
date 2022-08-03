@@ -316,7 +316,9 @@ export const PolyTy = {
     const freeVarsMonoTy = MonoTy.freeTypeVars(monoTy);
     return diffSet(freeVarsMonoTy, new Set(quantified));
   },
-  show: ([quantified, monoTy]: PolyTy): string => {
+  show: (ty: PolyTy, canonical = true): string => {
+    const [quantified, monoTy] = canonical ? PolyTy.canonicalize(ty) : ty;
+
     if (quantified.length === 0) {
       return MonoTy.show(monoTy);
     }

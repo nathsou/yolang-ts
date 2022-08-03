@@ -8,7 +8,7 @@ import { Const } from "../parse/token";
 import { Either } from "../utils/either";
 import { Maybe, none } from "../utils/maybe";
 import { id } from "../utils/misc";
-import { Name, NameEnv } from "./name";
+import { FuncName, NameEnv, VarName } from "./name";
 import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Imports, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
 
 // Bitter expressions are *unsugared* representations
@@ -21,7 +21,7 @@ type WithSweetRefAndType<T> = {
 
 export type Pattern = DataType<{
   Const: { value: Const },
-  Variable: { name: Name },
+  Variable: { name: VarName },
   Tuple: { elements: Pattern[] },
   Any: {},
   Error: { message: string },
@@ -29,13 +29,13 @@ export type Pattern = DataType<{
 
 export const Pattern = {
   Const: (value: Const): Pattern => ({ variant: 'Const', value }),
-  Variable: (name: Name): Pattern => ({ variant: 'Variable', name }),
+  Variable: (name: VarName): Pattern => ({ variant: 'Variable', name }),
   Tuple: (elements: Pattern[]): Pattern => ({ variant: 'Tuple', elements }),
   Any: (): Pattern => ({ variant: 'Any' }),
   Error: (message: string): Pattern => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetPattern, nameEnv: NameEnv): Pattern => match(sweet, {
     Const: ({ value }): Pattern => Pattern.Const(value),
-    Variable: ({ name }): Pattern => Pattern.Variable(NameEnv.declare(nameEnv, name, false)),
+    Variable: ({ name }): Pattern => Pattern.Variable(NameEnv.declareVar(nameEnv, name, false)),
     Tuple: ({ elements }): Pattern => Pattern.Tuple(elements.map(e => Pattern.fromSweet(e, nameEnv))),
     Any: (): Pattern => Pattern.Any(),
     Error: ({ message }): Pattern => Pattern.Error(message),
@@ -47,16 +47,16 @@ export const Pattern = {
     Any: (): MonoTy => MonoTy.fresh(),
     Error: (): MonoTy => MonoTy.fresh(),
   }),
-  vars: (pattern: Pattern): Name[] => match(pattern, {
+  vars: (pattern: Pattern): VarName[] => match(pattern, {
     Const: () => [],
     Variable: ({ name }) => [name],
     Tuple: ({ elements }) => elements.flatMap(Pattern.vars),
-    Any: (): Name[] => [],
-    Error: (): Name[] => [],
+    Any: (): VarName[] => [],
+    Error: (): VarName[] => [],
   }),
 };
 
-type Argument = { name: Name, mutable: boolean, annotation: Maybe<MonoTy> };
+type Argument = { name: VarName, mutable: boolean, annotation: Maybe<MonoTy> };
 
 export const Argument = {
   asMonoTy: ({ annotation }: Argument): MonoTy => annotation.orDefault(MonoTy.fresh),
@@ -64,8 +64,8 @@ export const Argument = {
 
 export type Expr = DataType<WithSweetRefAndType<{
   Const: { value: Const },
-  Variable: { name: Name },
-  NamedFuncCall: { name: Name, typeParams: MonoTy[], args: Expr[] },
+  Variable: { name: VarName },
+  NamedFuncCall: { name: Either<string, FuncName>, typeParams: MonoTy[], args: Expr[] },
   Call: { lhs: Expr, args: Expr[] },
   BinaryOp: { lhs: Expr, op: BinaryOperator, rhs: Expr },
   UnaryOp: { op: UnaryOperator, expr: Expr },
@@ -92,8 +92,8 @@ const typed = <T extends {}>(obj: T, sweet: SweetExpr): T & { ty: MonoTy, sweet:
 
 export const Expr = {
   Const: (c: Const, sweet: SweetExpr): Expr => ({ variant: 'Const', value: c, sweet, ty: Const.type(c) }),
-  Variable: (name: Name, sweet: SweetExpr): Expr => typed({ variant: 'Variable', name }, sweet),
-  NamedFuncCall: (name: Name, typeParams: MonoTy[], args: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'NamedFuncCall', name, typeParams, args }, sweet),
+  Variable: (name: VarName, sweet: SweetExpr): Expr => typed({ variant: 'Variable', name }, sweet),
+  NamedFuncCall: (name: Either<string, FuncName>, typeParams: MonoTy[], args: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'NamedFuncCall', name, typeParams, args }, sweet),
   Call: (lhs: Expr, args: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Call', lhs, args }, sweet),
   BinaryOp: (lhs: Expr, op: BinaryOperator, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'BinaryOp', lhs, op, rhs }, sweet),
   UnaryOp: (op: UnaryOperator, expr: Expr, sweet: SweetExpr): Expr => typed({ variant: 'UnaryOp', op, expr }, sweet),
@@ -115,9 +115,9 @@ export const Expr = {
 
     return match(sweet, {
       Const: ({ value }) => Expr.Const(value, sweet),
-      Variable: ({ name }) => Expr.Variable(NameEnv.resolve(nameEnv, name), sweet),
+      Variable: ({ name }) => Expr.Variable(NameEnv.resolveVar(nameEnv, name), sweet),
       Call: ({ lhs, typeParams, args }) => match(lhs, {
-        Variable: ({ name }) => Expr.NamedFuncCall(NameEnv.resolve(nameEnv, name), typeParams, args.map(arg => go(arg)), sweet),
+        Variable: ({ name }) => Expr.NamedFuncCall(Either.left(name), typeParams, args.map(arg => go(arg)), sweet),
         _: () => Expr.Call(go(lhs), args.map(arg => go(arg)), sweet)
       }),
       BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(go(lhs), op, go(rhs), sweet),
@@ -201,13 +201,13 @@ export const Expr = {
 
     const newExpr = match(expr, {
       Const: ({ value }) => Expr.Const(value, expr.sweet),
-      Variable: ({ name }) => Expr.Variable(NameEnv.resolve(nameEnv, name.original, name.renaming), expr.sweet),
+      Variable: ({ name }) => Expr.Variable(NameEnv.resolveVar(nameEnv, name.original, name.renaming), expr.sweet),
       NamedFuncCall: ({ name, typeParams, args }) => Expr.NamedFuncCall(name, typeParams, args.map(arg => go(arg)), expr.sweet),
       Call: ({ lhs, args }) => Expr.Call(go(lhs), args.map(arg => go(arg)), expr.sweet),
       BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(go(lhs), op, go(rhs), expr.sweet),
       UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, go(expr), expr.sweet),
       Error: ({ message }) => Expr.Error(message, expr.sweet),
-      Closure: ({ args, body }) => Expr.Closure(args.map(arg => ({ ...arg, name: NameEnv.resolve(nameEnv, arg.name.original, arg.name.renaming) })), go(body), expr.sweet),
+      Closure: ({ args, body }) => Expr.Closure(args.map(arg => ({ ...arg, name: NameEnv.resolveVar(nameEnv, arg.name.original, arg.name.renaming) })), go(body), expr.sweet),
       Block: ({ statements, lastExpr }) => Expr.Block(statements.map(s => Stmt.rewrite(s, nameEnv, rewriteExpr)), lastExpr.map(e => go(e)), expr.sweet),
       IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(go), expr.sweet),
       Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs), expr.sweet),
@@ -227,19 +227,19 @@ export const Expr = {
 };
 
 export type Stmt = DataType<{
-  Let: { name: Name, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy> },
+  Let: { name: VarName, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy> },
   Expr: { expr: Expr },
   Error: { message: string },
 }>;
 
 export const Stmt = {
-  Let: (name: Name, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
+  Let: (name: VarName, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetStmt, nameEnv: NameEnv, errors: Error[]): Stmt => {
     return match(sweet, {
       Let: ({ name, expr, mutable, annotation }) => Stmt.Let(
-        NameEnv.declare(nameEnv, name, mutable),
+        NameEnv.declareVar(nameEnv, name, mutable),
         Expr.fromSweet(expr, nameEnv, errors),
         mutable,
         annotation
@@ -251,7 +251,7 @@ export const Stmt = {
   rewrite: (stmt: Stmt, nameEnv: NameEnv, f: (expr: Expr) => Expr): Stmt => {
     return match(stmt, {
       Let: ({ name, expr, mutable, annotation }) => Stmt.Let(
-        NameEnv.resolve(nameEnv, name.original),
+        NameEnv.resolveVar(nameEnv, name.original),
         Expr.rewrite(expr, nameEnv, f),
         mutable,
         annotation
@@ -268,9 +268,9 @@ type WithTypeContext<T> = {
 
 export type Decl = DataType<WithTypeContext<{
   Function: {
-    name: Name,
+    name: FuncName,
     typeParams: TypeParams,
-    args: { name: Name, mutable: boolean, annotation: Maybe<MonoTy> }[],
+    args: { name: VarName, mutable: boolean, annotation: Maybe<MonoTy> }[],
     returnTy: Maybe<MonoTy>,
     body: Expr,
     funTy: PolyTy,
@@ -283,9 +283,9 @@ export type Decl = DataType<WithTypeContext<{
 
 export const Decl = {
   Function: (
-    name: Name,
+    name: FuncName,
     typeParams: TypeParams,
-    args: { name: Name, mutable: boolean, annotation: Maybe<MonoTy> }[],
+    args: { name: VarName, mutable: boolean, annotation: Maybe<MonoTy> }[],
     returnTy: Maybe<MonoTy>,
     body: Expr
   ): Decl => ({
@@ -326,12 +326,12 @@ export const Decl = {
   TypeAlias: (name: string, typeParams: TypeParams, alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
   Use: (path: string[], imports: Imports): Decl => ({ variant: 'Use', path, imports }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
-  fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, declareFuncNames: boolean, moduleStack: string[], errors: Error[]): Decl =>
+  fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, moduleStack: string[], errors: Error[]): Decl =>
     match(sweet, {
       Function: ({ name, typeParams, args, returnTy, body }) => {
         const withoutPatterns = rewriteFuncArgsPatternMatching(args, body, nameEnv, errors);
-        const nameRef: Name = declareFuncNames ? NameEnv.declare(nameEnv, name, false) : NameEnv.resolve(nameEnv, name);
-        nameRef.renaming = [...moduleStack, name].join('_');
+        const nameRef = NameEnv.declareFunc(nameEnv, name);
+        nameRef.renaming = [...moduleStack, name].join('.');
 
         return Decl.Function(
           nameRef,
@@ -344,15 +344,9 @@ export const Decl = {
       Module: ({ name, decls }) => {
         const modEnv = NameEnv.clone(nameEnv);
 
-        for (const decl of decls) {
-          if (decl.variant === 'Function') {
-            NameEnv.declare(modEnv, decl.name, false);
-          }
-        }
-
         return Decl.Module(
           name,
-          decls.map(decl => Decl.fromSweet(decl, modEnv, false, [...moduleStack, name], errors))
+          decls.map(decl => Decl.fromSweet(decl, modEnv, [...moduleStack, name], errors))
         );
       },
       TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias(name, typeParams, alias),
@@ -364,9 +358,9 @@ export const Decl = {
 
     const newDecl = match(decl, {
       Function: ({ name, typeParams, args, body, returnTy }) => Decl.Function(
-        NameEnv.resolve(nameEnv, name.original, name.renaming),
+        NameEnv.declareFunc(nameEnv, name.original, name.renaming),
         typeParams,
-        args.map(arg => ({ ...arg, name: NameEnv.resolve(nameEnv, arg.name.original, arg.name.renaming) })),
+        args.map(arg => ({ ...arg, name: NameEnv.resolveVar(nameEnv, arg.name.original, arg.name.renaming) })),
         returnTy,
         Expr.rewrite(body, nameEnv, rewriteExpr),
       ),
@@ -390,21 +384,10 @@ export type BitterConversionError = {
 export const Prog = {
   fromSweet: (prog: SweetProg): [prog: Prog, errors: Error[]] => {
     const nameEnv = NameEnv.make();
-
-    // declare all function names beforehand
-    // so that they can be used anywhere in the program
-    for (const decl of prog) {
-      if (decl.variant === 'Function') {
-        NameEnv.declare(nameEnv, decl.name, false);
-      }
-    }
-
     const errors: Error[] = [];
-
     const bitterProg = prog.map(decl => Decl.fromSweet(
       decl,
       nameEnv,
-      false, // do not redeclare function names
       [],
       errors
     ));
@@ -434,7 +417,7 @@ export const rewriteFuncArgsPatternMatching = (
   if (args.every(arg => arg.pattern.variant === 'Variable' || arg.pattern.variant === 'Any')) {
     return {
       args: args.map(({ pattern, mutable, annotation }, index) => ({
-        name: NameEnv.declare(bodyEnv, pattern.variant === 'Variable' ? pattern.name : `_${index}`, mutable),
+        name: NameEnv.declareVar(bodyEnv, pattern.variant === 'Variable' ? pattern.name : `_${index}`, mutable),
         mutable,
         annotation
       })),
@@ -444,7 +427,7 @@ export const rewriteFuncArgsPatternMatching = (
 
   // transform (p1, p2, ...) -> body into (arg1, arg2, ...) -> match { (p1, p2, ...) => body }
   // where arg1, arg2, ... are variables
-  const varNames = args.map(({ mutable }, index) => NameEnv.declare(bodyEnv, `arg${index}`, mutable));
+  const varNames = args.map(({ mutable }, index) => NameEnv.declareVar(bodyEnv, `arg${index}`, mutable));
   const matchedExpr = args.length === 0 ?
     SweetExpr.Variable(varNames[0].original) :
     SweetExpr.Tuple(varNames.map(name => SweetExpr.Variable(name.original)));

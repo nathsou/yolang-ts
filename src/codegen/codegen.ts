@@ -1,6 +1,6 @@
 import { DataType, match, VariantOf } from "itsamatch";
 import { Decl, Expr, Prog, Stmt } from "../ast/bitter";
-import { Name } from "../ast/name";
+import { FuncName, VarName } from "../ast/name";
 import { MonoTy, PolyTy } from "../infer/types";
 import { last, reverse } from "../utils/array";
 import { Maybe } from "../utils/maybe";
@@ -102,11 +102,14 @@ export class Compiler {
     return func.index;
   }
 
-  private call(funcName: Name, args: Expr[]): IRExpr {
-    return match(this.resolveVar(funcName), {
-      Func: ({ idx }) => IRExpr.call(idx, args.map(a => this.compileExpr(a))),
-      _: () => panic('indirect function call not supported yet'),
-    });
+  private call(funcName: FuncName, args: Expr[]): IRExpr {
+    if (this.topLevelFuncs.has(funcName.renaming)) {
+      const f = this.topLevelFuncs.get(funcName.renaming)!;
+      return IRExpr.call(f.index, args.map(a => this.compileExpr(a)));
+    } else {
+      console.log([...this.topLevelFuncs.keys()]);
+      return panic('indirect function call not supported yet')
+    }
   }
 
   private compileExpr(expr: Expr): IRExpr {
@@ -159,7 +162,7 @@ export class Compiler {
         });
       },
       NamedFuncCall: ({ name, args }) => {
-        return this.call(name, args);
+        return this.call(name.unwrapRight('codegen: unresolved function name'), args);
       },
       Call: ({ lhs }) => {
         return panic('unhandled call target: ' + Expr.showSweet(lhs));
@@ -208,7 +211,7 @@ export class Compiler {
     }
   }
 
-  private resolveVar(name: Name): ResolvedVar {
+  private resolveVar(name: VarName): ResolvedVar {
     return Maybe.firstSomeBy(reverse(this.funcStack), f => Func.resolveVar(f, name.renaming)).match({
       Some: ([funcIdx, index]) => {
         if (index !== 0) {

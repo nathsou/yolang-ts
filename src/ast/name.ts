@@ -1,51 +1,79 @@
 import { MonoTy } from "../infer/types";
-import { panic } from "../utils/misc";
+import { panic, pushRecord } from "../utils/misc";
 
-export type Name = {
+export type FuncName = {
   readonly original: string,
   renaming: string,
   ty: MonoTy,
-  readonly mutable: boolean,
-  isUndeclared: boolean,
 };
 
-export const Name = {
-  fresh: (name: string, mutable: boolean, isUndeclared = false): Name => ({
+export type VarName = FuncName & {
+  readonly mutable: boolean,
+  readonly isUndeclared: boolean,
+};
+
+export const FuncName = {
+  fresh: (name: string): FuncName => ({
+    original: name,
+    renaming: name,
+    ty: MonoTy.fresh(),
+  }),
+  clone: (name: FuncName, freshTy = true): FuncName => ({ ...name, ty: freshTy ? MonoTy.fresh() : name.ty }),
+};
+
+export const VarName = {
+  fresh: (name: string, mutable: boolean, isUndeclared = false): VarName => ({
     original: name,
     renaming: name,
     ty: MonoTy.fresh(),
     mutable,
     isUndeclared,
   }),
-  clone: (name: Name, freshTy = true): Name => ({ ...name, ty: freshTy ? MonoTy.fresh() : name.ty }),
+  clone: (name: VarName, freshTy = true): VarName => ({ ...name, ty: freshTy ? MonoTy.fresh() : name.ty }),
 };
 
-export type NameEnv = Record<string, Name>;
+export type NameEnv = { vars: Record<string, VarName>, funcs: Record<string, FuncName[]> };
 
 export const NameEnv = {
-  make: (): NameEnv => ({}),
-  clone: (env: NameEnv): NameEnv => ({ ...env }),
-  declare: (env: NameEnv, name: string, mutable: boolean, renaming = name): Name => {
+  make: (): NameEnv => ({ vars: {}, funcs: {} }),
+  clone: (env: NameEnv): NameEnv => ({ vars: { ...env.vars }, funcs: { ...env.funcs } }),
+  declareVar: (env: NameEnv, name: string, mutable: boolean, renaming = name): VarName => {
     if (name in env) {
-      panic(`NameEnv.declare: name '${name}' already declared`);
+      panic(`NameEnv.declareVar: name '${name}' already declared`);
     }
 
-    const fresh = Name.fresh(name, mutable);
+    const fresh = VarName.fresh(name, mutable);
     fresh.renaming = renaming;
-    env[name] = fresh;
+    env.vars[name] = fresh;
     return fresh;
   },
-  resolve: (env: NameEnv, name: string, renaming = name): Name => {
-    if (name in env) {
-      return env[name];
+  declareFunc: (env: NameEnv, name: string, renaming = name): FuncName => {
+    const fresh = FuncName.fresh(name);
+    fresh.renaming = renaming;
+    pushRecord(env.funcs, name, fresh);
+    return fresh;
+  },
+  resolveVar: (env: NameEnv, name: string, renaming = name): VarName => {
+    if (name in env.vars) {
+      return env.vars[name];
     }
 
-    const fresh = Name.fresh(name, false, true);
+    const fresh = VarName.fresh(name, false, true);
     fresh.renaming = renaming;
 
     return fresh;
   },
-  isUndeclared: (name: Name): boolean => {
+  resolveFunc: (env: NameEnv, name: string, renaming = name): FuncName[] => {
+    if (name in env.funcs) {
+      return env.funcs[name];
+    }
+
+    const fresh = FuncName.fresh(name);
+    fresh.renaming = renaming;
+
+    return [fresh];
+  },
+  isUndeclared: (name: VarName): boolean => {
     return name.renaming === '<__!undeclared!__>';
   },
 };

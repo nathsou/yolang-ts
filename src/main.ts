@@ -48,19 +48,20 @@ const run = async (source: string): Promise<boolean> => {
   const nfs = await createNodeFileSystem();
   const [sweetProg, errs1] = await resolve(source, nfs);
   const [typedProg, _, errs2] = typeCheck(sweetProg);
-  const prog = monomorphize(typedProg);
   const errors = [...errs1, ...errs2];
 
   errors.forEach(err => {
     console.log('\x1b[31m%s\x1b[0m', Error.show(err));
   });
 
-  if (debugLevel >= DebugLvl.types) {
-    console.log('--- types ---');
-    console.log(showTypes(prog, []).join('\n\n') + '\n');
-  }
-
   if (errors.length === 0) {
+    const prog = monomorphize(typedProg);
+
+    if (debugLevel >= DebugLvl.types) {
+      console.log('--- types ---');
+      console.log(showTypes(prog, []).join('\n\n') + '\n');
+    }
+
     const mod = Compiler.compile(prog);
 
     if (debugLevel >= DebugLvl.sections) {
@@ -74,11 +75,12 @@ const run = async (source: string): Promise<boolean> => {
 
     const mainFunc = Object
       .entries(instance.exports)
-      .find(([name, val]) => name.endsWith('_main') && val instanceof Function);
+      .find(([name, val]) => name.endsWith('.main') && val instanceof Function);
 
     if (mainFunc) {
       console.log((mainFunc[1] as Function)());
     } else {
+      console.log(Object.entries(instance.exports));
       console.log('No main function found');
       return false;
     }

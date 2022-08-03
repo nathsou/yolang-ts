@@ -1,6 +1,6 @@
 import { match, VariantOf } from "itsamatch";
 import { Decl, Expr, Prog } from "../ast/bitter";
-import { NameEnv } from "../ast/name";
+import { FuncName, NameEnv } from "../ast/name";
 import { Error } from "../errors/errors";
 import { infer, inferDecl } from "./infer";
 import { MonoTy, PolyTy } from "./types";
@@ -8,6 +8,7 @@ import { unifyPure } from "./unification";
 import { zip } from "../utils/array";
 import { Maybe } from "../utils/maybe";
 import { id, panic } from "../utils/misc";
+import { Either } from "../utils/either";
 
 type MonomorphizedInstance = { typeParams: MonoTy[], func: VariantOf<Decl, 'Function'> };
 type GenericFuncs = Map<string, { generic: VariantOf<Decl, 'Function'>, instances: MonomorphizedInstance[] }>;
@@ -29,7 +30,8 @@ const monomorphizeModule = (mod: VariantOf<Decl, 'Module'>): VariantOf<Decl, 'Mo
 
   const monomorphizeExpr = (expr: Expr): Expr => match(expr, {
     NamedFuncCall: call => {
-      const { name, args, ty, typeParams } = call;
+      const { args, ty, typeParams } = call;
+      const name = call.name.unwrapRight('unresolved func name reference');
       const func = topLevelFuncs.get(name.original)!;
 
       if (PolyTy.isPolymorphic(func.funTy)) {
@@ -57,7 +59,7 @@ const monomorphizeModule = (mod: VariantOf<Decl, 'Module'>): VariantOf<Decl, 'Mo
 
           const errors: Error[] = [];
 
-          inferDecl(inst, expr.typeContext!, false, errors);
+          inferDecl(inst, expr.typeContext!, errors);
 
           if (errors.length > 0) {
             panic(errors.map(err => Error.show(err)).join(', '));
@@ -74,7 +76,7 @@ const monomorphizeModule = (mod: VariantOf<Decl, 'Module'>): VariantOf<Decl, 'Mo
           return inst;
         })();
 
-        return { ...call, name: inst.name };
+        return { ...call, name: Either.right<string, FuncName>(inst.name) };
       }
 
       return expr;

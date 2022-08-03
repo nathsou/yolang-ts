@@ -1,11 +1,12 @@
-import { DataType, match as matchVariant } from 'itsamatch';
+import { DataType, match, VariantOf } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
-import { Name } from '../ast/name';
+import { VarName, FuncName } from '../ast/name';
 import { Inst } from '../codegen/wasm/instructions';
 import { ValueType } from '../codegen/wasm/types';
 import { wasmTy } from '../codegen/wasm/utils';
 import { Error } from '../errors/errors';
 import { gen, zip } from '../utils/array';
+import { Either } from '../utils/either';
 import { Maybe, none, some } from '../utils/maybe';
 import { panic, proj } from '../utils/misc';
 import { Env } from './env';
@@ -14,13 +15,13 @@ import { signatures } from './signatures';
 import { MAX_TUPLE_INDEX, Tuple } from './tuples';
 import { TypeContext } from './typeContext';
 import { MonoTy, PolyTy } from './types';
-import { unifyMut } from './unification';
+import { unifyMut, unifyPure } from './unification';
 
 export type TypingError = DataType<{
   UnboundVariable: { name: string },
+  UnknownFunction: { name: string },
   ImmutableVariable: { name: string },
   UnassignableExpression: { expr: Expr },
-  UnknownMethod: { method: string, ty: MonoTy },
   UnknownModule: { path: string[] },
   UnknownModuleMember: { path: string[], member: string },
   TEMP_OnlyFunctionModuleAccessAllowed: { path: string[], member: string },
@@ -30,7 +31,42 @@ export type TypingError = DataType<{
   WasmStackOverflow: { expectedLength: number, actualLength: number },
   InconsistentWasmStack: { expectedTy: ValueType, actualTy: ValueType, inst: Inst },
   WasmBlockExpressionsRequireTypeAnnotations: { expr: Expr },
+  NoOverloadMatchesCallSignature: { name: string, f: MonoTy, candidates: PolyTy[] },
+  AmbiguousOverload: { name: string, f: MonoTy, matches: PolyTy[] },
 }, 'type'>;
+
+const resolveOverloading = (
+  name: string,
+  typeParams: MonoTy[],
+  f: MonoTy,
+  candidates: { name: FuncName, ty: PolyTy }[],
+  ctx: TypeContext
+): Either<{ name: FuncName, ty: PolyTy }, TypingError> => {
+  // rename the overloaded candidates
+  if (candidates.length > 0) {
+    candidates.forEach(c => {
+      if (!c.name.renaming.includes('[')) {
+        c.name.renaming = `${c.name.renaming}[${PolyTy.show(c.ty)}]`;
+      }
+    });
+  }
+
+  const matches = candidates.filter(({ ty: g }) => {
+    const partiallyInstTy = PolyTy.instantiatePartially(g, typeParams);
+    const gInst = PolyTy.instantiate(partiallyInstTy);
+    return unifyPure(f, gInst.ty, ctx).isOk();
+  });
+
+  if (matches.length === 0) {
+    return Either.right({ type: 'NoOverloadMatchesCallSignature', name, f, candidates: candidates.map(proj('ty')) });
+  }
+
+  if (matches.length === 1) {
+    return Either.left(matches[0]);
+  }
+
+  return Either.right({ type: 'AmbiguousOverload', name, f, matches: matches.map(proj('ty')) });
+};
 
 const inferExpr = (
   expr: Expr,
@@ -45,8 +81,8 @@ const inferExpr = (
   const tau = expr.ty;
   expr.typeContext = ctx;
 
-  const resolveVar = (name: Name): Maybe<PolyTy> => {
-    return Env.lookup(env, name.original).match({
+  const resolveVar = (name: VarName): Maybe<PolyTy> => {
+    return Env.lookupVar(env, name.original).match({
       Some: ({ ty, name: declaredName }) => {
         if (name.isUndeclared) {
           name = declaredName;
@@ -61,7 +97,23 @@ const inferExpr = (
     });
   };
 
-  matchVariant(expr, {
+  const resolveFuncs = (name: Either<string, FuncName>): Maybe<{ name: FuncName, ty: PolyTy }[]> => {
+    return name.match({
+      left: name => {
+        const funcs = Env.lookupFuncs(env, name);
+
+        if (funcs.length === 0) {
+          errors.push(Error.Typing({ type: 'UnknownFunction', name: name }));
+          return none;
+        }
+
+        return some(funcs);
+      },
+      right: func => some([{ name: func, ty: MonoTy.toPoly(func.ty) }]),
+    });
+  };
+
+  match(expr, {
     Const: () => { },
     Variable: v => {
       resolveVar(v.name).do(ty => {
@@ -84,19 +136,35 @@ const inferExpr = (
     },
     NamedFuncCall: f => {
       const { name, typeParams, args } = f;
-      resolveVar(name).do(ty => {
+
+      resolveFuncs(name).do(fs => {
         args.forEach(arg => {
           inferExpr(arg, ctx, errors);
         });
 
-        const partiallyInstTy = PolyTy.instantiatePartially(ty, typeParams);
-        const expectedFunTy = PolyTy.instantiate(partiallyInstTy);
+        const funcName = name.match({
+          left: name => name,
+          right: ({ original }) => original,
+        });
 
-        const allTyVars = [...typeParams, ...partiallyInstTy[0].map(t => expectedFunTy.subst.get(t)!)];
         const actualFunTy = MonoTy.Fun(args.map(proj('ty')), tau);
 
-        unify(expectedFunTy.ty, actualFunTy);
-        f.typeParams = allTyVars;
+        resolveOverloading(funcName, typeParams, actualFunTy, fs, ctx).match({
+          left: resolvedFunc => {
+            f.name = Either.right(resolvedFunc.name);
+
+            const partiallyInstTy = PolyTy.instantiatePartially(resolvedFunc.ty, typeParams);
+            const expectedFunTy = PolyTy.instantiate(partiallyInstTy);
+
+            const allTyVars = [...typeParams, ...partiallyInstTy[0].map(t => expectedFunTy.subst.get(t)!)];
+
+            unify(expectedFunTy.ty, actualFunTy);
+            f.typeParams = allTyVars;
+          },
+          right: err => {
+            errors.push(Error.Typing(err));
+          },
+        });
       });
     },
     Call: ({ lhs, args }) => {
@@ -158,7 +226,7 @@ const inferExpr = (
       const bodyCtx = TypeContext.clone(ctx);
 
       args.forEach(({ name, annotation }) => {
-        Env.addMono(bodyCtx.env, name, name.ty);
+        Env.addMonoVar(bodyCtx.env, name, name.ty);
         annotation.do(ann => {
           unify(name.ty, ann);
         });
@@ -178,7 +246,7 @@ const inferExpr = (
         Some: mod => {
           if (member in mod.members) {
             const m = mod.members[member];
-            matchVariant(m, {
+            match(m, {
               Function: ({ funTy }) => {
                 const instTy = PolyTy.instantiate(funTy);
                 unify(instTy.ty, tau);
@@ -230,7 +298,7 @@ const inferExpr = (
 
           for (const v of Pattern.vars(pattern)) {
             const genTy = MonoTy.generalize(ctx.env, v.ty);
-            Env.addPoly(bodyCtx.env, v, genTy);
+            Env.addPolyVar(bodyCtx.env, v, genTy);
           }
 
           inferExpr(body, bodyCtx, errors);
@@ -373,7 +441,7 @@ const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors: Error[
 };
 
 const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): Error[] => {
-  matchVariant(stmt, {
+  match(stmt, {
     Let: ({ name, expr, annotation }) => {
       inferExpr(expr, ctx, errors);
 
@@ -382,7 +450,7 @@ const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): Error[] => {
       });
 
       const genTy = MonoTy.generalize(ctx.env, expr.ty);
-      Env.addPoly(ctx.env, name, genTy);
+      Env.addPolyVar(ctx.env, name, genTy);
     },
     Expr: ({ expr }) => {
       inferExpr(expr, ctx, errors);
@@ -395,14 +463,14 @@ const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): Error[] => {
   return errors;
 };
 
-export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors: Error[]): Error[] => {
+export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[] => {
   const unify = (s: MonoTy, t: MonoTy, context = ctx): void => {
     errors.push(...unifyMut(s, t, context));
   };
 
   decl.typeContext = ctx;
 
-  matchVariant(decl, {
+  match(decl, {
     Function: func => {
       const { name, typeParams, args, returnTy, body } = func;
       const bodyCtx = TypeContext.clone(ctx);
@@ -413,7 +481,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
           unify(name.ty, ann, bodyCtx);
         });
 
-        Env.addMono(bodyCtx.env, name, name.ty);
+        Env.addMonoVar(bodyCtx.env, name, name.ty);
       });
 
       inferExpr(body, bodyCtx, errors);
@@ -431,7 +499,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
 
       const genFunTy = MonoTy.generalize(ctx.env, funTy.ty);
       func.funTy = genFunTy;
-      Env.addPoly(ctx.env, name, genFunTy);
+      Env.addPolyFunc(ctx.env, name, genFunTy);
     },
     Module: mod => {
       TypeContext.declareModule(ctx, mod);
@@ -440,30 +508,26 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, declare: boolean, errors
 
       // declare all the functions and modules so
       // that they can be used before being defined
-      for (const decl of mod.decls) {
-        matchVariant(decl, {
-          Function: ({ name, funTy }) => {
-            Env.addPoly(modCtx.env, name, funTy);
-          },
-          _: decl => {
-            inferDecl(decl, modCtx, true, errors);
-          },
-        });
-      }
+      // for (const decl of mod.decls) {
+      //   match(decl, {
+      //     Function: ({ name, funTy }) => {
+      //       Env.addPoly(modCtx.env, name, funTy);
+      //     },
+      //     _: decl => {
+      //       inferDecl(decl, modCtx, true, errors);
+      //     },
+      //   });
+      // }
 
       for (const decl of mod.decls) {
-        inferDecl(decl, modCtx, false, errors);
+        inferDecl(decl, modCtx, errors);
       }
     },
     TypeAlias: ({ name, typeParams, alias }) => {
-      if (declare) {
-        TypeContext.declareTypeAlias(ctx, name, typeParams, alias);
-      }
+      TypeContext.declareTypeAlias(ctx, name, typeParams, alias);
     },
     Use: ({ path, imports }) => {
-      if (declare) {
-        TypeContext.bringIntoScope(ctx, path, imports);
-      }
+      TypeContext.bringIntoScope(ctx, path, imports);
     },
     Error: ({ message }) => {
       errors.push(Error.Typing({ type: 'ParsingError', message }));
@@ -478,7 +542,7 @@ export const infer = (prog: Prog): [Error[], TypeContext] => {
   const ctx = TypeContext.make(prog);
 
   for (const decl of prog) {
-    inferDecl(decl, ctx, true, errors);
+    inferDecl(decl, ctx, errors);
   }
 
   return [errors, ctx];
