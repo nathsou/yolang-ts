@@ -1,6 +1,6 @@
-import { DataType, match, VariantOf } from 'itsamatch';
+import { DataType, match } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
-import { VarName, FuncName } from '../ast/name';
+import { FuncName, VarName } from '../ast/name';
 import { Inst } from '../codegen/wasm/instructions';
 import { ValueType } from '../codegen/wasm/types';
 import { wasmTy } from '../codegen/wasm/utils';
@@ -42,15 +42,6 @@ const resolveOverloading = (
   candidates: { name: FuncName, ty: PolyTy }[],
   ctx: TypeContext
 ): Either<{ name: FuncName, ty: PolyTy }, TypingError> => {
-  // rename the overloaded candidates
-  if (candidates.length > 0) {
-    candidates.forEach(c => {
-      if (!c.name.renaming.includes('[')) {
-        c.name.renaming = `${c.name.renaming}[${PolyTy.show(c.ty)}]`;
-      }
-    });
-  }
-
   const matches = candidates.filter(({ ty: g }) => {
     const partiallyInstTy = PolyTy.instantiatePartially(g, typeParams);
     const gInst = PolyTy.instantiate(partiallyInstTy);
@@ -473,6 +464,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[
   match(decl, {
     Function: func => {
       const { name, typeParams, args, returnTy, body } = func;
+
       const bodyCtx = TypeContext.clone(ctx);
       TypeContext.declareTypeParams(bodyCtx, ...typeParams);
 
@@ -500,24 +492,16 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[
       const genFunTy = MonoTy.generalize(ctx.env, funTy.ty);
       func.funTy = genFunTy;
       Env.addPolyFunc(ctx.env, name, genFunTy);
+
+      const overloadsCount = Env.lookupFuncs(ctx.env, name.original).length;
+      if (overloadsCount > 1 && !name.renaming.includes('[')) {
+        name.renaming += `[${overloadsCount}]`;
+      }
     },
     Module: mod => {
       TypeContext.declareModule(ctx, mod);
       const modCtx = TypeContext.clone(ctx);
       TypeContext.enterModule(modCtx, mod.name);
-
-      // declare all the functions and modules so
-      // that they can be used before being defined
-      // for (const decl of mod.decls) {
-      //   match(decl, {
-      //     Function: ({ name, funTy }) => {
-      //       Env.addPoly(modCtx.env, name, funTy);
-      //     },
-      //     _: decl => {
-      //       inferDecl(decl, modCtx, true, errors);
-      //     },
-      //   });
-      // }
 
       for (const decl of mod.decls) {
         inferDecl(decl, modCtx, errors);

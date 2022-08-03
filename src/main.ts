@@ -80,7 +80,6 @@ const run = async (source: string): Promise<boolean> => {
     if (mainFunc) {
       console.log((mainFunc[1] as Function)());
     } else {
-      console.log(Object.entries(instance.exports));
       console.log('No main function found');
       return false;
     }

@@ -1,12 +1,10 @@
 
-fun f(a, b) { a + b }
+fun eq(n1: u32, n2: u32) { n1 == n2 }
+fun eq(a: bool, b: bool) { a == b }
 
-fun f(a, b) { a && b }
-
-fun f(a) { a + 1 }
-
-fun f(b) { !b }
+fun toInt(q) { if q == true { 1 } else { 0 } }
+fun toInt(n: u32) { n }
 
 fun main() {
-  f(true, false)
+  33.toInt() + (3 * 7 + 1).eq(11 * 2).toInt()
 }

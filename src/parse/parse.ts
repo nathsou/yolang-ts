@@ -388,10 +388,18 @@ const fieldAccess = chainLeft(
       map(ident, name => ({ variant: 'ident', name })),
       map(integer, n => ({ variant: 'int', value: n })),
     ), `Expected identifier or integer after '.'`, { variant: 'ident', name: '<?>' }),
+    optional(parens(map(optional(commas(expr)), args => args.orDefault([])))),
   ),
-  (lhs, _, [field]) => match(field, {
-    ident: ({ name }) => Expr.FieldAccess(lhs, name),
-    int: ({ value: n }) => Expr.TupleIndexing(lhs, n),
+  (lhs, _, [field, args]) => args.match({
+    Some: args => match(field, {
+      ident: ({ name }) => Expr.Call(Expr.Variable(name), [], [lhs, ...args]),
+      // this will fail in the inferencer as integers are not valid method names
+      int: ({ value: n }) => Expr.Call(Expr.Variable(`${n}`), [], [lhs, ...args]),
+    }),
+    None: () => match(field, {
+      ident: ({ name }) => Expr.FieldAccess(lhs, name),
+      int: ({ value: n }) => Expr.TupleIndexing(lhs, n),
+    }),
   })
 );
 
@@ -631,7 +639,7 @@ initParser(
 
 const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
   keyword('fun'),
-  expectOrDefault(ident, `Expected identifier after 'fn' keyword`, '<?>'),
+  expectOrDefault(ident, `Expected identifier after 'fun' keyword`, '<?>'),
   scopedTypeParams(seq(
     expectOrDefault(argumentList, 'Expected arguments after function name', []),
     optional(seq(

@@ -215,7 +215,7 @@ export type Decl = DataType<{
 export const Decl = {
   ...genConstructors<Decl>(['Function', 'Module', 'TypeAlias', 'Use', 'Error']),
   show: (decl: Decl): string => match(decl, {
-    Function: ({ name, typeParams, args, body }) => `fn ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
+    Function: ({ name, typeParams, args, body }) => `fun ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
     Module: ({ name, decls }) => `module ${name} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)}`,
     Use: ({ path, imports }) => `use ${path.join('.')}.${Imports.show(imports)}`,

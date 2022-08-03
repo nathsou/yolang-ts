@@ -181,7 +181,7 @@ const CodeEntry = {
     return res.join('\n') + '\nend\n';
   },
   show: ({ funcName, locals, instructions }: CodeEntry, funcNames: string[]): string => {
-    return `fn ${funcName}(${Locals.show(locals)})\n${CodeEntry.showInstructions(instructions, locals, funcNames)}`;
+    return `fun ${funcName}(${Locals.show(locals)})\n${CodeEntry.showInstructions(instructions, locals, funcNames)}`;
   },
 };
 

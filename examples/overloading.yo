@@ -1,0 +1,12 @@
+
+fun f(a, b) { a + b }
+
+fun f(a, b) { a && b }
+
+fun f(a) { a + 1 }
+
+fun f(b) { !b }
+
+fun main() {
+  f(true, false)
+}
