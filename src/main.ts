@@ -6,7 +6,6 @@ import { Compiler } from "./codegen/codegen";
 import { Module } from "./codegen/wasm/sections";
 import { Error } from './errors/errors';
 import { infer } from "./infer/infer";
-import { monomorphize } from "./infer/monomorphize";
 import { TypeContext } from "./infer/typeContext";
 import { MonoTy, PolyTy, TypeParams } from "./infer/types";
 import { createNodeFileSystem } from './resolve/nodefs';
@@ -47,7 +46,7 @@ const typeCheck = (sweetProg: SweetProg): [Prog, TypeContext, Error[]] => {
 const run = async (source: string): Promise<boolean> => {
   const nfs = await createNodeFileSystem();
   const [sweetProg, errs1] = await resolve(source, nfs);
-  const [typedProg, _, errs2] = typeCheck(sweetProg);
+  const [prog, _, errs2] = typeCheck(sweetProg);
   const errors = [...errs1, ...errs2];
 
   errors.forEach(err => {
@@ -55,7 +54,7 @@ const run = async (source: string): Promise<boolean> => {
   });
 
   if (errors.length === 0) {
-    const prog = monomorphize(typedProg);
+    // const prog = monomorphize(typedProg);
 
     if (debugLevel >= DebugLvl.types) {
       console.log('--- types ---');

@@ -140,9 +140,9 @@ export const TypeContext = {
             }
           },
           Use: () => { },
-          Function: ({ name }) => {
-            if (isImported(name.original)) {
-              Env.addPolyFunc(ctx.env, name, MonoTy.toPoly(name.ty));
+          Function: f => {
+            if (isImported(f.name.original)) {
+              Env.declareFunc(ctx.env, f);
             }
           },
           Error: () => { },

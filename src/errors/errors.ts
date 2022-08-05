@@ -51,7 +51,7 @@ export const Error = {
       InconsistentWasmStack: ({ expectedTy, actualTy, inst }) => `Inconsistent wasm stack, expected a value of type ${expectedTy}, got ${actualTy} in ${Inst.showRaw(inst)}`,
       WasmBlockExpressionsRequireTypeAnnotations: ({ expr }) => `Expressions inside a wasm block require type annotations, type of '${Expr.showSweet(expr)}' is not fully determined`,
       NoOverloadMatchesCallSignature: ({ name, f, candidates }) => `No overload of '${name}' matches the call signature '${MonoTy.show(f)}', candidates:\n${formatOverloadingCandidates(candidates)}`,
-      AmbiguousOverload: ({ name, f, matches }) => `Ambiguous overload for '${name}' with call signature '${MonoTy.show(f)}', matches:\n${formatOverloadingCandidates(matches)}`,
+      AmbiguousOverload: ({ name, f, matches }) => `Ambiguous overload for '${name}' with call signature ${MonoTy.show(f)}, matches:\n${formatOverloadingCandidates(matches)}`,
     }, 'type'),
     Resolution: ({ err }) => matchVariant(err, {
       ModuleNotFound: ({ name }) => `Module '${name}' not found`,

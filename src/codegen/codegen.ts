@@ -30,6 +30,10 @@ export class Compiler {
       Function: f => {
         if (!PolyTy.isPolymorphic(f.funTy)) {
           this.compileFunction(f);
+        } else {
+          f.instances.forEach(inst => {
+            this.compileFunction(inst);
+          });
         }
       },
       Module: mod => {
@@ -39,6 +43,10 @@ export class Compiler {
             Function: f => {
               if (!PolyTy.isPolymorphic(f.funTy)) {
                 this.declareFunction(f);
+              } else {
+                f.instances.forEach(inst => {
+                  this.declareFunction(inst);
+                });
               }
             },
             _: () => { },
@@ -107,8 +115,7 @@ export class Compiler {
       const f = this.topLevelFuncs.get(funcName.renaming)!;
       return IRExpr.call(f.index, args.map(a => this.compileExpr(a)));
     } else {
-      console.log([...this.topLevelFuncs.keys()]);
-      return panic('indirect function call not supported yet')
+      return panic('indirect function call not supported yet: ' + funcName.renaming)
     }
   }
 

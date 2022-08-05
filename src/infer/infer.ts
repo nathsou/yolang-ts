@@ -1,6 +1,6 @@
 import { DataType, match } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
-import { FuncName, VarName } from '../ast/name';
+import { FuncName, NameEnv, VarName } from '../ast/name';
 import { Inst } from '../codegen/wasm/instructions';
 import { ValueType } from '../codegen/wasm/types';
 import { wasmTy } from '../codegen/wasm/utils';
@@ -8,8 +8,8 @@ import { Error } from '../errors/errors';
 import { gen, zip } from '../utils/array';
 import { Either } from '../utils/either';
 import { Maybe, none, some } from '../utils/maybe';
-import { panic, proj } from '../utils/misc';
-import { Env } from './env';
+import { id, panic, proj } from '../utils/misc';
+import { Env, FuncDecl } from './env';
 import { Row } from './records';
 import { signatures } from './signatures';
 import { MAX_TUPLE_INDEX, Tuple } from './tuples';
@@ -37,26 +37,53 @@ export type TypingError = DataType<{
 
 const resolveOverloading = (
   name: string,
-  typeParams: MonoTy[],
   f: MonoTy,
-  candidates: { name: FuncName, ty: PolyTy }[],
+  candidates: FuncDecl[],
   ctx: TypeContext
-): Either<{ name: FuncName, ty: PolyTy }, TypingError> => {
-  const matches = candidates.filter(({ ty: g }) => {
-    const partiallyInstTy = PolyTy.instantiatePartially(g, typeParams);
-    const gInst = PolyTy.instantiate(partiallyInstTy);
-    return unifyPure(f, gInst.ty, ctx).isOk();
-  });
+): Either<FuncDecl, TypingError> => {
+  const matches = candidates.map(func => {
+    const gInst = PolyTy.instantiate(func.funTy);
+    const score = unifyPure(f, gInst.ty, ctx).match({
+      Ok: ({ score }) => score,
+      Error: () => 0,
+    });
+
+    return { score, func };
+  }).filter(({ score }) => score > 0);
 
   if (matches.length === 0) {
-    return Either.right({ type: 'NoOverloadMatchesCallSignature', name, f, candidates: candidates.map(proj('ty')) });
+    return Either.right({ type: 'NoOverloadMatchesCallSignature', name, f, candidates: candidates.map(proj('funTy')) });
   }
 
-  if (matches.length === 1) {
-    return Either.left(matches[0]);
+  const maxScore = Math.max(...matches.map(m => m.score));
+  const bestMatches = matches.filter(m => m.score === maxScore);
+  if (bestMatches.length === 1) {
+    return Either.left(bestMatches[0].func);
   }
 
-  return Either.right({ type: 'AmbiguousOverload', name, f, matches: matches.map(proj('ty')) });
+  return Either.right({ type: 'AmbiguousOverload', name, f, matches: bestMatches.map(f => f.func.funTy) });
+};
+
+const monomorphizeFunc = (ctx: TypeContext, f: FuncDecl, instanceTy: MonoTy, errors: Error[]): FuncDecl => {
+  // check if an instance for these args already exists
+  {
+    const inst = f.instances.find(inst => unifyPure(inst.funTy[1], instanceTy, ctx).isOk());
+
+    if (inst != null) {
+      return inst;
+    }
+  }
+
+  const nameEnv = NameEnv.make();
+  const inst = Decl.rewrite(f, nameEnv, id, id) as FuncDecl;
+  const instTy = PolyTy.instantiate(f.funTy);
+  inst.funTy = MonoTy.toPoly(instTy.ty);
+  inst.typeParams = [];
+  inferDecl(inst, ctx, errors);
+  errors.push(...unifyMut(instTy.ty, instanceTy, ctx));
+  f.instances.push(inst);
+
+  return inst;
 };
 
 const inferExpr = (
@@ -88,20 +115,20 @@ const inferExpr = (
     });
   };
 
-  const resolveFuncs = (name: Either<string, FuncName>): Maybe<{ name: FuncName, ty: PolyTy }[]> => {
-    return name.match({
-      left: name => {
-        const funcs = Env.lookupFuncs(env, name);
-
-        if (funcs.length === 0) {
-          errors.push(Error.Typing({ type: 'UnknownFunction', name: name }));
-          return none;
-        }
-
-        return some(funcs);
-      },
-      right: func => some([{ name: func, ty: MonoTy.toPoly(func.ty) }]),
+  const resolveFuncs = (name: Either<string, FuncName>): Maybe<FuncDecl[]> => {
+    const funcName = name.match({
+      left: name => name,
+      right: name => name.original,
     });
+
+    const funcs = Env.lookupFuncs(env, funcName);
+
+    if (funcs.length === 0) {
+      errors.push(Error.Typing({ type: 'UnknownFunction', name: funcName }));
+      return none;
+    }
+
+    return some(funcs);
   };
 
   match(expr, {
@@ -126,9 +153,9 @@ const inferExpr = (
       unify(opTy1.ty, opTy2);
     },
     NamedFuncCall: f => {
-      const { name, typeParams, args } = f;
+      const { name, args } = f;
 
-      resolveFuncs(name).do(fs => {
+      resolveFuncs(name).do(funcs => {
         args.forEach(arg => {
           inferExpr(arg, ctx, errors);
         });
@@ -138,19 +165,22 @@ const inferExpr = (
           right: ({ original }) => original,
         });
 
-        const actualFunTy = MonoTy.Fun(args.map(proj('ty')), tau);
+        const argTys = args.map(proj('ty'));
+        const actualFunTy = MonoTy.Fun(argTys, tau);
 
-        resolveOverloading(funcName, typeParams, actualFunTy, fs, ctx).match({
+        resolveOverloading(funcName, actualFunTy, funcs, ctx).match({
           left: resolvedFunc => {
             f.name = Either.right(resolvedFunc.name);
+            let funTy = resolvedFunc.funTy[1];
 
-            const partiallyInstTy = PolyTy.instantiatePartially(resolvedFunc.ty, typeParams);
-            const expectedFunTy = PolyTy.instantiate(partiallyInstTy);
+            if (PolyTy.isPolymorphic(resolvedFunc.funTy)) {
+              const inst = monomorphizeFunc(ctx, resolvedFunc, actualFunTy, errors);
 
-            const allTyVars = [...typeParams, ...partiallyInstTy[0].map(t => expectedFunTy.subst.get(t)!)];
+              funTy = inst.funTy[1];
+              f.name = Either.right(inst.name);
+            }
 
-            unify(expectedFunTy.ty, actualFunTy);
-            f.typeParams = allTyVars;
+            unify(funTy, actualFunTy);
           },
           right: err => {
             errors.push(Error.Typing(err));
@@ -459,11 +489,9 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[
     errors.push(...unifyMut(s, t, context));
   };
 
-  decl.typeContext = ctx;
-
   match(decl, {
-    Function: func => {
-      const { name, typeParams, args, returnTy, body } = func;
+    Function: f => {
+      const { name, typeParams, args, returnTy, body } = f;
 
       const bodyCtx = TypeContext.clone(ctx);
       TypeContext.declareTypeParams(bodyCtx, ...typeParams);
@@ -490,8 +518,8 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[
       unify(funTy.ty, name.ty);
 
       const genFunTy = MonoTy.generalize(ctx.env, funTy.ty);
-      func.funTy = genFunTy;
-      Env.addPolyFunc(ctx.env, name, genFunTy);
+      f.funTy = genFunTy;
+      Env.declareFunc(ctx.env, f);
 
       const overloadsCount = Env.lookupFuncs(ctx.env, name.original).length;
       if (overloadsCount > 1 && !name.renaming.includes('[')) {

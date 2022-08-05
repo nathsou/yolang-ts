@@ -1,6 +1,7 @@
 import { DataType, match, VariantOf } from "itsamatch";
 import { Inst } from "../codegen/wasm/instructions";
 import { Error } from "../errors/errors";
+import { FuncDecl } from "../infer/env";
 import { Tuple } from "../infer/tuples";
 import { TypeContext } from "../infer/typeContext";
 import { MonoTy, PolyTy, TypeParams } from "../infer/types";
@@ -262,30 +263,29 @@ export const Stmt = {
   },
 };
 
-type WithTypeContext<T> = {
-  [K in keyof T]: T[K] & { typeContext?: TypeContext }
-};
+type FuncArg = { name: VarName, mutable: boolean, annotation: Maybe<MonoTy> };
 
-export type Decl = DataType<WithTypeContext<{
+export type Decl = DataType<{
   Function: {
     name: FuncName,
     typeParams: TypeParams,
-    args: { name: VarName, mutable: boolean, annotation: Maybe<MonoTy> }[],
+    args: FuncArg[],
     returnTy: Maybe<MonoTy>,
     body: Expr,
     funTy: PolyTy,
+    instances: FuncDecl[],
   },
   Module: { name: string, decls: Decl[], members: Record<string, Decl> },
   TypeAlias: { name: string, typeParams: TypeParams, alias: MonoTy },
   Use: { path: string[], imports: Imports },
   Error: { message: string },
-}>>;
+}>;
 
 export const Decl = {
   Function: (
     name: FuncName,
     typeParams: TypeParams,
-    args: { name: VarName, mutable: boolean, annotation: Maybe<MonoTy> }[],
+    args: FuncArg[],
     returnTy: Maybe<MonoTy>,
     body: Expr
   ): Decl => ({
@@ -295,7 +295,8 @@ export const Decl = {
     args,
     body,
     returnTy,
-    funTy: PolyTy.fresh()
+    funTy: PolyTy.fresh(),
+    instances: [],
   }),
   Module: (name: string, decls: Decl[]): Decl => {
     const mod: VariantOf<Decl, 'Module'> = {
@@ -356,7 +357,7 @@ export const Decl = {
   rewrite: (decl: Decl, nameEnv: NameEnv, rewriteExpr: (expr: Expr) => Expr, rewriteDecl: (decl: Decl) => Decl): Decl => {
     const go = (decl: Decl): Decl => Decl.rewrite(decl, nameEnv, rewriteExpr, rewriteDecl);
 
-    const newDecl = match(decl, {
+    return match(decl, {
       Function: ({ name, typeParams, args, body, returnTy }) => Decl.Function(
         NameEnv.declareFunc(nameEnv, name.original, name.renaming),
         typeParams,
@@ -369,9 +370,6 @@ export const Decl = {
       Use: ({ path, imports }) => Decl.Use(path, imports),
       Error: ({ message }) => Decl.Error(message),
     });
-
-    newDecl.typeContext = decl.typeContext;
-    return rewriteDecl(newDecl);
   },
 };
 

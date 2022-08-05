@@ -1,6 +1,6 @@
 
-fun id<T>(x: T): T { x }
-
+fun id(x) { x }
+      
 fun main() {
-  if id(true) { id(7) } else { id(id(3)) }
+  if id(true) { id(1) } else { id(3) }
 }
