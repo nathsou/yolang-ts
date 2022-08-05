@@ -1,5 +1,5 @@
 import { MonoTy } from "../infer/types";
-import { panic, pushRecord } from "../utils/misc";
+import { pushRecord } from "../utils/misc";
 
 export type FuncName = {
   readonly original: string,
@@ -10,6 +10,11 @@ export type FuncName = {
 export type VarName = FuncName & {
   readonly mutable: boolean,
   readonly isUndeclared: boolean,
+};
+
+export type TyParamName = {
+  readonly name: string,
+  ty: MonoTy,
 };
 
 export const FuncName = {
@@ -32,16 +37,15 @@ export const VarName = {
   clone: (name: VarName, freshTy = true): VarName => ({ ...name, ty: freshTy ? MonoTy.fresh() : name.ty }),
 };
 
-export type NameEnv = { vars: Record<string, VarName>, funcs: Record<string, FuncName[]> };
+export type NameEnv = {
+  vars: Record<string, VarName>,
+  funcs: Record<string, FuncName[]>,
+};
 
 export const NameEnv = {
   make: (): NameEnv => ({ vars: {}, funcs: {} }),
   clone: (env: NameEnv): NameEnv => ({ vars: { ...env.vars }, funcs: { ...env.funcs } }),
   declareVar: (env: NameEnv, name: string, mutable: boolean, renaming = name): VarName => {
-    if (name in env) {
-      panic(`NameEnv.declareVar: name '${name}' already declared`);
-    }
-
     const fresh = VarName.fresh(name, mutable);
     fresh.renaming = renaming;
     env.vars[name] = fresh;

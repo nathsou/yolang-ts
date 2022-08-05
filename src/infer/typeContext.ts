@@ -3,13 +3,13 @@ import { Decl } from "../ast/bitter";
 import { Imports } from "../ast/sweet";
 import { Maybe, none, some } from "../utils/maybe";
 import { Env } from "./env";
-import { MonoTy, TypeParams } from "./types";
+import { MonoTy, TypeParam } from "./types";
 
 export type TypeContext = {
   env: Env,
   typeParamsEnv: Record<string, MonoTy>,
   modules: Record<string, VariantOf<Decl, 'Module'>>,
-  typeAliases: Record<string, { ty: MonoTy, params: TypeParams }>,
+  typeAliases: Record<string, { ty: MonoTy, params: TypeParam[] }>,
   topLevelDecls: Decl[],
   currentPath: string[],
 };
@@ -43,7 +43,7 @@ export const TypeContext = {
   declareTypeAlias: (
     ctx: TypeContext,
     name: string,
-    typeParams: TypeParams,
+    typeParams: TypeParam[],
     alias: MonoTy
   ): void => {
     TypeContext.declareTypeParams(ctx, ...typeParams);
@@ -52,10 +52,13 @@ export const TypeContext = {
       params: typeParams,
     };
   },
-  declareTypeParams: (ctx: TypeContext, ...names: string[]): void => {
-    for (const name of names) {
-      ctx.typeParamsEnv[name] = MonoTy.Param(name);
-    }
+  declareTypeParams: (ctx: TypeContext, ...ps: TypeParam[]): void => {
+    ps.forEach(p => {
+      ctx.typeParamsEnv[p.name] = p.ty.match({
+        Some: ty => ty,
+        None: () => MonoTy.fresh(),
+      });
+    });
   },
   resolveTypeParam: (ctx: TypeContext, name: string): Maybe<MonoTy> => {
     if (name in ctx.typeParamsEnv) {
@@ -87,8 +90,8 @@ export const TypeContext = {
       TypeContext.__resolveModuleAux(ctx, path)
     );
   },
-  findTypeAlias: (ctx: TypeContext, path: string[], name: string): Maybe<[MonoTy, TypeParams]> => {
-    const aux = (path: string[], decls: Decl[]): Maybe<[MonoTy, TypeParams]> => {
+  findTypeAlias: (ctx: TypeContext, path: string[], name: string): Maybe<[MonoTy, TypeParam[]]> => {
+    const aux = (path: string[], decls: Decl[]): Maybe<[MonoTy, TypeParam[]]> => {
       if (path.length === 0) {
         const typeAlias = decls.find(d => d.variant === 'TypeAlias' && d.name === name);
         if (typeAlias) {

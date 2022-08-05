@@ -1,6 +1,6 @@
 import { DataType, genConstructors, match } from 'itsamatch';
 import { Inst } from '../codegen/wasm/instructions';
-import { MonoTy, TypeParams } from '../infer/types';
+import { MonoTy, TypeParam, TypeParams } from '../infer/types';
 import { Const } from '../parse/token';
 import { joinWith } from '../utils/array';
 import { Either } from '../utils/either';
@@ -205,9 +205,9 @@ export const Imports = {
 };
 
 export type Decl = DataType<{
-  Function: { name: string, typeParams: TypeParams, args: Argument[], returnTy: Maybe<MonoTy>, body: Expr },
+  Function: { name: string, typeParams: TypeParam[], args: Argument[], returnTy: Maybe<MonoTy>, body: Expr },
   Module: { name: string, decls: Decl[] },
-  TypeAlias: { name: string, typeParams: TypeParams, alias: MonoTy },
+  TypeAlias: { name: string, typeParams: TypeParam[], alias: MonoTy },
   Use: { path: string[], imports: Imports },
   Error: { message: string },
 }>;

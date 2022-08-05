@@ -251,12 +251,10 @@ export class Compiler {
           return this.compileExpr(expr);
         }
       },
-      Let: ({ name, expr, mutable }) => {
-        return match(this.declareVar(name.original, expr.ty, mutable), {
-          Local: ({ idx }) => IRExpr.declareVar(idx, this.compileExpr(expr)),
-          Global: ({ idx }) => IRExpr.declareVar(idx, this.compileExpr(expr), { isGlobal: true }),
-        });
-      },
+      Let: ({ name, expr, mutable }) => match(this.declareVar(name.original, expr.ty, mutable), {
+        Local: ({ idx }) => IRExpr.declareVar(idx, this.compileExpr(expr)),
+        Global: ({ idx }) => IRExpr.declareVar(idx, this.compileExpr(expr), { isGlobal: true }),
+      }),
       _: () => {
         panic(`stmt ${stmt.variant} not supported yet`);
         return IRExpr.unreachable();

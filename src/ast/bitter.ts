@@ -3,8 +3,7 @@ import { Inst } from "../codegen/wasm/instructions";
 import { Error } from "../errors/errors";
 import { FuncDecl } from "../infer/env";
 import { Tuple } from "../infer/tuples";
-import { TypeContext } from "../infer/typeContext";
-import { MonoTy, PolyTy, TypeParams } from "../infer/types";
+import { MonoTy, PolyTy, TypeParam } from "../infer/types";
 import { Const } from "../parse/token";
 import { Either } from "../utils/either";
 import { Maybe, none } from "../utils/maybe";
@@ -17,7 +16,7 @@ import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, 
 // with attached type information and lexically resolved identifier references
 
 type WithSweetRefAndType<T> = {
-  [K in keyof T]: T[K] & { sweet: SweetExpr, ty: MonoTy, typeContext?: TypeContext }
+  [K in keyof T]: T[K] & { sweet: SweetExpr, ty: MonoTy }
 };
 
 export type Pattern = DataType<{
@@ -200,7 +199,7 @@ export const Expr = {
   rewrite: (expr: Expr, nameEnv: NameEnv, rewriteExpr: (expr: Expr) => Expr): Expr => {
     const go = (expr: Expr): Expr => Expr.rewrite(expr, nameEnv, rewriteExpr);
 
-    const newExpr = match(expr, {
+    return rewriteExpr(match(expr, {
       Const: ({ value }) => Expr.Const(value, expr.sweet),
       Variable: ({ name }) => Expr.Variable(NameEnv.resolveVar(nameEnv, name.original, name.renaming), expr.sweet),
       NamedFuncCall: ({ name, typeParams, args }) => Expr.NamedFuncCall(name, typeParams, args.map(arg => go(arg)), expr.sweet),
@@ -220,10 +219,7 @@ export const Expr = {
       TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index, expr.sweet),
       WasmBlock: ({ instructions }) => Expr.WasmBlock(instructions.map(i => i.map({ left: id, right: ([expr, ty]) => [go(expr), ty] })), expr.sweet),
       While: ({ condition, body }) => Expr.While(go(condition), go(body), expr.sweet),
-    });
-
-    newExpr.typeContext = expr.typeContext;
-    return rewriteExpr(newExpr);
+    }));
   },
 };
 
@@ -268,7 +264,7 @@ type FuncArg = { name: VarName, mutable: boolean, annotation: Maybe<MonoTy> };
 export type Decl = DataType<{
   Function: {
     name: FuncName,
-    typeParams: TypeParams,
+    typeParams: { name: string, ty: Maybe<MonoTy> }[],
     args: FuncArg[],
     returnTy: Maybe<MonoTy>,
     body: Expr,
@@ -276,7 +272,7 @@ export type Decl = DataType<{
     instances: FuncDecl[],
   },
   Module: { name: string, decls: Decl[], members: Record<string, Decl> },
-  TypeAlias: { name: string, typeParams: TypeParams, alias: MonoTy },
+  TypeAlias: { name: string, typeParams: TypeParam[], alias: MonoTy },
   Use: { path: string[], imports: Imports },
   Error: { message: string },
 }>;
@@ -284,7 +280,7 @@ export type Decl = DataType<{
 export const Decl = {
   Function: (
     name: FuncName,
-    typeParams: TypeParams,
+    typeParams: { name: string, ty: Maybe<MonoTy> }[],
     args: FuncArg[],
     returnTy: Maybe<MonoTy>,
     body: Expr
@@ -324,7 +320,7 @@ export const Decl = {
 
     return mod;
   },
-  TypeAlias: (name: string, typeParams: TypeParams, alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
+  TypeAlias: (name: string, typeParams: TypeParam[], alias: MonoTy): Decl => ({ variant: 'TypeAlias', name, typeParams, alias }),
   Use: (path: string[], imports: Imports): Decl => ({ variant: 'Use', path, imports }),
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, moduleStack: string[], errors: Error[]): Decl =>
@@ -360,7 +356,7 @@ export const Decl = {
     return match(decl, {
       Function: ({ name, typeParams, args, body, returnTy }) => Decl.Function(
         NameEnv.declareFunc(nameEnv, name.original, name.renaming),
-        typeParams,
+        typeParams.map(p => ({ name: p.name, ty: none })),
         args.map(arg => ({ ...arg, name: NameEnv.resolveVar(nameEnv, arg.name.original, arg.name.renaming) })),
         returnTy,
         Expr.rewrite(body, nameEnv, rewriteExpr),

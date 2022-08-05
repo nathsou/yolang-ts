@@ -3,13 +3,13 @@ import { match, P } from "ts-pattern";
 import { Error } from "../errors/errors";
 import { zip } from "../utils/array";
 import { Maybe, none } from "../utils/maybe";
-import { panic } from "../utils/misc";
+import { panic, proj } from "../utils/misc";
 import { Result } from "../utils/result";
 import { Row } from "./records";
 import { Subst } from "./subst";
 import { Tuple } from "./tuples";
 import { TypeContext } from "./typeContext";
-import { MonoTy, TypeParams, TyVar } from "./types";
+import { MonoTy, TypeParam, TyVar } from "./types";
 
 export type UnificationError = DataType<{
   RecursiveType: { s: MonoTy, t: MonoTy },
@@ -35,7 +35,7 @@ const linkTo = (v: VariantOf<MonoTy, 'Var'>, to: MonoTy, subst?: Subst) => {
 
 const UNIFICATION_SCORE = {
   exactMatch: 3,
-  assignableRecordOrTuple: 2,
+  assignableRecord: 2,
   instanciation: 1,
 };
 
@@ -52,7 +52,7 @@ const unifyMany = (
   };
 
   const instantiateGenericTyConst = (c: VariantOf<MonoTy, 'Const'>): Maybe<MonoTy> => {
-    const resolveTypeAlias = (ty: VariantOf<MonoTy, 'Const'>): Maybe<{ ty: MonoTy, params: TypeParams }> => {
+    const resolveTypeAlias = (ty: VariantOf<MonoTy, 'Const'>): Maybe<{ ty: MonoTy, params: TypeParam[] }> => {
       if (MonoTy.isPrimitive(ty)) {
         return none;
       }
@@ -70,7 +70,7 @@ const unifyMany = (
     // then interpret it as a type parameter
     const typeParam = TypeContext.resolveTypeParam(ctx, c.name);
     const typeAlias = () => resolveTypeAlias(c).map(({ ty: genericTy, params }) => {
-      const subst = new Map<string, MonoTy>(zip(params, c.args));
+      const subst = new Map<string, MonoTy>(zip(params.map(proj('name')), c.args));
       return MonoTy.substituteTyParams(genericTy, subst);
     });
 
@@ -132,6 +132,14 @@ const unifyMany = (
           score += UNIFICATION_SCORE.instanciation;
         }
       })
+      .with([{ variant: 'Var', value: { kind: 'Unbound' } }, P._], ([s, t]) => {
+        if (MonoTy.occurs(s.value.id, t)) {
+          errors.push(Error.Unification({ type: 'RecursiveType', s, t }));
+        } else {
+          linkTo(s, t, subst);
+          score += UNIFICATION_SCORE.instanciation;
+        }
+      })
       // Orient
       .with([P._, { variant: 'Var' }], ([s, t]) => {
         pushEqs([t, s]);
@@ -162,7 +170,7 @@ const unifyMany = (
         { variant: 'Record', row: { type: 'extend' } }
       ], () => {
         // the lhs record is assignable to the rhs record
-        score += UNIFICATION_SCORE.assignableRecordOrTuple;
+        score += UNIFICATION_SCORE.assignableRecord;
       })
       .with([
         { variant: 'Record', row: { type: 'extend' } },

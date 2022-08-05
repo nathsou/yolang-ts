@@ -3,7 +3,7 @@ import { Argument, Decl, Expr, Imports, Pattern, Prog, Stmt } from '../ast/sweet
 import { Inst } from '../codegen/wasm/instructions';
 import { Row } from '../infer/records';
 import { Tuple } from '../infer/tuples';
-import { MonoTy, TypeParams } from '../infer/types';
+import { MonoTy, TypeParam } from '../infer/types';
 import { deconsLast, last } from '../utils/array';
 import { Either } from '../utils/either';
 import { Maybe, none, some } from '../utils/maybe';
@@ -142,13 +142,16 @@ initParser(monoTy, alt(
   allExceptFunTy,
 ));
 
-const typeParams: Parser<TypeParams> = angleBrackets(commas(upperIdent));
+const typeParams: Parser<TypeParam[]> = map(
+  angleBrackets(commas(upperIdent)),
+  ps => ps.map(p => ({ name: p, ty: none }))
+);
 const typeParamsInst: Parser<MonoTy[]> = angleBrackets(commas(monoTy));
 
-const scopedTypeParams = <T>(p: Parser<T>): Parser<[TypeParams, T]> =>
+const scopedTypeParams = <T>(p: Parser<T>): Parser<[TypeParam[], T]> =>
   flatMap(optionalOrDefault(typeParams, []), params =>
     ref((tokens: Slice<Token>) =>
-      map<T, [TypeParams, T]>(p, t => [params, t]).ref(tokens)
+      map<T, [TypeParam[], T]>(p, t => [params, t]).ref(tokens)
     )
   );
 

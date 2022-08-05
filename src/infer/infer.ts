@@ -14,7 +14,7 @@ import { Row } from './records';
 import { signatures } from './signatures';
 import { MAX_TUPLE_INDEX, Tuple } from './tuples';
 import { TypeContext } from './typeContext';
-import { MonoTy, PolyTy } from './types';
+import { MonoTy, PolyTy, showTyVarId, TypeParam } from './types';
 import { unifyMut, unifyPure } from './unification';
 
 export type TypingError = DataType<{
@@ -64,7 +64,13 @@ const resolveOverloading = (
   return Either.right({ type: 'AmbiguousOverload', name, f, matches: bestMatches.map(f => f.func.funTy) });
 };
 
-const monomorphizeFunc = (ctx: TypeContext, f: FuncDecl, instanceTy: MonoTy, errors: Error[]): FuncDecl => {
+const monomorphizeFunc = (
+  ctx: TypeContext,
+  f: FuncDecl,
+  typeParams: MonoTy[],
+  instanceTy: MonoTy,
+  errors: Error[]
+): FuncDecl => {
   // check if an instance for these args already exists
   {
     const inst = f.instances.find(inst => unifyPure(inst.funTy[1], instanceTy, ctx).isOk());
@@ -74,13 +80,26 @@ const monomorphizeFunc = (ctx: TypeContext, f: FuncDecl, instanceTy: MonoTy, err
     }
   }
 
+  const newCtx = TypeContext.clone(ctx);
   const nameEnv = NameEnv.make();
   const inst = Decl.rewrite(f, nameEnv, id, id) as FuncDecl;
+
+  if (typeParams.length > inst.typeParams.length) {
+    return panic(`Too many type parameters for '${f.name.renaming}', got ${typeParams.length}, expected ${inst.typeParams.length}`);
+  }
+
+  typeParams.forEach((p, index) => {
+    inst.typeParams[index] = {
+      name: inst.typeParams[index]?.name ?? showTyVarId(index),
+      ty: some(p)
+    };
+  });
+
+  TypeContext.declareTypeParams(newCtx, ...inst.typeParams);
   const instTy = PolyTy.instantiate(f.funTy);
   inst.funTy = MonoTy.toPoly(instTy.ty);
-  inst.typeParams = [];
-  inferDecl(inst, ctx, errors);
-  errors.push(...unifyMut(instTy.ty, instanceTy, ctx));
+  inferDecl(inst, newCtx, errors);
+  errors.push(...unifyMut(instTy.ty, instanceTy, newCtx));
   f.instances.push(inst);
 
   return inst;
@@ -97,7 +116,6 @@ const inferExpr = (
 
   const { env } = ctx;
   const tau = expr.ty;
-  expr.typeContext = ctx;
 
   const resolveVar = (name: VarName): Maybe<PolyTy> => {
     return Env.lookupVar(env, name.original).match({
@@ -153,7 +171,7 @@ const inferExpr = (
       unify(opTy1.ty, opTy2);
     },
     NamedFuncCall: f => {
-      const { name, args } = f;
+      const { name, typeParams, args } = f;
 
       resolveFuncs(name).do(funcs => {
         args.forEach(arg => {
@@ -174,7 +192,7 @@ const inferExpr = (
             let funTy = resolvedFunc.funTy[1];
 
             if (PolyTy.isPolymorphic(resolvedFunc.funTy)) {
-              const inst = monomorphizeFunc(ctx, resolvedFunc, actualFunTy, errors);
+              const inst = monomorphizeFunc(ctx, resolvedFunc, typeParams, actualFunTy, errors);
 
               funTy = inst.funTy[1];
               f.name = Either.right(inst.name);
@@ -492,7 +510,6 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[
   match(decl, {
     Function: f => {
       const { name, typeParams, args, returnTy, body } = f;
-
       const bodyCtx = TypeContext.clone(ctx);
       TypeContext.declareTypeParams(bodyCtx, ...typeParams);
 
@@ -510,14 +527,14 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[
         unify(body.ty, retTy, bodyCtx);
       });
 
-      const funTy = PolyTy.instantiate(PolyTy.instantiateTyParams(typeParams, MonoTy.Fun(
+      const funTy = MonoTy.Fun(
         args.map(({ name: arg }) => arg.ty),
         body.ty
-      )));
+      );
 
-      unify(funTy.ty, name.ty);
+      unify(funTy, name.ty);
 
-      const genFunTy = MonoTy.generalize(ctx.env, funTy.ty);
+      const genFunTy = MonoTy.generalize(ctx.env, funTy);
       f.funTy = genFunTy;
       Env.declareFunc(ctx.env, f);
 

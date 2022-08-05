@@ -1,7 +1,8 @@
 import { DataType, match, matchMany } from "itsamatch";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
-import { cond, id, panic, parenthesized } from "../utils/misc";
+import { Maybe } from "../utils/maybe";
+import { cond, panic, parenthesized, proj } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./records";
@@ -280,6 +281,7 @@ export const MonoTy = {
     },
     'Record Record': (r1, r2) => Row.strictEq(r1.row, r2.row),
     'Tuple Tuple': (t1, t2) => Tuple.eq(t1.tuple, t2.tuple),
+    'Param Param': (p1, p2) => p1.name === p2.name,
     _: () => false,
   }),
   isDetermined: (s: MonoTy): boolean => PolyTy.isDetermined([[], s]),
@@ -304,12 +306,6 @@ export const PolyTy = {
     const remainingVars = quantifiedVars.slice(inst.length);
 
     return [remainingVars, MonoTy.substitute(ty, subst)];
-  },
-  instantiateTyParams: (tyParams: TypeParams, ty: MonoTy): PolyTy => {
-    const quantifiedVars = gen(tyParams.length, id);
-    const subst = new Map<string, MonoTy>(zip(tyParams, quantifiedVars.map(id => MonoTy.Var(TyVar.Unbound(id)))));
-
-    return [quantifiedVars, MonoTy.substituteTyParams(ty, subst)];
   },
   typeVars: ([quantified, _]: PolyTy) => quantified,
   freeTypeVars: ([quantified, monoTy]: PolyTy): Set<TyVarId> => {
@@ -356,10 +352,10 @@ export const PolyTy = {
   isPolymorphic: ([quantified, _]: PolyTy): boolean => quantified.length > 0,
 };
 
-export type TypeParams = string[];
+export type TypeParam = { name: string, ty: Maybe<MonoTy> };
 
 export const TypeParams = {
-  show: (params: TypeParams) => params.length > 0 ? `<${params.join(', ')}>` : '',
+  show: (params: TypeParam[]) => params.length > 0 ? `<${params.map(proj('name')).join(', ')}>` : '',
 };
 
 export type TypeParamsContext = {

@@ -6,6 +6,7 @@ import { Tuple } from "../infer/tuples";
 import { TypeContext } from "../infer/typeContext";
 import { MonoTy } from "../infer/types";
 import { unifyMut, unifyPure } from "../infer/unification";
+import { none } from "../utils/maybe";
 import { Arb } from './arbitraries/arb';
 
 const testContext = (() => {
@@ -13,7 +14,7 @@ const testContext = (() => {
   TypeContext.declareTypeAlias(ctx, 'Yolo', [], MonoTy.u32());
   TypeContext.declareTypeAlias(ctx, 'Hola', [], MonoTy.bool());
   const pairTy = MonoTy.Tuple(Tuple.fromArray([MonoTy.Param('A'), MonoTy.Param('B')]));
-  TypeContext.declareTypeAlias(ctx, 'Pair', ['A', 'B'], pairTy);
+  TypeContext.declareTypeAlias(ctx, 'Pair', [{ name: 'A', ty: none }, { name: 'B', ty: none }], pairTy);
   return ctx;
 })();
 
@@ -199,7 +200,7 @@ describe('unifyPure', () => {
     expect(tv1).toMatchObject(MonoTy.Var({ kind: 'Unbound', id: 0 }));
     expect(tv2).toMatchObject(MonoTy.Var({ kind: 'Unbound', id: 1 }));
 
-    const subst = res.unwrap();
+    const { subst } = res.unwrap();
     expect(subst.get(0)).toMatchObject(MonoTy.bool());
     expect(subst.get(1)).toMatchObject(MonoTy.u32());
   });
