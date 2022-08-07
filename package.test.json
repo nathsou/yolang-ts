@@ -2,7 +2,8 @@
   "name": "yolang-tests",
   "version": "1.0.0",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "typeCheck": "npx tsc --noEmit"
   },
   "devDependencies": {
     "itsamatch": "^1.1.2",
