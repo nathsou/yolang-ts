@@ -14,7 +14,7 @@ import { Row } from './records';
 import { signatures } from './signatures';
 import { MAX_TUPLE_INDEX, Tuple } from './tuples';
 import { TypeContext } from './typeContext';
-import { MonoTy, PolyTy, showTyVarId, TypeParam } from './types';
+import { MonoTy, PolyTy, showTyVarId } from './types';
 import { unifyMut, unifyPure } from './unification';
 
 export type TypingError = DataType<{
@@ -85,7 +85,7 @@ const monomorphizeFunc = (
   const inst = Decl.rewrite(f, nameEnv, id, id) as FuncDecl;
 
   if (typeParams.length > inst.typeParams.length) {
-    return panic(`Too many type parameters for '${f.name.renaming}', got ${typeParams.length}, expected ${inst.typeParams.length}`);
+    return panic(`Too many type parameters for '${f.name.mangled}', got ${typeParams.length}, expected ${inst.typeParams.length}`);
   }
 
   typeParams.forEach((p, index) => {
@@ -170,8 +170,8 @@ const inferExpr = (
       const opTy2 = MonoTy.Fun([lhs.ty, rhs.ty], tau);
       unify(opTy1.ty, opTy2);
     },
-    NamedFuncCall: f => {
-      const { name, typeParams, args } = f;
+    NamedFuncCall: call => {
+      const { name, typeParams, args } = call;
 
       resolveFuncs(name).do(funcs => {
         args.forEach(arg => {
@@ -188,14 +188,14 @@ const inferExpr = (
 
         resolveOverloading(funcName, actualFunTy, funcs, ctx).match({
           left: resolvedFunc => {
-            f.name = Either.right(resolvedFunc.name);
+            call.name = Either.right(resolvedFunc.name);
             let funTy = resolvedFunc.funTy[1];
 
             if (PolyTy.isPolymorphic(resolvedFunc.funTy)) {
               const inst = monomorphizeFunc(ctx, resolvedFunc, typeParams, actualFunTy, errors);
 
               funTy = inst.funTy[1];
-              f.name = Either.right(inst.name);
+              call.name = Either.right(inst.name);
             }
 
             unify(funTy, actualFunTy);
@@ -489,6 +489,7 @@ const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): Error[] => {
       });
 
       const genTy = MonoTy.generalize(ctx.env, expr.ty);
+      unifyMut(name.ty, expr.ty, ctx);
       Env.addPolyVar(ctx.env, name, genTy);
     },
     Expr: ({ expr }) => {
@@ -502,7 +503,7 @@ const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): Error[] => {
   return errors;
 };
 
-export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[] => {
+const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[] => {
   const unify = (s: MonoTy, t: MonoTy, context = ctx): void => {
     errors.push(...unifyMut(s, t, context));
   };
@@ -510,6 +511,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[
   match(decl, {
     Function: f => {
       const { name, typeParams, args, returnTy, body } = f;
+      Env.declareFunc(ctx.env, f);
       const bodyCtx = TypeContext.clone(ctx);
       TypeContext.declareTypeParams(bodyCtx, ...typeParams);
 
@@ -536,11 +538,10 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[
 
       const genFunTy = MonoTy.generalize(ctx.env, funTy);
       f.funTy = genFunTy;
-      Env.declareFunc(ctx.env, f);
 
       const overloadsCount = Env.lookupFuncs(ctx.env, name.original).length;
-      if (overloadsCount > 1 && !name.renaming.includes('[')) {
-        name.renaming += `[${overloadsCount}]`;
+      if (overloadsCount > 1 && !name.mangled.includes('[')) {
+        name.mangled += `[${overloadsCount}]`;
       }
     },
     Module: mod => {

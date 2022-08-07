@@ -1,7 +1,8 @@
 
-type Vec2 = {
-  x: u32,
-  y: u32
+type Vec2 = { x: u32, y: u32 }
+
+fun dot(u, v) {
+  u.x * v.x + u.y * v.y
 }
 
 fun eq(a, b) {
@@ -12,5 +13,5 @@ fun yo() {
   let u = Vec2 { x: 3, y: 4 }
   let v = Vec2 { x: 7, y: 11 }
 
-  eq(u, v)
+  u.eq(v)
 }

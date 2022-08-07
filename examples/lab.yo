@@ -1,10 +1,28 @@
 
-fun eq(n1: u32, n2: u32) { n1 == n2 }
-fun eq(a: bool, b: bool) { a == b }
+fun fact(n, acc) {
+  if n <= 1 { acc } else { fact(n - 1, n * acc) }
+}
 
-fun toInt(q) { if q == true { 1 } else { 0 } }
-fun toInt(n: u32) { n }
+fun fibRec(n) {
+  if n <= 2 { n } else { fibRec(n - 2) + fibRec(n - 1) }
+}
+
+fun fibIter(n) {
+  mut a = 1
+  mut b = 1
+  mut i = 0
+
+  while i < n {
+    i += 1
+    let tmp = a
+    a = b
+    b += tmp
+  }
+
+  a
+}
 
 fun main() {
-  33.toInt() + (3 * 7 + 1).eq(11 * 2).toInt()
+  let n = fact(4, 1) * 2 - 6
+  fibIter(n) == fibRec(n)
 }

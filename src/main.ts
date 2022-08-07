@@ -2,14 +2,14 @@ import { match as matchVariant } from "itsamatch";
 import { Decl, Prog } from "./ast/bitter";
 import { Context } from './ast/context';
 import { Prog as SweetProg } from "./ast/sweet";
-import { Compiler } from "./codegen/codegen";
-import { Module } from "./codegen/wasm/sections";
+import { createLLVMCompiler } from "./codegen/llvm/codegen";
 import { Error } from './errors/errors';
 import { infer } from "./infer/infer";
 import { TypeContext } from "./infer/typeContext";
 import { MonoTy, PolyTy, TypeParams } from "./infer/types";
 import { createNodeFileSystem } from './resolve/nodefs';
 import { resolve } from './resolve/resolve';
+import { panic } from "./utils/misc";
 
 enum DebugLvl {
   nothing = 0,
@@ -43,6 +43,20 @@ const typeCheck = (sweetProg: SweetProg): [Prog, TypeContext, Error[]] => {
   return [prog, typeCtx, errors];
 };
 
+const runWasmFile = async (source: string): Promise<Function> => {
+  const { readFile } = await import('fs/promises');
+
+  const wasm = await readFile(source);
+  const module = new WebAssembly.Module(wasm);
+  const instance = new WebAssembly.Instance(module, {});
+
+  if ('main' in instance.exports && typeof instance.exports['main'] === 'function') {
+    return instance.exports['main'];
+  }
+
+  return panic('main function not found');
+};
+
 const run = async (source: string): Promise<boolean> => {
   const nfs = await createNodeFileSystem();
   const [sweetProg, errs1] = await resolve(source, nfs);
@@ -54,33 +68,28 @@ const run = async (source: string): Promise<boolean> => {
   });
 
   if (errors.length === 0) {
-    // const prog = monomorphize(typedProg);
-
     if (debugLevel >= DebugLvl.types) {
       console.log('--- types ---');
       console.log(showTypes(prog, []).join('\n\n') + '\n');
     }
 
-    const mod = Compiler.compile(prog);
+    if (prog.length === 1 && prog[0].variant === 'Module') {
+      const compiler = await createLLVMCompiler();
+      const module = compiler.compile(prog[0]);
+      module.setSourceFileName(source);
 
-    if (debugLevel >= DebugLvl.sections) {
-      console.log('--- sections ---');
-      console.log(Module.show(mod));
-      // writeFileSync('out.wasm', Module.encodeUin8Array(mod), { encoding: 'binary' });
-    }
+      if (debugLevel >= DebugLvl.sections) {
+        console.log(module.print());
+      }
 
-    const compiled = new WebAssembly.Module(Module.encodeUin8Array(mod));
-    const instance = new WebAssembly.Instance(compiled, {});
+      const outPath = 'out';
 
-    const mainFunc = Object
-      .entries(instance.exports)
-      .find(([name, val]) => name.endsWith('.main') && val instanceof Function);
+      await compiler.compileIR(module, outPath, 3);
+      const mainFunc = await runWasmFile(`${outPath}.wasm`);
 
-    if (mainFunc) {
-      console.log((mainFunc[1] as Function)());
+      console.log(mainFunc());
     } else {
-      console.log('No main function found');
-      return false;
+      panic('no entry module found');
     }
   }
 

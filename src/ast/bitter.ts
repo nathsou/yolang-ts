@@ -116,10 +116,12 @@ export const Expr = {
     return match(sweet, {
       Const: ({ value }) => Expr.Const(value, sweet),
       Variable: ({ name }) => Expr.Variable(NameEnv.resolveVar(nameEnv, name), sweet),
-      Call: ({ lhs, typeParams, args }) => match(lhs, {
-        Variable: ({ name }) => Expr.NamedFuncCall(Either.left(name), typeParams, args.map(arg => go(arg)), sweet),
-        _: () => Expr.Call(go(lhs), args.map(arg => go(arg)), sweet)
-      }),
+      Call: ({ lhs, typeParams, args }) => {
+        return match(lhs, {
+          Variable: ({ name }) => Expr.NamedFuncCall(Either.left(name), typeParams, args.map(arg => go(arg)), sweet),
+          _: () => Expr.Call(go(lhs), args.map(arg => go(arg)), sweet),
+        });
+      },
       BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(go(lhs), op, go(rhs), sweet),
       UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, go(expr), sweet),
       Error: ({ message }) => Expr.Error(message, sweet),
@@ -201,13 +203,13 @@ export const Expr = {
 
     return rewriteExpr(match(expr, {
       Const: ({ value }) => Expr.Const(value, expr.sweet),
-      Variable: ({ name }) => Expr.Variable(NameEnv.resolveVar(nameEnv, name.original, name.renaming), expr.sweet),
+      Variable: ({ name }) => Expr.Variable(NameEnv.resolveVar(nameEnv, name.original), expr.sweet),
       NamedFuncCall: ({ name, typeParams, args }) => Expr.NamedFuncCall(name, typeParams, args.map(arg => go(arg)), expr.sweet),
       Call: ({ lhs, args }) => Expr.Call(go(lhs), args.map(arg => go(arg)), expr.sweet),
       BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(go(lhs), op, go(rhs), expr.sweet),
       UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, go(expr), expr.sweet),
       Error: ({ message }) => Expr.Error(message, expr.sweet),
-      Closure: ({ args, body }) => Expr.Closure(args.map(arg => ({ ...arg, name: NameEnv.resolveVar(nameEnv, arg.name.original, arg.name.renaming) })), go(body), expr.sweet),
+      Closure: ({ args, body }) => Expr.Closure(args.map(arg => ({ ...arg, name: NameEnv.resolveVar(nameEnv, arg.name.original) })), go(body), expr.sweet),
       Block: ({ statements, lastExpr }) => Expr.Block(statements.map(s => Stmt.rewrite(s, nameEnv, rewriteExpr)), lastExpr.map(e => go(e)), expr.sweet),
       IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(go), expr.sweet),
       Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs), expr.sweet),
@@ -326,9 +328,8 @@ export const Decl = {
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, moduleStack: string[], errors: Error[]): Decl =>
     match(sweet, {
       Function: ({ name, typeParams, args, returnTy, body }) => {
-        const withoutPatterns = rewriteFuncArgsPatternMatching(args, body, nameEnv, errors);
         const nameRef = NameEnv.declareFunc(nameEnv, name);
-        nameRef.renaming = [...moduleStack, name].join('.');
+        const withoutPatterns = rewriteFuncArgsPatternMatching(args, body, nameEnv, errors);
 
         return Decl.Function(
           nameRef,
@@ -354,13 +355,16 @@ export const Decl = {
     const go = (decl: Decl): Decl => Decl.rewrite(decl, nameEnv, rewriteExpr, rewriteDecl);
 
     return match(decl, {
-      Function: ({ name, typeParams, args, body, returnTy }) => Decl.Function(
-        NameEnv.declareFunc(nameEnv, name.original, name.renaming),
-        typeParams.map(p => ({ name: p.name, ty: none })),
-        args.map(arg => ({ ...arg, name: NameEnv.resolveVar(nameEnv, arg.name.original, arg.name.renaming) })),
-        returnTy,
-        Expr.rewrite(body, nameEnv, rewriteExpr),
-      ),
+      Function: ({ name, typeParams, args, body, returnTy }) => {
+        const bodyEnv = NameEnv.clone(nameEnv);
+        return Decl.Function(
+          NameEnv.declareFunc(nameEnv, name.original, name.mangled),
+          typeParams.map(p => ({ name: p.name, ty: none })),
+          args.map(arg => ({ ...arg, name: NameEnv.declareVar(bodyEnv, arg.name.original, false, arg.name.mangled) })),
+          returnTy,
+          Expr.rewrite(body, bodyEnv, rewriteExpr),
+        );
+      },
       Module: ({ name, decls }) => Decl.Module(name, decls.map(decl => go(decl))),
       TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias(name, typeParams, alias),
       Use: ({ path, imports }) => Decl.Use(path, imports),
@@ -399,7 +403,7 @@ export const rewriteFuncArgsPatternMatching = (
   nameEnv: NameEnv,
   errors: Error[],
 ): { args: Argument[], body: Expr } => {
-  const bodyEnv = NameEnv.make();
+  const bodyEnv = NameEnv.clone(nameEnv);
   const firstRefuttableArg = args.find(({ pattern }) => !SweetPattern.isIrrefutable(pattern));
   if (firstRefuttableArg !== undefined) {
     errors.push(Error.BitterConversion({
@@ -409,13 +413,15 @@ export const rewriteFuncArgsPatternMatching = (
 
   // we don't have to do anything if all the patterns are variables or _
   if (args.every(arg => arg.pattern.variant === 'Variable' || arg.pattern.variant === 'Any')) {
+    const declaredArgs = args.map(({ pattern, mutable, annotation }, index) => ({
+      name: NameEnv.declareVar(bodyEnv, pattern.variant === 'Variable' ? pattern.name : `_${index}`, mutable),
+      mutable,
+      annotation
+    }));
+
     return {
-      args: args.map(({ pattern, mutable, annotation }, index) => ({
-        name: NameEnv.declareVar(bodyEnv, pattern.variant === 'Variable' ? pattern.name : `_${index}`, mutable),
-        mutable,
-        annotation
-      })),
-      body: Expr.fromSweet(body, nameEnv, errors),
+      args: declaredArgs,
+      body: Expr.fromSweet(body, bodyEnv, errors),
     };
   }
 

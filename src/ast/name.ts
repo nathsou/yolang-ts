@@ -1,9 +1,9 @@
 import { MonoTy } from "../infer/types";
-import { pushRecord } from "../utils/misc";
+import { panic, pushRecord } from "../utils/misc";
 
 export type FuncName = {
   readonly original: string,
-  renaming: string,
+  mangled: string,
   ty: MonoTy,
 };
 
@@ -20,7 +20,7 @@ export type TyParamName = {
 export const FuncName = {
   fresh: (name: string): FuncName => ({
     original: name,
-    renaming: name,
+    mangled: name,
     ty: MonoTy.fresh(),
   }),
   clone: (name: FuncName, freshTy = true): FuncName => ({ ...name, ty: freshTy ? MonoTy.fresh() : name.ty }),
@@ -29,7 +29,7 @@ export const FuncName = {
 export const VarName = {
   fresh: (name: string, mutable: boolean, isUndeclared = false): VarName => ({
     original: name,
-    renaming: name,
+    mangled: name,
     ty: MonoTy.fresh(),
     mutable,
     isUndeclared,
@@ -47,37 +47,31 @@ export const NameEnv = {
   clone: (env: NameEnv): NameEnv => ({ vars: { ...env.vars }, funcs: { ...env.funcs } }),
   declareVar: (env: NameEnv, name: string, mutable: boolean, renaming = name): VarName => {
     const fresh = VarName.fresh(name, mutable);
-    fresh.renaming = renaming;
+    fresh.mangled = renaming;
     env.vars[name] = fresh;
     return fresh;
   },
   declareFunc: (env: NameEnv, name: string, renaming = name): FuncName => {
     const fresh = FuncName.fresh(name);
-    fresh.renaming = renaming;
+    fresh.mangled = renaming;
     pushRecord(env.funcs, name, fresh);
     return fresh;
   },
-  resolveVar: (env: NameEnv, name: string, renaming = name): VarName => {
+  resolveVar: (env: NameEnv, name: string): VarName => {
     if (name in env.vars) {
       return env.vars[name];
     }
 
-    const fresh = VarName.fresh(name, false, true);
-    fresh.renaming = renaming;
-
-    return fresh;
+    return panic(`unresolved variable '${name}'`);
   },
-  resolveFunc: (env: NameEnv, name: string, renaming = name): FuncName[] => {
+  resolveFunc: (env: NameEnv, name: string): FuncName[] => {
     if (name in env.funcs) {
       return env.funcs[name];
     }
 
-    const fresh = FuncName.fresh(name);
-    fresh.renaming = renaming;
-
-    return [fresh];
+    return panic(`unresolved function '${name}'`);
   },
   isUndeclared: (name: VarName): boolean => {
-    return name.renaming === '<__!undeclared!__>';
+    return name.mangled === '<__!undeclared!__>';
   },
 };

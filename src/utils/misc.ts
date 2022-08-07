@@ -67,3 +67,5 @@ export function assert(test: boolean, message = ''): asserts test {
     throw new Error(`assertion failed: ${message}`);
   }
 }
+
+export const block = <T>(f: () => T): T => f();

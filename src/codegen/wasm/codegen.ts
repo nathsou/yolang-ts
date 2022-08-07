@@ -1,28 +1,31 @@
 import { DataType, match, VariantOf } from "itsamatch";
-import { Decl, Expr, Prog, Stmt } from "../ast/bitter";
-import { FuncName, VarName } from "../ast/name";
-import { MonoTy, PolyTy } from "../infer/types";
-import { last, reverse } from "../utils/array";
-import { Maybe } from "../utils/maybe";
-import { panic } from "../utils/misc";
-import { Func } from "./wasm/func";
-import { Inst } from "./wasm/instructions";
-import { Expr as IRExpr } from './wasm/ir';
-import { Module } from "./wasm/sections";
-import { FuncIdx, FuncType, GlobalIdx, LocalIdx } from "./wasm/types";
-import { blockRetTy, wasmTy } from "./wasm/utils";
+import { Decl, Expr, Prog, Stmt } from "../../ast/bitter";
+import { FuncName, VarName } from "../../ast/name";
+import { Row } from "../../infer/records";
+import { MonoTy, PolyTy } from "../../infer/types";
+import { last, reverse } from "../../utils/array";
+import { Maybe } from "../../utils/maybe";
+import { panic } from "../../utils/misc";
+import { Func } from "./func";
+import { Inst } from "./instructions";
+import { Expr as IRExpr } from './ir';
+import { Module } from "./sections";
+import { FuncIdx, FuncType, GlobalIdx, LocalIdx } from "./types";
+import { blockRetTy, wasmTy } from "./utils";
 
 export class Compiler {
   private mod: Module;
   private funcStack: Func[];
   private globalVars: GlobalVar[];
   private topLevelFuncs: Map<string, Func>;
+  private structs: Map<string, { fields: { name: string, ty: MonoTy }[] }>;
 
   private constructor() {
     this.mod = Module.make();
     this.funcStack = [];
     this.globalVars = [];
     this.topLevelFuncs = new Map();
+    this.structs = new Map();
   }
 
   private compileDecl(decl: Decl): void {
@@ -57,7 +60,18 @@ export class Compiler {
           this.compileDecl(decl);
         });
       },
-      TypeAlias: () => { },
+      TypeAlias: ({ name, alias }) => {
+        match(alias, {
+          Record: ({ row }) => {
+            if (!this.structs.has(name)) {
+              this.structs.set(name, { fields: Row.fields(row).map(([name, ty]) => ({ name, ty })) });
+            } else {
+              panic(`struct ${name} already defined`);
+            }
+          },
+          _: () => { },
+        })
+      },
       _: () => {
         panic('unhandled decl variant: ' + decl.variant);
       },
@@ -68,27 +82,27 @@ export class Compiler {
   private declareFunction(f: VariantOf<Decl, 'Function'>): FuncIdx {
     const idx: FuncIdx = this.topLevelFuncs.size;
     const func = Func.make(
-      f.name.renaming,
+      f.name.mangled,
       f.args.map(({ name, mutable }) => ({ name: name.original, ty: name.ty, mutable })),
       f.body,
       idx
     );
 
-    if (this.topLevelFuncs.has(f.name.renaming)) {
-      panic(`function ${f.name.renaming} already defined`);
+    if (this.topLevelFuncs.has(f.name.mangled)) {
+      panic(`function ${f.name.mangled} already defined`);
     }
 
-    this.topLevelFuncs.set(f.name.renaming, func);
+    this.topLevelFuncs.set(f.name.mangled, func);
 
     return idx;
   }
 
   private compileFunction(f: VariantOf<Decl, 'Function'>): FuncIdx {
-    if (!this.topLevelFuncs.has(f.name.renaming)) {
-      panic(`function ${f.name.renaming} not defined`);
+    if (!this.topLevelFuncs.has(f.name.mangled)) {
+      panic(`function ${f.name.mangled} not defined`);
     }
 
-    const func = this.topLevelFuncs.get(f.name.renaming)!;
+    const func = this.topLevelFuncs.get(f.name.mangled)!;
 
     this.funcStack.push(func);
     const insts = IRExpr.compile(this.compileExpr(f.body));
@@ -96,7 +110,7 @@ export class Compiler {
 
     const funcIdx = Module.addFunction(
       this.mod,
-      f.name.renaming,
+      f.name.mangled,
       FuncType.make(f.args.flatMap(arg => wasmTy(arg.name.ty)), [wasmTy(f.body.ty)]),
       Func.locals(func),
       insts,
@@ -104,18 +118,18 @@ export class Compiler {
     );
 
     if (funcIdx !== func.index) {
-      panic(`mismatching function index for '${f.name.renaming}': ${funcIdx} !== ${func.index}`);
+      panic(`mismatching function index for '${f.name.mangled}': ${funcIdx} !== ${func.index}`);
     }
 
     return func.index;
   }
 
   private call(funcName: FuncName, args: Expr[]): IRExpr {
-    if (this.topLevelFuncs.has(funcName.renaming)) {
-      const f = this.topLevelFuncs.get(funcName.renaming)!;
+    if (this.topLevelFuncs.has(funcName.mangled)) {
+      const f = this.topLevelFuncs.get(funcName.mangled)!;
       return IRExpr.call(f.index, args.map(a => this.compileExpr(a)));
     } else {
-      return panic('indirect function call not supported yet: ' + funcName.renaming)
+      return panic('indirect function call not supported yet: ' + funcName.mangled)
     }
   }
 
@@ -219,7 +233,7 @@ export class Compiler {
   }
 
   private resolveVar(name: VarName): ResolvedVar {
-    return Maybe.firstSomeBy(reverse(this.funcStack), f => Func.resolveVar(f, name.renaming)).match({
+    return Maybe.firstSomeBy(reverse(this.funcStack), f => Func.resolveVar(f, name.mangled)).match({
       Some: ([funcIdx, index]) => {
         if (index !== 0) {
           panic('closures not supported yet');
@@ -228,16 +242,16 @@ export class Compiler {
         return ResolvedVar.Local(funcIdx);
       },
       None: () => {
-        const globalVar = this.globalVars.find(v => v.name === name.renaming);
+        const globalVar = this.globalVars.find(v => v.name === name.mangled);
         if (globalVar) {
           return ResolvedVar.Global(globalVar.index);
         }
 
-        if (this.topLevelFuncs.has(name.renaming)) {
-          return ResolvedVar.Func(this.topLevelFuncs.get(name.renaming)!.index);
+        if (this.topLevelFuncs.has(name.mangled)) {
+          return ResolvedVar.Func(this.topLevelFuncs.get(name.mangled)!.index);
         }
 
-        return panic(`resolveVar: variable ${name.renaming} not found`);
+        return panic(`resolveVar: variable ${name.mangled} not found`);
       },
     });
   }

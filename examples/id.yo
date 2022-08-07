@@ -1,6 +1,6 @@
 
-fun id<T>(x: T): T { x }
+fun id(x) { x }
       
 fun main() {
-  if id<bool>(true) { id<u32>(1) } else { id(3) }
+  if id(false) { id(1) } else { id(3) }
 }
