@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - run: rm package.json
+      - run: mv package.test.json package.json 
       - run: yarn install
       - run: yarn typeCheck
       - run: yarn test

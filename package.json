@@ -1,7 +1,7 @@
 {
   "name": "yolang",
   "version": "1.0.0",
-  "description": "Rust-like language targetting WebAssembly",
+  "description": "Simple language targetting LLVM",
   "main": "build/yolang.js",
   "scripts": {
     "test": "jest",

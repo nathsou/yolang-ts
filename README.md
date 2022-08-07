@@ -1,6 +1,16 @@
 # Yolang
 
-## Syntax
+Simple procedural language targetting LLVM
+
+## Usage
+
+Follow the [llvm-bindings](https://github.com/ApsarasX/llvm-bindings#install) instructions to install llvm.
+
+
+```bash
+$ yarn install
+$ node build/yolang.js examples/euler2.yo
+```
 
 ## References
 
