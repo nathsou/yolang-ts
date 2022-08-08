@@ -1,7 +1,7 @@
 import { DataType, match as matchVariant } from "itsamatch";
 import { Decl, Prog } from "../ast/sweet";
 import { Error } from "../errors/errors";
-import { Row } from "../infer/records";
+import { Row } from "../infer/structs";
 import { Tuple } from "../infer/tuples";
 import { MonoTy } from "../infer/types";
 import { lex } from "../parse/lex";
@@ -97,8 +97,7 @@ const collectUsedPaths = (ty: MonoTy): string[] => {
   const aux = (ty: MonoTy): void => matchVariant(ty, {
     Const: ({ path }) => { registerPath(path); },
     Tuple: ({ tuple }) => Tuple.toArray(tuple).forEach(aux),
-    Record: ({ row }) => Row.fields(row).forEach(([_, ty]) => aux(ty)),
-    NamedRecord: ({ row }) => Row.fields(row).forEach(([_, ty]) => aux(ty)),
+    Struct: ({ row }) => Row.fields(row).forEach(([_, ty]) => aux(ty)),
     Fun: ({ args, ret }) => {
       args.forEach(aux);
       aux(ret);
@@ -158,7 +157,7 @@ const resolveAux = async (
       ModuleAccess: ({ path }) => {
         registerModule(moduleName(path[0]));
       },
-      NamedRecord: ({ path }) => {
+      Struct: ({ path }) => {
         if (path.length > 0) {
           registerModule(moduleName(path[0]));
         }

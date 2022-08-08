@@ -5,7 +5,7 @@ import { Maybe } from "../utils/maybe";
 import { cond, panic, parenthesized, proj } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
-import { Row } from "./records";
+import { Row } from "./structs";
 import { Tuple } from "./tuples";
 
 export type TyVarId = number;
@@ -27,8 +27,7 @@ export type MonoTy = DataType<{
   Const: { path: string[], name: string, args: MonoTy[] },
   Fun: { args: MonoTy[], ret: MonoTy },
   Tuple: { tuple: Tuple },
-  Record: { row: Row },
-  NamedRecord: { name: string, row: Row },
+  Struct: { name?: string, row: Row },
 }>;
 
 export const showTyVarId = (n: TyVarId): string => {
@@ -46,8 +45,7 @@ export const MonoTy = {
   ConstWithPath: (path: string[], name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', path, name, args }),
   Fun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'Fun', args, ret }),
   Tuple: (tuple: Tuple): MonoTy => ({ variant: 'Tuple', tuple }),
-  Record: (row: Row): MonoTy => ({ variant: 'Record', row }),
-  NamedRecord: (name: string, fields: Readonly<Row>): MonoTy => ({ variant: 'NamedRecord', name, row: fields }),
+  Struct: (fields: Readonly<Row>, name?: string): MonoTy => ({ variant: 'Struct', name, row: fields }),
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
   u32: () => MonoTy.Const('u32'),
   bool: () => MonoTy.Const('bool'),
@@ -89,15 +87,8 @@ export const MonoTy = {
 
         return fvs;
       },
-      Record: ({ row }) => {
+      Struct: ({ row }) => {
         Row.fields(row).forEach(([_, ty]) => {
-          MonoTy.freeTypeVars(ty, fvs);
-        });
-
-        return fvs;
-      },
-      NamedRecord: ({ row: fields }) => {
-        Row.fields(fields).forEach(([_, ty]) => {
           MonoTy.freeTypeVars(ty, fvs);
         });
 
@@ -127,8 +118,7 @@ export const MonoTy = {
     Const: t => t.args.some(a => MonoTy.occurs(x, a)),
     Fun: t => t.args.some(a => MonoTy.occurs(x, a)) || MonoTy.occurs(x, t.ret),
     Tuple: t => Tuple.toArray(t.tuple).some(a => MonoTy.occurs(x, a)),
-    Record: ({ row }) => Row.fields(row).some(([_, ty]) => MonoTy.occurs(x, ty)),
-    NamedRecord: ({ row: fields }) => Row.fields(fields).some(([_, ty]) => MonoTy.occurs(x, ty)),
+    Struct: ({ row: fields }) => Row.fields(fields).some(([_, ty]) => MonoTy.occurs(x, ty)),
   }),
   deref: (ty: MonoTy): MonoTy => {
     if (ty.variant === 'Var' && ty.value.kind === 'Link') {
@@ -168,12 +158,9 @@ export const MonoTy = {
       Tuple: ({ tuple }) => MonoTy.Tuple(
         Tuple.map(tuple, arg => MonoTy.substitute(arg, subst))
       ),
-      Record: ({ row }) => {
-        return MonoTy.Record(substituteRow(row));
-      },
-      NamedRecord: ({ name, row: fields }) => MonoTy.NamedRecord(
+      Struct: ({ name, row: fields }) => MonoTy.Struct(
+        substituteRow(fields),
         name,
-        substituteRow(fields)
       ),
     });
   },
@@ -210,10 +197,9 @@ export const MonoTy = {
       Tuple: ({ tuple }) => MonoTy.Tuple(
         Tuple.map(tuple, a => MonoTy.substituteTyParams(a, subst))
       ),
-      Record: ({ row }) => MonoTy.Record(substRowTyParams(row)),
-      NamedRecord: ({ name, row }) => MonoTy.NamedRecord(
+      Struct: ({ name, row }) => MonoTy.Struct(
+        substRowTyParams(row),
         name,
-        substRowTyParams(row)
       ),
     });
   },
@@ -233,21 +219,24 @@ export const MonoTy = {
     }),
     Fun: ({ args, ret }) => {
       const showParens = args.length !== 1 || (
-        args[0].variant === 'Record' ||
+        args[0].variant === 'Struct' ||
         args[0].variant === 'Const' && args[0].name === '()'
       );
 
       return `${parenthesized(joinWith(args, MonoTy.show, ', '), showParens)} -> ${MonoTy.show(ret)}`;
     },
     Tuple: ({ tuple }) => Tuple.show(tuple),
-    Record: ({ row }) => {
+    Struct: ({ row, name }) => {
+      if (name != null) {
+        return name;
+      }
+
       if (row.type === 'empty') {
         return '{}';
       }
 
       return `{ ${joinWith(Row.sortedFields(row), ([k, v]) => `${k}: ${MonoTy.show(v)}`, ', ')} }`;
     },
-    NamedRecord: ({ name }) => name,
   }),
   eq: (s: MonoTy, t: MonoTy): boolean => matchMany([MonoTy.deref(s), MonoTy.deref(t)], {
     "Var Var": ({ value: v1 }, { value: v2 }) => {
@@ -279,7 +268,7 @@ export const MonoTy = {
 
       return false;
     },
-    'Record Record': (r1, r2) => Row.strictEq(r1.row, r2.row),
+    'Struct Struct': (r1, r2) => Row.strictEq(r1.row, r2.row),
     'Tuple Tuple': (t1, t2) => Tuple.eq(t1.tuple, t2.tuple),
     'Param Param': (p1, p2) => p1.name === p2.name,
     _: () => false,
@@ -345,8 +334,7 @@ export const PolyTy = {
     Const: () => true,
     Fun: ({ args, ret }) => args.every(arg => PolyTy.isDetermined([vars, arg])) && PolyTy.isDetermined([vars, ret]),
     Tuple: ({ tuple }) => Tuple.toArray(tuple).every(t => PolyTy.isDetermined([vars, t])),
-    Record: ({ row }) => Row.fields(row).every(([, ty]) => PolyTy.isDetermined([vars, ty])),
-    NamedRecord: ({ row }) => Row.fields(row).every(([, ty]) => PolyTy.isDetermined([vars, ty])),
+    Struct: ({ row }) => Row.fields(row).every(([, ty]) => PolyTy.isDetermined([vars, ty])),
     Param: () => true,
   }),
   isPolymorphic: ([quantified, _]: PolyTy): boolean => quantified.length > 0,

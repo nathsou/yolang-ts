@@ -1,11 +1,11 @@
 import fc from 'fast-check';
 import { Context } from '../ast/context';
 import { Expr, Pattern } from '../ast/sweet';
-import { Row } from '../infer/records';
+import { Row } from '../infer/structs';
 import { MonoTy } from '../infer/types';
 import { Parser } from '../parse/combinators';
 import { lex } from '../parse/lex';
-import { binaryExpr, expr, recordTy, tuple, unary } from '../parse/parse';
+import { binaryExpr, expr, structTy, tuple, unary } from '../parse/parse';
 import { Const, Token } from '../parse/token';
 import { none } from '../utils/maybe';
 import { Slice } from '../utils/slice';
@@ -196,16 +196,16 @@ describe('Parser', () => {
     });
   });
 
-  describe('record types', () => {
+  describe('struct types', () => {
     it('should parse the empty record type', () => {
-      expectType(recordTy, '{}', MonoTy.Record(Row.fromFields([])));
+      expectType(structTy, '{}', MonoTy.Struct(Row.fromFields([])));
     });
 
     it('should parse record types without trailing commas', () => {
       expectType(
-        recordTy,
+        structTy,
         '{ yo: u32 }',
-        MonoTy.Record(Row.fromFields([
+        MonoTy.Struct(Row.fromFields([
           ['yo', MonoTy.Const('u32')],
         ]))
       );

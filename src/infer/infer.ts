@@ -5,13 +5,14 @@ import { Inst } from '../codegen/wasm/instructions';
 import { ValueType } from '../codegen/wasm/types';
 import { wasmTy } from '../codegen/wasm/utils';
 import { Error } from '../errors/errors';
-import { gen, zip } from '../utils/array';
+import { gen, uniq, zip } from '../utils/array';
 import { Either } from '../utils/either';
 import { Maybe, none, some } from '../utils/maybe';
-import { id, panic, proj } from '../utils/misc';
+import { fst, id, panic, proj } from '../utils/misc';
+import { diffSet } from '../utils/set';
 import { Env, FuncDecl } from './env';
-import { Row } from './records';
 import { signatures } from './signatures';
+import { Row } from './structs';
 import { MAX_TUPLE_INDEX, Tuple } from './tuples';
 import { TypeContext } from './typeContext';
 import { MonoTy, PolyTy, showTyVarId } from './types';
@@ -20,7 +21,10 @@ import { unifyMut, unifyPure } from './unification';
 export type TypingError = DataType<{
   UnboundVariable: { name: string },
   UnknownFunction: { name: string },
-  ImmutableVariable: { name: string },
+  ImmutableValue: { expr: Expr },
+  CannotUseImmutableValueForImmutableFuncArg: {
+    func: string, arg: string
+  },
   UnassignableExpression: { expr: Expr },
   UnknownModule: { path: string[] },
   UnknownModuleMember: { path: string[], member: string },
@@ -33,7 +37,12 @@ export type TypingError = DataType<{
   WasmBlockExpressionsRequireTypeAnnotations: { expr: Expr },
   NoOverloadMatchesCallSignature: { name: string, f: MonoTy, candidates: PolyTy[] },
   AmbiguousOverload: { name: string, f: MonoTy, matches: PolyTy[] },
+  UndeclaredStruct: { name: string },
+  MissingStructFields: { name: string, fields: string[] },
+  ExtraneoussStructFields: { name: string, fields: string[] },
 }, 'type'>;
+
+const ASSIGNABLE_EXPRESSIONS = new Set<Expr['variant']>(['Variable', 'FieldAccess']);
 
 const resolveOverloading = (
   name: string,
@@ -120,7 +129,7 @@ const inferExpr = (
   const resolveVar = (name: VarName): Maybe<PolyTy> => {
     return Env.lookupVar(env, name.original).match({
       Some: ({ ty, name: declaredName }) => {
-        if (name.isUndeclared) {
+        if (!name.initialized) {
           name = declaredName;
         }
 
@@ -188,6 +197,16 @@ const inferExpr = (
 
         resolveOverloading(funcName, actualFunTy, funcs, ctx).match({
           left: resolvedFunc => {
+            zip(resolvedFunc.args, args).forEach(([funcArg, receivedArg]) => {
+              if (funcArg.mutable && !Expr.isMutable(receivedArg)) {
+                errors.push(Error.Typing({
+                  type: 'CannotUseImmutableValueForImmutableFuncArg',
+                  func: funcName,
+                  arg: funcArg.name.original
+                }));
+              }
+            });
+
             call.name = Either.right(resolvedFunc.name);
             let funTy = resolvedFunc.funTy[1];
 
@@ -252,13 +271,10 @@ const inferExpr = (
       unify(lhsTy, rhsTy);
       unify(tau, MonoTy.unit());
 
-      // mutability check
-      if (lhs.variant === 'Variable') {
-        if (!lhs.name.mutable) {
-          errors.push(Error.Typing({ type: 'ImmutableVariable', name: lhs.name.original }));
-        }
-      } else {
+      if (!ASSIGNABLE_EXPRESSIONS.has(lhs.variant)) {
         errors.push(Error.Typing({ type: 'UnassignableExpression', expr: lhs }));
+      } else if (!Expr.isMutable(lhs)) { // mutability check
+        errors.push(Error.Typing({ type: 'ImmutableValue', expr: lhs }));
       }
     },
     Closure: ({ args, body }) => {
@@ -350,24 +366,49 @@ const inferExpr = (
     },
     FieldAccess: ({ lhs, field }) => {
       const rowTail = MonoTy.fresh();
-      const partialRecordTy = MonoTy.Record(Row.extend(field, tau, rowTail));
+      const partialRecordTy = MonoTy.Struct(Row.extend(field, tau, rowTail));
 
       inferExpr(lhs, ctx, errors);
       unify(partialRecordTy, lhs.ty);
     },
-    NamedRecord: ({ path, name, typeParams, fields }) => {
-      const expectedTy = MonoTy.ConstWithPath(path, name, ...typeParams);
+    Struct: ({ path, name, typeParams, fields }) => {
+      TypeContext.findTypeAlias(ctx, path, name).match({
+        Some: ([ty]) => {
+          if (ty.variant !== 'Struct') {
+            errors.push(Error.Typing({ type: 'UndeclaredStruct', name }));
+          } else {
+            const expectedFields = Row.fields(ty.row);
+            const expectedFieldNames = new Set(expectedFields.map(proj('0')));
+            const receivedFieldnames = new Set(fields.map(proj('name')));
 
-      fields.forEach(({ value }) => {
-        inferExpr(value, ctx, errors);
+            const missingFields = diffSet(expectedFieldNames, receivedFieldnames);
+            const extraFields = diffSet(receivedFieldnames, expectedFieldNames);
+
+            if (missingFields.size > 0) {
+              errors.push(Error.Typing({ type: 'MissingStructFields', name, fields: [...missingFields] }));
+            } else if (extraFields.size > 0) {
+              errors.push(Error.Typing({ type: 'ExtraneoussStructFields', name, fields: [...extraFields] }));
+            } else {
+              fields.forEach(({ name: fieldName, value }) => {
+                const [, expectedFieldTy] = expectedFields.find(([name]) => name === fieldName)!;
+                inferExpr(value, ctx, errors);
+                unify(value.ty, expectedFieldTy);
+              });
+
+              const expectedTy = MonoTy.ConstWithPath(path, name, ...typeParams);
+              const actualTy = MonoTy.Struct(
+                Row.fromFields(fields.map(f => [f.name, f.value.ty]))
+              );
+
+              unify(expectedTy, actualTy);
+              unify(tau, expectedTy);
+            }
+          }
+        },
+        None: () => {
+          errors.push(Error.Typing({ type: 'UndeclaredStruct', name }));
+        },
       });
-
-      const actualTy = MonoTy.Record(
-        Row.fromFields(fields.map(f => [f.name, f.value.ty]))
-      );
-
-      unify(expectedTy, actualTy);
-      unify(tau, expectedTy);
     },
     TupleIndexing: ({ lhs, index }) => {
       if (index > MAX_TUPLE_INDEX) {

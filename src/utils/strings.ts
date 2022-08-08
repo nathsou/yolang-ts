@@ -9,6 +9,6 @@ export const isAlpha = (c: Char) => isLowerCaseLetter(c) || isUpperCaseLetter(c)
 export const isDigit = (c: Char) => c >= '0' && c <= '9';
 export const isAlphaNum = (c: Char) => isAlpha(c) || isDigit(c);
 
-export const ident = (str: string, count: number): string => {
+export const indent = (str: string, count: number): string => {
   return `${'  '.repeat(Math.max(count, 0))}${str}`;
 };

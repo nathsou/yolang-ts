@@ -1,7 +1,7 @@
 import { DataType, match, VariantOf } from "itsamatch";
 import { Decl, Expr, Prog, Stmt } from "../../ast/bitter";
 import { FuncName, VarName } from "../../ast/name";
-import { Row } from "../../infer/records";
+import { Row } from "../../infer/structs";
 import { MonoTy, PolyTy } from "../../infer/types";
 import { last, reverse } from "../../utils/array";
 import { Maybe } from "../../utils/maybe";
@@ -62,7 +62,7 @@ export class Compiler {
       },
       TypeAlias: ({ name, alias }) => {
         match(alias, {
-          Record: ({ row }) => {
+          Struct: ({ row }) => {
             if (!this.structs.has(name)) {
               this.structs.set(name, { fields: Row.fields(row).map(([name, ty]) => ({ name, ty })) });
             } else {

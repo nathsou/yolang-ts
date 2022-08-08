@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { Error } from "../errors/errors";
-import { Row } from "../infer/records";
+import { Row } from "../infer/structs";
 import { Subst } from "../infer/subst";
 import { Tuple } from "../infer/tuples";
 import { TypeContext } from "../infer/typeContext";
@@ -133,13 +133,13 @@ describe('unifyMut', () => {
     }));
   });
 
-  it('should unify record types correctly', () => {
+  it('should unify Struct types correctly', () => {
     const tv1 = MonoTy.fresh();
     const tv2 = MonoTy.fresh();
     const row1 = Row.extend('x', MonoTy.u32(), tv1);
     const row2 = Row.extend('y', MonoTy.u32(), tv2);
-    const rec1 = MonoTy.Record(row1);
-    const rec2 = MonoTy.Record(row2);
+    const rec1 = MonoTy.Struct(row1);
+    const rec2 = MonoTy.Struct(row2);
 
     const errs = unify(rec1, rec2);
 
@@ -149,7 +149,7 @@ describe('unifyMut', () => {
       value: {
         kind: 'Link',
         to: {
-          variant: 'Record',
+          variant: 'Struct',
           row: {
             type: 'extend',
             field: 'y',
@@ -164,7 +164,7 @@ describe('unifyMut', () => {
       value: {
         kind: 'Link',
         to: {
-          variant: 'Record',
+          variant: 'Struct',
           row: {
             type: 'extend',
             field: 'x',

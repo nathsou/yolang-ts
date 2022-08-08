@@ -1,7 +1,7 @@
 import { DataType, match } from "itsamatch";
 import { joinWith, last } from "../../utils/array";
 import { panic, proj } from "../../utils/misc";
-import { ident } from "../../utils/strings";
+import { indent } from "../../utils/strings";
 import { Inst } from "./instructions";
 import { Byte, FuncIdx, FuncType, LocalIdx, TypeIdx, ValueType, Vec } from "./types";
 import { encodeStr, uleb128 } from "./utils";
@@ -174,7 +174,7 @@ const CodeEntry = {
     insts.forEach(inst => {
       const { before, after } = Inst.identationDelta(inst);
       identation += before;
-      res.push(ident(Inst.show(inst, locals, funcNames), identation));
+      res.push(indent(Inst.show(inst, locals, funcNames), identation));
       identation += after;
     });
 

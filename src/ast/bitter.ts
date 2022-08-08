@@ -78,7 +78,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
   Match: { expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[] },
-  NamedRecord: { path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
+  Struct: { path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
   WasmBlock: { instructions: Either<Inst, [Expr, Maybe<MonoTy>]>[] },
   While: { condition: Expr, body: Expr },
@@ -106,7 +106,7 @@ export const Expr = {
   FieldAccess: (lhs: Expr, field: string, sweet: SweetExpr): Expr => typed({ variant: 'FieldAccess', lhs, field }, sweet),
   Tuple: (elements: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Tuple', elements }, sweet),
   Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Match', expr, annotation, cases }, sweet),
-  NamedRecord: (path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'NamedRecord', path, name, typeParams, fields }, sweet),
+  Struct: (path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Struct', path, name, typeParams, fields }, sweet),
   TupleIndexing: (lhs: Expr, index: number, sweet: SweetExpr): Expr => typed({ variant: 'TupleIndexing', lhs, index }, sweet),
   WasmBlock: (instructions: Either<Inst, [Expr, Maybe<MonoTy>]>[], sweet: SweetExpr): Expr => typed({ variant: 'WasmBlock', instructions }, sweet),
   While: (condition: Expr, body: Expr, sweet: SweetExpr): Expr => typed({ variant: 'While', condition, body }, sweet),
@@ -182,7 +182,7 @@ export const Expr = {
         sweet
       ),
       Parenthesized: ({ expr }) => go(expr),
-      NamedRecord: ({ path, name, typeParams, fields }) => Expr.NamedRecord(path, name, typeParams, fields.map(f => ({ name: f.name, value: go(f.value) })), sweet),
+      Struct: ({ path, name, typeParams, fields }) => Expr.Struct(path, name, typeParams, fields.map(f => ({ name: f.name, value: go(f.value) })), sweet),
       TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index, sweet),
       LetIn: ({ pattern, annotation, value, body }) => {
         // let pat = v in b --> match v with { pat => body }
@@ -217,12 +217,19 @@ export const Expr = {
       FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field, expr.sweet),
       Tuple: ({ elements }) => Expr.Tuple(elements.map(e => go(e)), expr.sweet),
       Match: ({ expr, annotation, cases }) => Expr.Match(go(expr), annotation, cases.map(c => ({ ...c, body: go(c.body) })), expr.sweet),
-      NamedRecord: ({ path, name, typeParams, fields }) => Expr.NamedRecord(path, name, typeParams, fields.map(f => ({ ...f, value: go(f.value) })), expr.sweet),
+      Struct: ({ path, name, typeParams, fields }) => Expr.Struct(path, name, typeParams, fields.map(f => ({ ...f, value: go(f.value) })), expr.sweet),
       TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index, expr.sweet),
       WasmBlock: ({ instructions }) => Expr.WasmBlock(instructions.map(i => i.map({ left: id, right: ([expr, ty]) => [go(expr), ty] })), expr.sweet),
       While: ({ condition, body }) => Expr.While(go(condition), go(body), expr.sweet),
     }));
   },
+  isMutable: (expr: Expr): boolean => match(expr, {
+    Variable: ({ name }) => name.mutable,
+    FieldAccess: ({ lhs }) => Expr.isMutable(lhs),
+    Block: ({ lastExpr }) => lastExpr.mapWithDefault(Expr.isMutable, false),
+    IfThenElse: ({ then, else_ }) => else_.mapWithDefault(Expr.isMutable, false) && Expr.isMutable(then),
+    _: () => false,
+  }),
 };
 
 export type Stmt = DataType<{

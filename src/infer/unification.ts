@@ -5,7 +5,7 @@ import { zip } from "../utils/array";
 import { Maybe, none } from "../utils/maybe";
 import { panic, proj } from "../utils/misc";
 import { Result } from "../utils/result";
-import { Row } from "./records";
+import { Row } from "./structs";
 import { Subst } from "./subst";
 import { Tuple } from "./tuples";
 import { TypeContext } from "./typeContext";
@@ -14,7 +14,7 @@ import { MonoTy, TypeParam, TyVar } from "./types";
 export type UnificationError = DataType<{
   RecursiveType: { s: MonoTy, t: MonoTy },
   Ununifiable: { s: MonoTy, t: MonoTy },
-  UnknownRecordField: { row: Row, field: string },
+  UnknownStructField: { row: Row, field: string },
   DifferentLengthTuples: { s: Tuple, t: Tuple },
   CouldNotResolveType: { ty: MonoTy },
 }, 'type'>;
@@ -159,22 +159,22 @@ const unifyMany = (
         }
       })
       .with([
-        { variant: 'Record', row: { type: 'empty' } },
-        { variant: 'Record', row: { type: 'empty' } }
+        { variant: 'Struct', row: { type: 'empty' } },
+        { variant: 'Struct', row: { type: 'empty' } }
       ], () => {
         // the records have the same fields
         score += UNIFICATION_SCORE.exactMatch;
       })
       .with([
-        { variant: 'Record', row: { type: 'empty' } },
-        { variant: 'Record', row: { type: 'extend' } }
+        { variant: 'Struct', row: { type: 'empty' } },
+        { variant: 'Struct', row: { type: 'extend' } }
       ], () => {
         // the lhs record is assignable to the rhs record
         score += UNIFICATION_SCORE.assignableRecord;
       })
       .with([
-        { variant: 'Record', row: { type: 'extend' } },
-        { variant: 'Record', row: { type: 'extend' } }
+        { variant: 'Struct', row: { type: 'extend' } },
+        { variant: 'Struct', row: { type: 'extend' } }
       ], ([s, t]) => {
         const isTailUnboundVar = s.row.tail.variant === 'Var' && s.row.tail.value.kind === 'Unbound';
         const row2Tail = rewriteRow(t, s.row.field, s.row.ty, ctx, subst, errors);
@@ -248,10 +248,10 @@ const rewriteRow = (
   errors: Error[],
 ): MonoTy => {
   return matchVariant(row2, {
-    Record: ({ row: row2 }) => matchVariant(row2, {
+    Struct: ({ row: row2 }) => matchVariant(row2, {
       empty: () => {
-        errors.push(Error.Unification({ type: 'UnknownRecordField', field: field1, row: row2 }));
-        return MonoTy.Record(Row.empty());
+        errors.push(Error.Unification({ type: 'UnknownStructField', field: field1, row: row2 }));
+        return MonoTy.Struct(Row.empty());
       },
       extend: ({ field: field2, ty: fieldTy2, tail: row2Tail }) => {
         if (field1 === field2) {
@@ -259,7 +259,7 @@ const rewriteRow = (
           return row2Tail;
         }
 
-        return MonoTy.Record(Row.extend(
+        return MonoTy.Struct(Row.extend(
           field2,
           fieldTy2,
           rewriteRow(row2Tail, field1, fieldTy1, ctx, subst, errors)
@@ -269,7 +269,7 @@ const rewriteRow = (
     Var: v => matchVariant(v.value, {
       Unbound: () => {
         const row2Tail = MonoTy.fresh();
-        const ty2 = MonoTy.Record(Row.extend(field1, fieldTy1, row2Tail));
+        const ty2 = MonoTy.Struct(Row.extend(field1, fieldTy1, row2Tail));
         linkTo(v, ty2, subst);
         return row2Tail;
       },

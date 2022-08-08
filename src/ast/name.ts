@@ -9,7 +9,7 @@ export type FuncName = {
 
 export type VarName = FuncName & {
   readonly mutable: boolean,
-  readonly isUndeclared: boolean,
+  readonly initialized: boolean,
 };
 
 export type TyParamName = {
@@ -27,12 +27,12 @@ export const FuncName = {
 };
 
 export const VarName = {
-  fresh: (name: string, mutable: boolean, isUndeclared = false): VarName => ({
+  fresh: (name: string, mutable: boolean, initialized = true): VarName => ({
     original: name,
     mangled: name,
     ty: MonoTy.fresh(),
     mutable,
-    isUndeclared,
+    initialized,
   }),
   clone: (name: VarName, freshTy = true): VarName => ({ ...name, ty: freshTy ? MonoTy.fresh() : name.ty }),
 };

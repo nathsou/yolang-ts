@@ -3,10 +3,11 @@ import type LLVM from 'llvm-bindings';
 import { Decl, Expr, Stmt } from '../../ast/bitter';
 import { VarName } from '../../ast/name';
 import { Expr as SweetExpr } from '../../ast/sweet';
+import { Row } from '../../infer/structs';
 import { MonoTy } from '../../infer/types';
 import { Const } from '../../parse/token';
 import { last } from '../../utils/array';
-import { matchString, panic } from '../../utils/misc';
+import { assert, matchString, panic } from '../../utils/misc';
 
 type LocalVar =
   | { kind: 'mut', name: string, ptr: LLVM.AllocaInst, ty: MonoTy }
@@ -27,6 +28,8 @@ const LexicalScope = {
   has: (self: LexicalScope, name: string): boolean => name in self,
 };
 
+type Struct = { row: Row, fields: Record<string, number>, ty: LLVM.StructType };
+
 export const createLLVMCompiler = async () => {
   const llvm = await import('llvm-bindings');
 
@@ -38,6 +41,7 @@ export const createLLVMCompiler = async () => {
     const unit = Expr.Const(Const.unit(), SweetExpr.Const(Const.unit()));
     const unitTy = MonoTy.Const('()');
     const funcs = new Map<string, LLVM.Function>();
+    const structs = new Map<string, Struct>();
 
     function currentModule(): LLVM.Module {
       if (modules.length === 0) {
@@ -93,7 +97,7 @@ export const createLLVMCompiler = async () => {
       if (name.mutable) {
         const parent = builder.GetInsertBlock()!.getParent()!;
         const tmpBuilder = new llvm.IRBuilder(parent.getEntryBlock());
-        const alloca = tmpBuilder.CreateAlloca(llvmpTy(name.ty), value, name.mangled);
+        const alloca = tmpBuilder.CreateAlloca(llvmTy(name.ty), tmpBuilder.getInt32(1), name.mangled);
         LexicalScope.declareMutableVar(currentScope(), name.mangled, alloca, name.ty);
         builder.CreateStore(value, alloca);
       } else {
@@ -101,12 +105,26 @@ export const createLLVMCompiler = async () => {
       }
     }
 
+    function structFieldPointer(struct: Struct, structPtr: LLVM.Value, field: string): LLVM.Value {
+      const fieldIndex = builder.getInt32(struct.fields[field]);
+      return builder.CreateInBoundsGEP(
+        struct.ty,
+        structPtr,
+        [builder.getInt32(0), fieldIndex],
+        field,
+      );
+    }
+
+    function createUnit(): LLVM.Value {
+      return compileExpr(unit);
+    }
+
     function compileExpr(expr: Expr): llvm.Value {
       return match(expr, {
         Const: ({ value: c }) => match(c, {
           bool: ({ value }) => llvm.ConstantInt[value ? 'getTrue' : 'getFalse'](context),
           u32: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
-          unit: () => llvm.Constant.getNullValue(llvm.Type.getInt1Ty(context)),
+          unit: () => llvm.UndefValue.get(llvm.Type.getInt1Ty(context)),
         }),
         UnaryOp: ({ op, expr }) => {
           switch (op) {
@@ -159,7 +177,7 @@ export const createLLVMCompiler = async () => {
           if (v.kind === 'immut') {
             return v.value;
           } else {
-            return builder.CreateLoad(llvmpTy(v.ty), v.ptr);
+            return builder.CreateLoad(llvmTy(v.ty), v.ptr);
           }
         },
         Block: ({ statements, lastExpr }) => {
@@ -209,13 +227,13 @@ export const createLLVMCompiler = async () => {
           builder.SetInsertPoint(mergeBB);
 
           if (!MonoTy.eq(ty, unitTy)) {
-            const phiNode = builder.CreatePHI(llvmpTy(ty), 2, 'if');
+            const phiNode = builder.CreatePHI(llvmTy(ty), 2, 'if');
             phiNode.addIncoming(thenValue, thenBB);
             phiNode.addIncoming(elseValue, elseBB);
 
             return phiNode;
           } else {
-            return compileExpr(unit);
+            return createUnit();
           }
         },
         While: ({ condition, body }) => {
@@ -235,20 +253,56 @@ export const createLLVMCompiler = async () => {
           parent.insertAfter(loopBB, loopEndBB);
           builder.SetInsertPoint(loopEndBB);
 
-          return compileExpr(unit);
+          return createUnit();
         },
         Assignment: ({ lhs, rhs }) => {
           return match(lhs, {
             Variable: ({ name }) => {
               const v = resolveVar(name);
-              if (v.kind === 'mut') {
-                return builder.CreateStore(compileExpr(rhs), v.ptr);
-              } else {
-                return panic(`expected mutable variable in assignment expression: ${Expr.showSweet(expr)}`);
-              }
+              assert(v.kind === 'mut');
+              builder.CreateStore(compileExpr(rhs), v.ptr);
+              return createUnit();
+            },
+            FieldAccess: ({ lhs, field }) => {
+              const structTy = MonoTy.deref(lhs.ty);
+              assert(structTy.variant === 'Struct');
+              llvmTy(structTy); // resolve the struct type name
+              assert(structTy.name != null);
+              assert(structs.has(structTy.name));
+              const struct = structs.get(structTy.name)!;
+              const structPtr = compileExpr(lhs);
+              const fieldPtr = structFieldPointer(struct, structPtr, field);
+              const value = compileExpr(rhs);
+
+              builder.CreateStore(value, fieldPtr);
+              return createUnit();
             },
             _: () => panic('unhandled assignment target: ' + Expr.showSweet(lhs)),
           });
+        },
+        Struct: ({ name, fields, ty }) => {
+          assert(structs.has(name));
+          const struct = structs.get(name)!;
+          const structPtr = builder.CreateAlloca(struct.ty, null, name + '_struct');
+
+          fields.forEach(({ name, value }) => {
+            const fieldPtr = structFieldPointer(struct, structPtr, name);
+            builder.CreateStore(compileExpr(value), fieldPtr);
+          });
+
+          return structPtr;
+        },
+        FieldAccess: ({ lhs, field, ty }) => {
+          const structTy = MonoTy.deref(lhs.ty);
+          assert(structTy.variant === 'Struct');
+          llvmTy(structTy); // resolve the struct type name
+          assert(structTy.name != null);
+          assert(structs.has(structTy.name));
+          const struct = structs.get(structTy.name)!;
+          const structPtr = compileExpr(lhs);
+          const fieldPtr = structFieldPointer(struct, structPtr, field);
+
+          return builder.CreateLoad(llvmTy(ty), fieldPtr)
         },
         _: () => panic(expr.variant + ' not implemented'),
       });
@@ -264,7 +318,7 @@ export const createLLVMCompiler = async () => {
       });
     }
 
-    function llvmpTy(ty: MonoTy): llvm.Type {
+    function llvmTy(ty: MonoTy): llvm.Type {
       return match(ty, {
         Const: c => matchString<string, llvm.Type>(c.name, {
           'u32': () => llvm.Type.getInt32Ty(context),
@@ -275,9 +329,27 @@ export const createLLVMCompiler = async () => {
           },
         }),
         Var: v => match(v.value, {
-          Link: ({ to }) => llvmpTy(MonoTy.deref(to)),
+          Link: ({ to }) => llvmTy(MonoTy.deref(to)),
           Unbound: () => panic('llvmTy: found uninstantiated type variable'),
         }, 'kind'),
+        Struct: s => {
+          if (s.name === undefined) {
+            for (const [name, struct] of structs) {
+              if (Row.strictEq(s.row, struct.row)) {
+                s.name = name;
+                return struct.ty.getPointerTo();
+              }
+            }
+
+            return panic(`anonymous struct type: ${Row.show(s.row)}`);
+          }
+
+          if (!structs.has(s.name)) {
+            panic(`undeclared struct type: '${s.name}'`);
+          }
+
+          return structs.get(s.name)!.ty.getPointerTo();
+        },
         _: () => panic('llvmpTy: ' + ty.variant + ' not implemented'),
       })
     }
@@ -301,18 +373,18 @@ export const createLLVMCompiler = async () => {
             return;
           }
 
-          const returnTy = llvmpTy(f.body.ty);
-          const argTys = f.args.map(a => llvmpTy(a.name.ty));
+          const returnTy = llvmTy(f.body.ty);
+          const argTys = f.args.map(a => llvmTy(a.name.ty));
           const funcTy = llvm.FunctionType.get(returnTy, argTys, false);
           const func = llvm.Function.Create(funcTy, llvm.Function.LinkageTypes.ExternalLinkage, f.name.mangled, currentModule());
           funcs.set(f.name.mangled, func);
           const entry = llvm.BasicBlock.Create(context, 'entry', func);
           builder.SetInsertPoint(entry);
-          const ret = scoped(scope => {
+          const ret = scoped(() => {
             f.args.forEach((arg, index) => {
               const llvmArg = func.getArg(index);
               llvmArg.setName(arg.name.mangled);
-              LexicalScope.declareImmutableVar(scope, arg.name.mangled, llvmArg, arg.name.ty);
+              declareVar(arg.name, llvmArg);
             });
 
             return compileExpr(f.body);
@@ -326,6 +398,17 @@ export const createLLVMCompiler = async () => {
         },
         Module: mod => {
           compileModule(mod);
+        },
+        TypeAlias: ({ name, alias }) => {
+          match(alias, {
+            Struct: ({ row }) => {
+              const fields = Row.fields(row);
+              const fieldIndices = Object.fromEntries(fields.map(([name], index) => [name, index]));
+              const ty = llvm.StructType.create(context, fields.map(([_, t]) => llvmTy(t)), name);
+              structs.set(name, { fields: fieldIndices, row, ty });
+            },
+            _: () => { },
+          })
         },
         _: () => { },
       });

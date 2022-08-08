@@ -1,28 +1,31 @@
 
-fun fact(n, acc) {
-  if n <= 1 { acc } else { fact(n - 1, n * acc) }
+type Vec2 = { x: u32, y: u32 }
+
+fun copy(mut to: Vec2, from: Vec2) {
+  to.x = from.x
+  to.y = from.y
 }
 
-fun fibRec(n) {
-  if n <= 2 { n } else { fibRec(n - 2) + fibRec(n - 1) }
+fun dot(u, v) {
+  u.x * v.x + u.y * v.y
 }
 
-fun fibIter(n) {
-  mut a = 1
-  mut b = 1
-  mut i = 0
+fun clear(mut v) {
+  v.x = 0
+  v.y = 0
+}
 
-  while i < n {
-    i += 1
-    let tmp = a
-    a = b
-    b += tmp
-  }
-
-  a
+fun add(u, v, mut res) {
+  res.x = u.x + v.x
+  res.y = u.y + v.y
 }
 
 fun main() {
-  let n = fact(4, 1) * 2 - 6
-  fibIter(n) == fibRec(n)
+  mut a = Vec2 { x: 2, y: 5 }
+  let b = Vec2 { x: 3, y: 4 }
+  mut c = Vec2 { x: 0, y: 0 }
+  add(a, b, c)
+
+  a.copy(c)
+  a.dot(b)
 }

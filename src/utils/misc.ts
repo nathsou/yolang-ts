@@ -62,9 +62,9 @@ export const forEach = <T>(it: Iterable<T>, f: (value: T) => void): void => {
   }
 };
 
-export function assert(test: boolean, message = ''): asserts test {
+export function assert(test: boolean, message: (string | (() => string)) = ''): asserts test {
   if (!test) {
-    throw new Error(`assertion failed: ${message}`);
+    throw new Error(`assertion failed: ${typeof message === 'string' ? message : message()}`);
   }
 }
 

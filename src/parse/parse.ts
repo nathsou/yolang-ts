@@ -1,7 +1,7 @@
 import { match, VariantOf } from 'itsamatch';
 import { Argument, Decl, Expr, Imports, Pattern, Prog, Stmt } from '../ast/sweet';
 import { Inst } from '../codegen/wasm/instructions';
-import { Row } from '../infer/records';
+import { Row } from '../infer/structs';
 import { Tuple } from '../infer/tuples';
 import { MonoTy, TypeParam } from '../infer/types';
 import { deconsLast, last } from '../utils/array';
@@ -109,19 +109,19 @@ const tupleTy = map(
   ([h, _, tl]) => MonoTy.Tuple(Tuple.fromArray([h, ...tl]))
 );
 
-export const recordTy = map(
+export const structTy = map(
   curlyBrackets(optionalOrDefault(commas(seq(
     ident,
     symbol(':'),
-    expectOrDefault(monoTy, `Expected type in record type after ':'`, MonoTy.Const('()')),
+    expectOrDefault(monoTy, `Expected type in struct type after ':'`, MonoTy.Const('()')),
   )), [])),
-  fields => MonoTy.Record(Row.fromFields(fields.map(([name, _, ty]) => [name, ty]), false))
+  fields => MonoTy.Struct(Row.fromFields(fields.map(([name, _, ty]) => [name, ty]), false))
 );
 
 const allExceptFunTy = alt(
   constTy,
   tupleTy,
-  recordTy,
+  structTy,
   namedTy,
   parenthesizedTy,
 );
@@ -363,7 +363,7 @@ export const tuple = alt(
   app
 );
 
-const recordField = map(seq(
+const structField = map(seq(
   expectOrDefault(ident, `Expected field name`, '<?>'),
   expectOrDefault(symbol(':'), `Expected ':' after field name`, Token.Symbol(':')),
   expectOrDefault(expr, `Expected expression after ':'`, Expr.Error),
@@ -371,20 +371,20 @@ const recordField = map(seq(
   ([name, _, value]) => ({ name, value })
 );
 
-const namedRecord = alt(
+const namedStruct = alt(
   map(seq(
     typePath,
     optionalOrDefault(angleBrackets(optionalOrDefault(commas(monoTy), [])), []),
-    curlyBrackets(optionalOrDefault(commas(recordField), [])),
+    curlyBrackets(optionalOrDefault(commas(structField), [])),
   ),
-    ([[path, name], params, fields]) => Expr.NamedRecord(path, name, params, fields)
+    ([[path, name], params, fields]) => Expr.Struct(path, name, params, fields)
   ),
   tuple
 );
 
 // field access or method call or tuple indexing
 const fieldAccess = chainLeft(
-  namedRecord,
+  namedStruct,
   symbol('.'),
   seq(
     expectOrDefault(alt<{ variant: 'ident', name: string } | { variant: 'int', value: number }>(

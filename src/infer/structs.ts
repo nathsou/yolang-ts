@@ -22,10 +22,10 @@ export const Row = {
     }
 
     const [[firstField, firstTy], ...tail] = fields;
-    let row = Row.extend(firstField, firstTy, extensible ? MonoTy.fresh() : MonoTy.Record(Row.empty()));
+    let row = Row.extend(firstField, firstTy, extensible ? MonoTy.fresh() : MonoTy.Struct(Row.empty()));
 
     for (let [field, ty] of tail) {
-      row = Row.extend(field, ty, MonoTy.Record(row));
+      row = Row.extend(field, ty, MonoTy.Struct(row));
     }
 
     return row;
@@ -63,7 +63,7 @@ export const Row = {
     });
   },
   from: (ty: MonoTy): Maybe<Row> => {
-    if (ty.variant === 'Record') {
+    if (ty.variant === 'Struct') {
       return some(ty.row);
     }
 
@@ -73,4 +73,5 @@ export const Row = {
 
     return none;
   },
+  show: (row: Row): string => '{ ' + Row.fields(row).map(([name, ty]) => `${name}: ${MonoTy.show(ty)}`).join(', ') + ' }',
 };

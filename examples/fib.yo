@@ -1,0 +1,28 @@
+
+fun fact(n, acc) {
+  if n <= 1 { acc } else { fact(n - 1, n * acc) }
+}
+
+fun fibRec(n) {
+  if n <= 2 { n } else { fibRec(n - 2) + fibRec(n - 1) }
+}
+
+fun fibIter(n) {
+  mut a = 1
+  mut b = 1
+  mut i = 0
+
+  while i < n {
+    i += 1
+    let tmp = a
+    a = b
+    b += tmp
+  }
+
+  a
+}
+
+fun main() {
+  let n = fact(4, 1) * 2 - 6
+  fibIter(n) == fibRec(n)
+}
