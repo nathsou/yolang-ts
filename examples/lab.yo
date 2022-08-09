@@ -1,31 +1,9 @@
 
-type Vec2 = { x: u32, y: u32 }
-
-fun copy(mut to: Vec2, from: Vec2) {
-  to.x = from.x
-  to.y = from.y
-}
-
-fun dot(u, v) {
-  u.x * v.x + u.y * v.y
-}
-
-fun clear(mut v) {
-  v.x = 0
-  v.y = 0
-}
-
-fun add(u, v, mut res) {
-  res.x = u.x + v.x
-  res.y = u.y + v.y
-}
+fun f(x: u32) { x }
+fun f(x: i32) { x }
+fun f(x: u64) { x }
+fun f(x: i64) { x }
 
 fun main() {
-  mut a = Vec2 { x: 2, y: 5 }
-  let b = Vec2 { x: 3, y: 4 }
-  mut c = Vec2 { x: 0, y: 0 }
-  add(a, b, c)
-
-  a.copy(c)
-  a.dot(b)
+  f(3) + 7
 }

@@ -123,7 +123,11 @@ export const createLLVMCompiler = async () => {
       return match(expr, {
         Const: ({ value: c }) => match(c, {
           bool: ({ value }) => llvm.ConstantInt[value ? 'getTrue' : 'getFalse'](context),
+          int: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
           u32: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
+          i32: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
+          u64: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),
+          i64: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),
           unit: () => llvm.UndefValue.get(llvm.Type.getInt1Ty(context)),
         }),
         UnaryOp: ({ op, expr }) => {
@@ -321,7 +325,11 @@ export const createLLVMCompiler = async () => {
     function llvmTy(ty: MonoTy): llvm.Type {
       return match(ty, {
         Const: c => matchString<string, llvm.Type>(c.name, {
+          'int': () => llvm.Type.getInt32Ty(context),
           'u32': () => llvm.Type.getInt32Ty(context),
+          'i32': () => llvm.Type.getInt32Ty(context),
+          'u64': () => llvm.Type.getInt64Ty(context),
+          'i64': () => llvm.Type.getInt64Ty(context),
           'bool': () => llvm.Type.getInt1Ty(context),
           '()': () => llvm.Type.getInt1Ty(context),
           _: () => {
@@ -350,6 +358,7 @@ export const createLLVMCompiler = async () => {
 
           return structs.get(s.name)!.ty.getPointerTo();
         },
+        Integer: () => llvm.Type.getInt32Ty(context),
         _: () => panic('llvmpTy: ' + ty.variant + ' not implemented'),
       })
     }

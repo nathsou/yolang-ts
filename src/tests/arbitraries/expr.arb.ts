@@ -1,18 +1,17 @@
 import fc from 'fast-check';
 import { Argument, BinaryOperator, CompoundAssignmentOperator, Expr, UnaryOperator } from '../../ast/sweet';
 import { Const } from '../../parse/token';
-import { none, some } from '../../utils/maybe';
-import { Arb } from './arb';
+import { none } from '../../utils/maybe';
 import { lowerIdent } from './common.arb';
 import { patternArb } from './pattern.arb';
 
-export const constU32Expr = fc.integer({ min: 0 }).map(n => Expr.Const(Const.u32(n)));
+export const constIntExpr = fc.integer({ min: 0 }).map(n => Expr.Const(Const.int(n)));
 export const constBoolExpr = fc.boolean().map(b => Expr.Const(Const.bool(b)));
 export const constUnitExpr = fc.constant(Expr.Const(Const.unit()));
 export const varExpr = lowerIdent.map(Expr.Variable);
 
 export const constExpr = fc.frequency(
-  { arbitrary: constU32Expr, weight: 4 },
+  { arbitrary: constIntExpr, weight: 4 },
   { arbitrary: constBoolExpr, weight: 2 },
   { arbitrary: constUnitExpr, weight: 1 },
 );

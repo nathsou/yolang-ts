@@ -1,6 +1,5 @@
 import { DataType, match as matchVariant } from "itsamatch";
 import { BitterConversionError, Expr } from "../ast/bitter";
-import { Inst } from "../codegen/wasm/instructions";
 import { TypingError } from "../infer/infer";
 import { MAX_TUPLE_INDEX, Tuple } from "../infer/tuples";
 import { MonoTy, PolyTy } from "../infer/types";
@@ -46,9 +45,6 @@ export const Error = {
       UnknownModuleMember: ({ path, member }) => `Unknown member '${member}' in module '${path.join('.')}'`,
       TEMP_OnlyFunctionModuleAccessAllowed: ({ path }) => `(temp) Only functions can be accessed from module '${path.join('.')}'`,
       TupleIndexTooBig: ({ index }) => `Tuple index ${index} is too big, limit is ${MAX_TUPLE_INDEX}`,
-      WasmStackUnderflow: ({ expectedLength, actualLength, inst }) => `Wasm stack underflow, expected ${expectedLength} elements, got ${actualLength} in ${Inst.showRaw(inst)}`,
-      WasmStackOverflow: ({ expectedLength, actualLength }) => `Wasm stack overflow, expected ${expectedLength} elements, got ${actualLength}`,
-      InconsistentWasmStack: ({ expectedTy, actualTy, inst }) => `Inconsistent wasm stack, expected a value of type ${expectedTy}, got ${actualTy} in ${Inst.showRaw(inst)}`,
       WasmBlockExpressionsRequireTypeAnnotations: ({ expr }) => `Expressions inside a wasm block require type annotations, type of '${Expr.showSweet(expr)}' is not fully determined`,
       NoOverloadMatchesCallSignature: ({ name, f, candidates }) => `No overload of '${name}' matches the call signature '${MonoTy.show(f)}', candidates:\n${formatOverloadingCandidates(candidates)}`,
       AmbiguousOverload: ({ name, f, matches }) => `Ambiguous overload for '${name}' with call signature ${MonoTy.show(f)}, matches:\n${formatOverloadingCandidates(matches)}`,

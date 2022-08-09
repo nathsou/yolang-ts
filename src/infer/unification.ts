@@ -3,7 +3,7 @@ import { match, P } from "ts-pattern";
 import { Error } from "../errors/errors";
 import { zip } from "../utils/array";
 import { Maybe, none } from "../utils/maybe";
-import { panic, proj } from "../utils/misc";
+import { block, panic, proj } from "../utils/misc";
 import { Result } from "../utils/result";
 import { Row } from "./structs";
 import { Subst } from "./subst";
@@ -38,6 +38,28 @@ const UNIFICATION_SCORE = {
   assignableRecord: 2,
   instanciation: 1,
 };
+
+const unifyInt = block(() => {
+  const ints: VariantOf<MonoTy, 'Integer'>['type'][] = ['i32', 'u32', 'i64', 'u64'];
+  const intsSet = new Set<string>(ints);
+
+  return (
+    int: VariantOf<MonoTy, 'Integer'>,
+    c: VariantOf<MonoTy, 'Const'>,
+    canMutate: boolean,
+    errors: Error[]
+  ) => {
+    if (!intsSet.has(c.name)) {
+      errors.push(Error.Unification({ type: 'Ununifiable', s: int, t: c }));
+    } else if (canMutate) {
+      if (int.type === 'unknown') {
+        int.type = c.name as 'i32' | 'u32' | 'i64' | 'u64';
+      } else {
+        errors.push(Error.Unification({ type: 'Ununifiable', s: int, t: c }));
+      }
+    }
+  };
+});
 
 // if subst is present, the unification does not mutate type variables
 const unifyMany = (
@@ -81,6 +103,18 @@ const unifyMany = (
     const [s, t] = eqs.pop()!;
 
     match<[MonoTy, MonoTy]>([s, t])
+      .with([{ variant: 'Integer', type: P.not('unknown') }, P._], ([s, t]) => {
+        pushEqs([MonoTy.Const(s.type), t]);
+      })
+      .with([P._, { variant: 'Integer', type: P.not('unknown') }], ([s, t]) => {
+        pushEqs([s, MonoTy.Const(t.type)]);
+      })
+      .with([{ variant: 'Integer' }, { variant: 'Const', args: [] }], ([s, t]) => {
+        unifyInt(s, t, true, errors);
+      })
+      .with([{ variant: 'Const', args: [] }, { variant: 'Integer' }], ([s, t]) => {
+        unifyInt(t, s, true, errors);
+      })
       .with([{ variant: 'Const' }, { variant: 'Const' }], ([s, t]) => {
         let pushed = false;
         instantiateGenericTyConst(s).do(s => {

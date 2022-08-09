@@ -14,11 +14,11 @@ export const keyword = map(
 
 const digits = map(oneOrMore(digit), digits => parseInt(digits.join(''), 10));
 
-export const u32 = map(digits, n => Token.Const(Const.u32(n)));
+export const int = map(digits, n => Token.Const(Const.int(n)));
 export const bool = map(alt(str('true'), str('false')), b => Token.Const(Const.bool(b === 'true')));
 export const ident = map(then(letter, many(alphaNumUnderscore)), ([h, tl]) => Token.Identifier(h + tl.join('')));
 
-export const token = alt(u32, bool, keyword, symbol, ident);
+export const token = alt(int, bool, keyword, symbol, ident);
 
 const invalid = map(oneOrMore(not(token)), chars => Token.Invalid(chars.join('').trim()));
 

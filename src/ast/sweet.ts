@@ -1,9 +1,7 @@
 import { DataType, genConstructors, match } from 'itsamatch';
-import { Inst } from '../codegen/wasm/instructions';
 import { MonoTy, TypeParam, TypeParams } from '../infer/types';
 import { Const } from '../parse/token';
 import { joinWith } from '../utils/array';
-import { Either } from '../utils/either';
 import { Maybe, none } from '../utils/maybe';
 import { id, noop, parenthesized } from '../utils/misc';
 
@@ -56,7 +54,6 @@ export type Expr = DataType<{
   Struct: { path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
   LetIn: { pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr },
-  WasmBlock: { instructions: Either<Inst, [Expr, Maybe<MonoTy>]>[] },
   While: { condition: Expr, body: Expr },
 }>;
 
@@ -79,9 +76,7 @@ export const Expr = {
   Parenthesized: (expr: Expr): Expr => ({ variant: 'Parenthesized', expr }),
   Struct: (path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[]): Expr => ({ variant: 'Struct', path, name, typeParams, fields }),
   TupleIndexing: (lhs: Expr, index: number): Expr => ({ variant: 'TupleIndexing', lhs, index }),
-  LetIn: (pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr): Expr => ({ variant: 'LetIn', pattern, annotation, value, body }),
-  WasmBlock: (instructions: Either<Inst, [Expr, Maybe<MonoTy>]>[]): Expr => ({ variant: 'WasmBlock', instructions }),
-  While: (condition: Expr, body: Expr): Expr => ({ variant: 'While', condition, body }),
+  LetIn: (pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr): Expr => ({ variant: 'LetIn', pattern, annotation, value, body }), While: (condition: Expr, body: Expr): Expr => ({ variant: 'While', condition, body }),
   show: (expr: Expr): string => match(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
@@ -102,7 +97,6 @@ export const Expr = {
     Struct: ({ path, name, typeParams, fields }) => `${path.join('.')}${path.length > 0 ? '.' : ''}${name} <${joinWith(typeParams, MonoTy.show, ', ')}> {\n${joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, ', ')}\n}`,
     TupleIndexing: ({ lhs, index }) => `${Expr.show(lhs)}.${index}`,
     LetIn: ({ pattern, value, body }) => `let ${Pattern.show(pattern)} = ${Expr.show(value)} in ${Expr.show(body)}`,
-    WasmBlock: ({ instructions }) => `wasm {\n${joinWith(instructions, i => `  ${i.match({ left: Inst.showRaw, right: ([expr]) => Expr.show(expr) })}\n`, '\n')}\n}`,
     While: ({ condition, body }) => `while ${Expr.show(condition)} ${Expr.show(body)}`,
   }),
   rewrite: (expr: Expr, f: (expr: Expr) => Expr): Expr => {
@@ -127,7 +121,6 @@ export const Expr = {
       Struct: ({ path, name, typeParams, fields }) => Expr.Struct(path, name, typeParams, fields.map(({ name, value }) => ({ name, value: go(value) }))),
       TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index),
       LetIn: ({ pattern, annotation, value, body }) => Expr.LetIn(pattern, annotation, go(value), go(body)),
-      WasmBlock: ({ instructions }) => Expr.WasmBlock(instructions.map(i => i.map({ left: id, right: ([expr, ty]) => [go(expr), ty] }))),
       While: ({ condition, body }) => Expr.While(go(condition), go(body)),
     }));
   },

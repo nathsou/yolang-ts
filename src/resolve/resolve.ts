@@ -102,6 +102,7 @@ const collectUsedPaths = (ty: MonoTy): string[] => {
       args.forEach(aux);
       aux(ret);
     },
+    Integer: () => { },
     Error: () => { },
     Param: () => { },
     Var: () => { },

@@ -1,5 +1,4 @@
 import { DataType, match, VariantOf } from "itsamatch";
-import { Inst } from "../codegen/wasm/instructions";
 import { Error } from "../errors/errors";
 import { FuncDecl } from "../infer/env";
 import { Tuple } from "../infer/tuples";
@@ -7,7 +6,6 @@ import { MonoTy, PolyTy, TypeParam } from "../infer/types";
 import { Const } from "../parse/token";
 import { Either } from "../utils/either";
 import { Maybe, none } from "../utils/maybe";
-import { id } from "../utils/misc";
 import { FuncName, NameEnv, VarName } from "./name";
 import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Imports, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
 
@@ -80,7 +78,6 @@ export type Expr = DataType<WithSweetRefAndType<{
   Match: { expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[] },
   Struct: { path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
-  WasmBlock: { instructions: Either<Inst, [Expr, Maybe<MonoTy>]>[] },
   While: { condition: Expr, body: Expr },
 }>>;
 
@@ -108,7 +105,6 @@ export const Expr = {
   Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Match', expr, annotation, cases }, sweet),
   Struct: (path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], sweet: SweetExpr): Expr => typed({ variant: 'Struct', path, name, typeParams, fields }, sweet),
   TupleIndexing: (lhs: Expr, index: number, sweet: SweetExpr): Expr => typed({ variant: 'TupleIndexing', lhs, index }, sweet),
-  WasmBlock: (instructions: Either<Inst, [Expr, Maybe<MonoTy>]>[], sweet: SweetExpr): Expr => typed({ variant: 'WasmBlock', instructions }, sweet),
   While: (condition: Expr, body: Expr, sweet: SweetExpr): Expr => typed({ variant: 'While', condition, body }, sweet),
   fromSweet: (sweet: SweetExpr, nameEnv: NameEnv, errors: Error[]): Expr => {
     const go = (expr: SweetExpr, env = nameEnv) => Expr.fromSweet(expr, env, errors);
@@ -193,7 +189,6 @@ export const Expr = {
           sweet
         );
       },
-      WasmBlock: ({ instructions }) => Expr.WasmBlock(instructions.map(i => i.map({ left: id, right: ([expr, ty]) => [go(expr), ty] })), sweet),
       While: ({ condition, body }) => Expr.While(go(condition), go(body), sweet),
     });
   },
@@ -219,7 +214,6 @@ export const Expr = {
       Match: ({ expr, annotation, cases }) => Expr.Match(go(expr), annotation, cases.map(c => ({ ...c, body: go(c.body) })), expr.sweet),
       Struct: ({ path, name, typeParams, fields }) => Expr.Struct(path, name, typeParams, fields.map(f => ({ ...f, value: go(f.value) })), expr.sweet),
       TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index, expr.sweet),
-      WasmBlock: ({ instructions }) => Expr.WasmBlock(instructions.map(i => i.map({ left: id, right: ([expr, ty]) => [go(expr), ty] })), expr.sweet),
       While: ({ condition, body }) => Expr.While(go(condition), go(body), expr.sweet),
     }));
   },

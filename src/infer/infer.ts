@@ -1,14 +1,11 @@
 import { DataType, match } from 'itsamatch';
 import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
 import { FuncName, NameEnv, VarName } from '../ast/name';
-import { Inst } from '../codegen/wasm/instructions';
-import { ValueType } from '../codegen/wasm/types';
-import { wasmTy } from '../codegen/wasm/utils';
 import { Error } from '../errors/errors';
-import { gen, uniq, zip } from '../utils/array';
+import { gen, zip } from '../utils/array';
 import { Either } from '../utils/either';
 import { Maybe, none, some } from '../utils/maybe';
-import { fst, id, panic, proj } from '../utils/misc';
+import { id, panic, proj } from '../utils/misc';
 import { diffSet } from '../utils/set';
 import { Env, FuncDecl } from './env';
 import { signatures } from './signatures';
@@ -31,9 +28,6 @@ export type TypingError = DataType<{
   TEMP_OnlyFunctionModuleAccessAllowed: { path: string[], member: string },
   TupleIndexTooBig: { index: number },
   ParsingError: { message: string },
-  WasmStackUnderflow: { expectedLength: number, actualLength: number, inst: Inst },
-  WasmStackOverflow: { expectedLength: number, actualLength: number },
-  InconsistentWasmStack: { expectedTy: ValueType, actualTy: ValueType, inst: Inst },
   WasmBlockExpressionsRequireTypeAnnotations: { expr: Expr },
   NoOverloadMatchesCallSignature: { name: string, f: MonoTy, candidates: PolyTy[] },
   AmbiguousOverload: { name: string, f: MonoTy, matches: PolyTy[] },
@@ -422,77 +416,6 @@ const inferExpr = (
         unify(expectedLhsTy, actualLhsTy);
         unify(tau, elemsTys[index]);
       }
-    },
-    WasmBlock: ({ instructions }) => {
-      const stack: ValueType[] = [];
-
-      instructions.forEach(inst => {
-        inst.match({
-          left: inst => {
-            const { consumes, outputs } = Inst.type(inst);
-            if (consumes.length > stack.length) {
-              errors.push(Error.Typing({
-                type: 'WasmStackUnderflow',
-                expectedLength: consumes.length,
-                actualLength: stack.length,
-                inst,
-              }));
-            } else {
-              const consumed = stack.splice(stack.length - consumes.length, consumes.length);
-              zip(consumes, consumed).forEach(([expectedTy, actualTy]) => {
-                if (!ValueType.eq(expectedTy, actualTy)) {
-                  errors.push(Error.Typing({
-                    type: 'InconsistentWasmStack',
-                    expectedTy,
-                    actualTy,
-                    inst,
-                  }));
-                }
-              });
-
-              stack.push(...outputs);
-            }
-          },
-          right: ([expr, ann]) => {
-            inferExpr(expr, ctx, errors);
-
-            ann.do(ann => {
-              unify(expr.ty, ann);
-            });
-
-            if (!MonoTy.isDetermined(expr.ty)) {
-              errors.push(Error.Typing({
-                type: 'WasmBlockExpressionsRequireTypeAnnotations',
-                expr,
-              }));
-
-              return;
-            }
-
-            const ty = wasmTy(expr.ty);
-            if (!ValueType.eq(ty, ValueType.none)) {
-              stack.push(ty);
-            }
-          },
-        });
-      });
-
-      if (stack.length > 1) {
-        errors.push(Error.Typing({
-          type: 'WasmStackOverflow',
-          expectedLength: 1,
-          actualLength: stack.length
-        }));
-      }
-
-      if (stack.length > 0 && stack[0] !== ValueType.i32) {
-        panic(`ValueType ${stack[0]} is not supported yet in wasm blocks`);
-      }
-
-      // TODO: update when we have other numeric types
-      const ty = stack.length === 0 || stack[0] === ValueType.none ? MonoTy.unit() : MonoTy.u32();
-
-      unify(tau, ty);
     },
     While: ({ condition, body }) => {
       inferExpr(condition, ctx, errors);

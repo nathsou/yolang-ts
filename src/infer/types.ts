@@ -1,4 +1,4 @@
-import { DataType, match, matchMany } from "itsamatch";
+import { DataType, match, matchMany, VariantOf } from "itsamatch";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
 import { Maybe } from "../utils/maybe";
@@ -28,6 +28,9 @@ export type MonoTy = DataType<{
   Fun: { args: MonoTy[], ret: MonoTy },
   Tuple: { tuple: Tuple },
   Struct: { name?: string, row: Row },
+  // Adding a type union variant could help model this type in a cleaner way
+  // Union: { value: TyVar, oneOf: MonoTy[] }, 
+  Integer: { type: 'unknown' | 'u32' | 'i32' | 'u64' | 'i64' },
 }>;
 
 export const showTyVarId = (n: TyVarId): string => {
@@ -46,11 +49,15 @@ export const MonoTy = {
   Fun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'Fun', args, ret }),
   Tuple: (tuple: Tuple): MonoTy => ({ variant: 'Tuple', tuple }),
   Struct: (fields: Readonly<Row>, name?: string): MonoTy => ({ variant: 'Struct', name, row: fields }),
+  Integer: (type: VariantOf<MonoTy, 'Integer'>['type'] = 'unknown'): MonoTy => ({ variant: 'Integer', type }),
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
   u32: () => MonoTy.Const('u32'),
+  i32: () => MonoTy.Const('i32'),
+  u64: () => MonoTy.Const('u64'),
+  i64: () => MonoTy.Const('i64'),
   bool: () => MonoTy.Const('bool'),
   unit: () => MonoTy.Const('()'),
-  primitiveTypes: new Set(['u32', 'bool', '()']),
+  primitiveTypes: new Set(['u32', 'i32', 'u64', 'i64', 'bool', '()']),
   isPrimitive: (ty: MonoTy): boolean => ty.variant === 'Const' && ty.path.length === 0 && MonoTy.primitiveTypes.has(ty.name),
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
     match(ty, {
@@ -94,6 +101,7 @@ export const MonoTy = {
 
         return fvs;
       },
+      Integer: () => fvs,
     }),
   generalize: (env: Env, ty: MonoTy): PolyTy => {
     // can be optimized using (block instead of let) levels
@@ -119,6 +127,7 @@ export const MonoTy = {
     Fun: t => t.args.some(a => MonoTy.occurs(x, a)) || MonoTy.occurs(x, t.ret),
     Tuple: t => Tuple.toArray(t.tuple).some(a => MonoTy.occurs(x, a)),
     Struct: ({ row: fields }) => Row.fields(fields).some(([_, ty]) => MonoTy.occurs(x, ty)),
+    Integer: () => false,
   }),
   deref: (ty: MonoTy): MonoTy => {
     if (ty.variant === 'Var' && ty.value.kind === 'Link') {
@@ -162,6 +171,7 @@ export const MonoTy = {
         substituteRow(fields),
         name,
       ),
+      Integer: ({ type }) => MonoTy.Integer(type),
     });
   },
   substituteTyParams: (ty: MonoTy, subst: Map<string, MonoTy>): MonoTy => {
@@ -201,6 +211,7 @@ export const MonoTy = {
         substRowTyParams(row),
         name,
       ),
+      Integer: ({ type }) => MonoTy.Integer(type),
     });
   },
   instantiateTyParams: (ty: MonoTy, tyParams: string[]): MonoTy => {
@@ -237,6 +248,7 @@ export const MonoTy = {
 
       return `{ ${joinWith(Row.sortedFields(row), ([k, v]) => `${k}: ${MonoTy.show(v)}`, ', ')} }`;
     },
+    Integer: ({ type }) => type === 'unknown' ? 'int' : type,
   }),
   eq: (s: MonoTy, t: MonoTy): boolean => matchMany([MonoTy.deref(s), MonoTy.deref(t)], {
     "Var Var": ({ value: v1 }, { value: v2 }) => {
@@ -336,6 +348,7 @@ export const PolyTy = {
     Tuple: ({ tuple }) => Tuple.toArray(tuple).every(t => PolyTy.isDetermined([vars, t])),
     Struct: ({ row }) => Row.fields(row).every(([, ty]) => PolyTy.isDetermined([vars, ty])),
     Param: () => true,
+    Integer: () => true,
   }),
   isPolymorphic: ([quantified, _]: PolyTy): boolean => quantified.length > 0,
 };

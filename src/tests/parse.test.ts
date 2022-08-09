@@ -30,12 +30,12 @@ const expectType = (parser: Parser<MonoTy>, input: string, expected: MonoTy): vo
 describe('Parser', () => {
   describe('unary operators', () => {
     it('should parse arithmetical negation', () => {
-      expectExpr(unary, '-0', Expr.UnaryOp('-', Expr.Const(Const.u32(0))));
-      expectExpr(unary, '-1', Expr.UnaryOp('-', Expr.Const(Const.u32(1))));
+      expectExpr(unary, '-0', Expr.UnaryOp('-', Expr.Const(Const.int(0))));
+      expectExpr(unary, '-1', Expr.UnaryOp('-', Expr.Const(Const.int(1))));
       expectExpr(
         unary,
         '-(-1621)',
-        Expr.UnaryOp('-', Expr.Parenthesized(Expr.UnaryOp('-', Expr.Const(Const.u32(1621)))))
+        Expr.UnaryOp('-', Expr.Parenthesized(Expr.UnaryOp('-', Expr.Const(Const.int(1621)))))
       );
     });
 
@@ -55,26 +55,26 @@ describe('Parser', () => {
       expectExpr(
         binaryExpr,
         '1 + 2',
-        Expr.BinaryOp(Expr.Const(Const.u32(1)), '+', Expr.Const(Const.u32(2)))
+        Expr.BinaryOp(Expr.Const(Const.int(1)), '+', Expr.Const(Const.int(2)))
       );
     });
   });
 
   describe('tuples', () => {
     it('should not parse parenthesized expressions as tuples', () => {
-      expectExpr(tuple, '(1)', Expr.Parenthesized(Expr.Const(Const.u32(1))));
+      expectExpr(tuple, '(1)', Expr.Parenthesized(Expr.Const(Const.int(1))));
       expectExpr(tuple, '(())', Expr.Parenthesized(Expr.Const(Const.unit())));
     });
 
     it('should accept tuples with primary expressions', () => {
       expectExpr(tuple, '(1, 2, 3, 4, 5, 6, 7)', Expr.Tuple([
-        Expr.Const(Const.u32(1)),
-        Expr.Const(Const.u32(2)),
-        Expr.Const(Const.u32(3)),
-        Expr.Const(Const.u32(4)),
-        Expr.Const(Const.u32(5)),
-        Expr.Const(Const.u32(6)),
-        Expr.Const(Const.u32(7)),
+        Expr.Const(Const.int(1)),
+        Expr.Const(Const.int(2)),
+        Expr.Const(Const.int(3)),
+        Expr.Const(Const.int(4)),
+        Expr.Const(Const.int(5)),
+        Expr.Const(Const.int(6)),
+        Expr.Const(Const.int(7)),
       ]));
 
       expectExpr(tuple, '((), ())', Expr.Tuple([
@@ -89,13 +89,13 @@ describe('Parser', () => {
       ]));
 
       expectExpr(tuple, '(1, true)', Expr.Tuple([
-        Expr.Const(Const.u32(1)),
+        Expr.Const(Const.int(1)),
         Expr.Const(Const.bool(true)),
       ]));
 
       expectExpr(tuple, '(a, 2, b, c, false, ())', Expr.Tuple([
         Expr.Variable('a'),
-        Expr.Const(Const.u32(2)),
+        Expr.Const(Const.int(2)),
         Expr.Variable('b'),
         Expr.Variable('c'),
         Expr.Const(Const.bool(false)),
@@ -116,7 +116,7 @@ describe('Parser', () => {
       expectExpr(tuple, '(f(), g(1, ())))', Expr.Tuple([
         Expr.Call(Expr.Variable('f'), [], []),
         Expr.Call(Expr.Variable('g'), [], [
-          Expr.Const(Const.u32(1)),
+          Expr.Const(Const.int(1)),
           Expr.Const(Const.unit()),
         ]),
       ]));
@@ -124,27 +124,27 @@ describe('Parser', () => {
 
     it('should parse tuples contaning tuples', () => {
       expectExpr(tuple, '(1, (2, 3))', Expr.Tuple([
-        Expr.Const(Const.u32(1)),
+        Expr.Const(Const.int(1)),
         Expr.Tuple([
-          Expr.Const(Const.u32(2)),
-          Expr.Const(Const.u32(3)),
+          Expr.Const(Const.int(2)),
+          Expr.Const(Const.int(3)),
         ]),
       ]));
 
       expectExpr(tuple, '(1, (2, 3), 4, (5, (6, (7, 8))))', Expr.Tuple([
-        Expr.Const(Const.u32(1)),
+        Expr.Const(Const.int(1)),
         Expr.Tuple([
-          Expr.Const(Const.u32(2)),
-          Expr.Const(Const.u32(3)),
+          Expr.Const(Const.int(2)),
+          Expr.Const(Const.int(3)),
         ]),
-        Expr.Const(Const.u32(4)),
+        Expr.Const(Const.int(4)),
         Expr.Tuple([
-          Expr.Const(Const.u32(5)),
+          Expr.Const(Const.int(5)),
           Expr.Tuple([
-            Expr.Const(Const.u32(6)),
+            Expr.Const(Const.int(6)),
             Expr.Tuple([
-              Expr.Const(Const.u32(7)),
-              Expr.Const(Const.u32(8)),
+              Expr.Const(Const.int(7)),
+              Expr.Const(Const.int(8)),
             ]),
           ]),
         ]),
