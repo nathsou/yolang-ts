@@ -115,6 +115,7 @@ const unifyMany = (
       .with([{ variant: 'Const', args: [] }, { variant: 'Integer' }], ([s, t]) => {
         unifyInt(t, s, true, errors);
       })
+      .with([{ variant: 'Integer', type: 'unknown' }, { variant: 'Integer', type: 'unknown' }], () => { })
       .with([{ variant: 'Const' }, { variant: 'Const' }], ([s, t]) => {
         let pushed = false;
         instantiateGenericTyConst(s).do(s => {

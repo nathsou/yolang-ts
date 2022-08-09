@@ -29,7 +29,7 @@ export type MonoTy = DataType<{
   Tuple: { tuple: Tuple },
   Struct: { name?: string, row: Row },
   // Adding a type union variant could help model this type in a cleaner way
-  // Union: { value: TyVar, oneOf: MonoTy[] }, 
+  // Union: { value: TyVar, oneOf: MonoTy[], fallbackIndex?: number },
   Integer: { type: 'unknown' | 'u32' | 'i32' | 'u64' | 'i64' },
 }>;
 
