@@ -10,6 +10,7 @@ import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
 import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
+import { str, trie } from './lexerCombinators';
 import { Const, Token } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -180,11 +181,8 @@ const argumentList = map(parens(optional(commas(argument))), args => args.orDefa
 
 // EXPRESSIONS
 
-const integer = satisfyBy<number>(token =>
-  token.variant === 'Const' &&
-    token.value.variant === 'int' ?
-    some(token.value.value) :
-    none
+const integerConst = satisfyBy<VariantOf<Const, 'u32' | 'u64' | 'i32' | 'i64'>>(token =>
+  token.variant === 'Const' ? some(token.value) : none
 );
 
 const boolConst = satisfyBy<Const>(token =>
@@ -193,8 +191,6 @@ const boolConst = satisfyBy<Const>(token =>
     some(Const.bool(token.value.value)) :
     none
 );
-
-const integerConst = map(integer, Const.int);
 
 const unitConst: Parser<Const> = map(
   seq(symbol('('), symbol(')')),
@@ -358,7 +354,7 @@ const fieldAccess = chainLeft(
   seq(
     expectOrDefault(alt<{ variant: 'ident', name: string } | { variant: 'int', value: number }>(
       map(ident, name => ({ variant: 'ident', name })),
-      map(integer, n => ({ variant: 'int', value: n })),
+      map(integerConst, n => ({ variant: 'int', value: n.value })),
     ), `Expected identifier or integer after '.'`, { variant: 'ident', name: '<?>' }),
     optional(parens(map(optional(commas(expr)), args => args.orDefault([])))),
   ),

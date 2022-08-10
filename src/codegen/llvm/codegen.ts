@@ -123,7 +123,6 @@ export const createLLVMCompiler = async () => {
       return match(expr, {
         Const: ({ value: c }) => match(c, {
           bool: ({ value }) => llvm.ConstantInt[value ? 'getTrue' : 'getFalse'](context),
-          int: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
           u32: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
           i32: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
           u64: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),

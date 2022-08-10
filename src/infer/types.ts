@@ -1,4 +1,4 @@
-import { DataType, match, matchMany, VariantOf } from "itsamatch";
+import { DataType, match, matchMany } from "itsamatch";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
 import { Maybe } from "../utils/maybe";
@@ -28,9 +28,6 @@ export type MonoTy = DataType<{
   Fun: { args: MonoTy[], ret: MonoTy },
   Tuple: { tuple: Tuple },
   Struct: { name?: string, row: Row },
-  // Adding a type union variant could help model this type in a cleaner way
-  // Union: { value: TyVar, oneOf: MonoTy[], fallbackIndex?: number },
-  Integer: { type: 'unknown' | 'u32' | 'i32' | 'u64' | 'i64' },
 }>;
 
 export const showTyVarId = (n: TyVarId): string => {
@@ -49,7 +46,6 @@ export const MonoTy = {
   Fun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'Fun', args, ret }),
   Tuple: (tuple: Tuple): MonoTy => ({ variant: 'Tuple', tuple }),
   Struct: (fields: Readonly<Row>, name?: string): MonoTy => ({ variant: 'Struct', name, row: fields }),
-  Integer: (type: VariantOf<MonoTy, 'Integer'>['type'] = 'unknown'): MonoTy => ({ variant: 'Integer', type }),
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
   u32: () => MonoTy.Const('u32'),
   i32: () => MonoTy.Const('i32'),
@@ -171,7 +167,6 @@ export const MonoTy = {
         substituteRow(fields),
         name,
       ),
-      Integer: ({ type }) => MonoTy.Integer(type),
     });
   },
   substituteTyParams: (ty: MonoTy, subst: Map<string, MonoTy>): MonoTy => {
@@ -211,7 +206,6 @@ export const MonoTy = {
         substRowTyParams(row),
         name,
       ),
-      Integer: ({ type }) => MonoTy.Integer(type),
     });
   },
   instantiateTyParams: (ty: MonoTy, tyParams: string[]): MonoTy => {
@@ -248,7 +242,6 @@ export const MonoTy = {
 
       return `{ ${joinWith(Row.sortedFields(row), ([k, v]) => `${k}: ${MonoTy.show(v)}`, ', ')} }`;
     },
-    Integer: ({ type }) => type === 'unknown' ? 'int' : type,
   }),
   eq: (s: MonoTy, t: MonoTy): boolean => matchMany([MonoTy.deref(s), MonoTy.deref(t)], {
     "Var Var": ({ value: v1 }, { value: v2 }) => {

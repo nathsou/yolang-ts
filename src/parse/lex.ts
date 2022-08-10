@@ -14,7 +14,7 @@ export const keyword = map(
 
 const digits = map(oneOrMore(digit), digits => parseInt(digits.join(''), 10));
 
-export const int = map(digits, n => Token.Const(Const.int(n)));
+export const int = map(then(digits, trie(['u32', 'u64', 'i32', 'i64', ''])), ([n, kind]) => Token.Const(Const[kind === '' ? 'i32' : kind](n)));
 export const bool = map(alt(str('true'), str('false')), b => Token.Const(Const.bool(b === 'true')));
 export const ident = map(then(letter, many(alphaNumUnderscore)), ([h, tl]) => Token.Identifier(h + tl.join('')));
 

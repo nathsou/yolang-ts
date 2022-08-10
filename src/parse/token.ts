@@ -81,7 +81,6 @@ export const Keyword = {
 };
 
 export type Const = DataType<{
-  int: { value: number },
   u32: { value: number },
   i32: { value: number },
   u64: { value: number },
@@ -90,16 +89,16 @@ export type Const = DataType<{
   unit: {},
 }>;
 
-const { int, u32, i32, bool, unit } = genConstructors<Const>(['int', 'u32', 'i32', 'bool', 'unit']);
+const { u32, i32, u64, i64, bool, unit } = genConstructors<Const>(['u32', 'i32', 'u64', 'i64', 'bool', 'unit']);
 
 export const Const = {
-  int: (value: number) => int({ value }),
   u32: (value: number) => u32({ value }),
+  u64: (value: number) => u64({ value }),
   i32: (value: number) => i32({ value }),
+  i64: (value: number) => i64({ value }),
   bool: (value: boolean) => bool({ value }),
   unit: () => unit({}),
   show: (c: Const) => match(c, {
-    int: ({ value }) => `${value}`,
     u32: ({ value }) => `${value}`,
     i32: ({ value }) => `${value}`,
     u64: ({ value }) => `${value}`,
@@ -108,7 +107,6 @@ export const Const = {
     unit: () => '()',
   }),
   eq: (a: Const, b: Const) => matchMany([a, b], {
-    'int int': (a, b) => a.value === b.value,
     'u32 u32': (a, b) => a.value === b.value,
     'i32 i32': (a, b) => a.value === b.value,
     'bool bool': (a, b) => a.value === b.value,
@@ -116,10 +114,9 @@ export const Const = {
     _: () => false,
   }),
   type: (c: Const): MonoTy => match(c, {
-    int: () => MonoTy.Integer(),
     u32: () => MonoTy.Const('u32'),
     i32: () => MonoTy.Const('i32'),
-    u64: () => MonoTy.Const('u32'),
+    u64: () => MonoTy.Const('u64'),
     i64: () => MonoTy.Const('i64'),
     bool: MonoTy.bool,
     unit: MonoTy.unit,
