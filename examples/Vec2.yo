@@ -1,5 +1,5 @@
 
-type Vec2 = { x: u32, y: u32 }
+type Vec2 = { x: i32, y: i32 }
 
 fun dot(u, v) {
   u.x * v.x + u.y * v.y

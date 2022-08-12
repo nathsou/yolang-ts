@@ -2,12 +2,12 @@ import { BinaryOperator, UnaryOperator } from "../ast/sweet";
 import { MonoTy, PolyTy } from "./types";
 
 const unaryOpSignature: Record<UnaryOperator, PolyTy> = {
-  '-': MonoTy.toPoly(MonoTy.Fun([MonoTy.u32()], MonoTy.u32())),
+  '-': MonoTy.toPoly(MonoTy.Fun([MonoTy.i32()], MonoTy.i32())),
   '!': MonoTy.toPoly(MonoTy.Fun([MonoTy.bool()], MonoTy.bool())),
 };
 
-const u32OpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.u32(), MonoTy.u32()], MonoTy.u32()));
-const u32BoolOpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.u32(), MonoTy.u32()], MonoTy.bool()));
+const i32OpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.i32(), MonoTy.i32()], MonoTy.i32()));
+const i32BoolOpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.i32(), MonoTy.i32()], MonoTy.bool()));
 const comparisonOpSig = PolyTy.make(
   [0],
   MonoTy.Fun([MonoTy.Var({ kind: 'Unbound', id: 0 }), MonoTy.Var({ kind: 'Unbound', id: 0 })], MonoTy.bool())
@@ -16,19 +16,19 @@ const comparisonOpSig = PolyTy.make(
 const logicalOpSig = MonoTy.toPoly(MonoTy.Fun([MonoTy.bool(), MonoTy.bool()], MonoTy.bool()));
 
 const binaryOpSignature: Record<BinaryOperator, PolyTy> = {
-  '+': u32OpSig,
-  '-': u32OpSig,
-  '*': u32OpSig,
-  '/': u32OpSig,
-  '%': u32OpSig,
-  '&': u32OpSig,
-  '|': u32OpSig,
+  '+': i32OpSig,
+  '-': i32OpSig,
+  '*': i32OpSig,
+  '/': i32OpSig,
+  '%': i32OpSig,
+  '&': i32OpSig,
+  '|': i32OpSig,
   '==': comparisonOpSig,
   '!=': comparisonOpSig,
-  '<': u32BoolOpSig,
-  '>': u32BoolOpSig,
-  '<=': u32BoolOpSig,
-  '>=': u32BoolOpSig,
+  '<': i32BoolOpSig,
+  '>': i32BoolOpSig,
+  '<=': i32BoolOpSig,
+  '>=': i32BoolOpSig,
   '&&': logicalOpSig,
   '||': logicalOpSig,
 };

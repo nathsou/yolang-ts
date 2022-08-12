@@ -5,5 +5,5 @@ fun f(x: u64) { x }
 fun f(x: i64) { x }
 
 fun main() {
-  f(17i64)
+  f(3i64)
 }
