@@ -1,3 +1,0 @@
-
-type Pair<A, B> = (A, B)
-type Triplet<A, B, C> = (A, B, C)

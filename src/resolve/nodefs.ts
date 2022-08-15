@@ -25,5 +25,6 @@ export const createNodeFileSystem = async (): Promise<FileSystem> => {
         return dirname(path);
       }
     },
+    stdPath: __dirname + '/..',
   };
 };

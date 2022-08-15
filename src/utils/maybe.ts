@@ -77,9 +77,13 @@ export class Maybe<T> {
     return actions.None();
   }
 
-  unwrap(): T {
+  unwrap(message?: string): T {
     if (this.raw.type === 'some') {
       return this.raw.data;
+    }
+
+    if (message) {
+      return panic(`Maybe.unwrap: ${message}`);
     }
 
     return panic('Tried to unwrap a None value');

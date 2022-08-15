@@ -81,44 +81,36 @@ const run = async (source: string): Promise<boolean> => {
 
   if (debugLevel >= DebugLvl.types) {
     console.log('--- types ---');
-    console.log(showTypes(prog, []).join('\n\n') + '\n');
+    console.log(showTypes(prog).join('\n\n') + '\n');
   }
 
-  if (prog.length === 1 && prog[0].variant === 'Module') {
-    const compiler = await createLLVMCompiler();
-    const module = compiler.compile(prog[0]);
-    module.setSourceFileName(source);
+  const compiler = await createLLVMCompiler();
+  const module = compiler.compile(prog);
+  module.setSourceFileName(source);
 
-    if (debugLevel >= DebugLvl.sections) {
-      console.log(module.print());
-    }
-
-    const outPath = 'out';
-    await compiler.compileIR(module, outPath, 3);
-    const mainFunc = await getWasmMainFunc(`${outPath}.wasm`);
-
-    console.log(mainFunc());
-  } else {
-    panic('no entry module found');
+  if (debugLevel >= DebugLvl.sections) {
+    console.log(module.print());
   }
+
+  const outPath = 'out';
+  await compiler.compileIR(module, outPath, 3);
+  const mainFunc = await getWasmMainFunc(`${outPath}.wasm`);
+
+  console.log(mainFunc());
 
   return true;
 };
 
-const showTypes = (decls: Decl[], path: string[]): string[] => {
+const showTypes = (decls: Decl[]): string[] => {
   const types: string[] = [];
-  const pathName = path.length > 0 ? path.join('.') + '.' : '';
 
   for (const decl of decls) {
     matchVariant(decl, {
       Function: ({ name, funTy }) => {
-        types.push(pathName + name.original + ': ' + PolyTy.show(PolyTy.canonicalize(funTy)));
-      },
-      Module: mod => {
-        types.push(...showTypes(mod.decls, [...path, mod.name]));
+        types.push(name.original + ': ' + PolyTy.show(PolyTy.canonicalize(funTy)));
       },
       TypeAlias: ({ name, typeParams, alias }) => {
-        types.push(`type ${pathName}${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)}`);
+        types.push(`type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)}`);
       },
       _: () => { },
     });

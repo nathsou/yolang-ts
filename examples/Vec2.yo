@@ -1,17 +1,18 @@
+import std/ops
 
 type Vec2 = { x: i32, y: i32 }
 
-fun dot(u, v) {
+fun dot(u: Vec2, v: Vec2) {
   u.x * v.x + u.y * v.y
 }
 
-fun eq(a, b) {
-  a.x == b.x && a.y == b.y
+fun ==(a: Vec2, b: Vec2) {
+  (a.x == b.x) and (a.y == b.y)
 }
 
-fun yo() {
+fun main() {
   let u = Vec2 { x: 3, y: 4 }
   let v = Vec2 { x: 7, y: 11 }
 
-  u.eq(v)
+  u == v
 }

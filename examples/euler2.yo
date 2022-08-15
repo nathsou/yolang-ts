@@ -1,3 +1,4 @@
+import std/ops
 
 fun fib(n) {
   mut a = 1

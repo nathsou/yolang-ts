@@ -24,7 +24,7 @@ export const TyVar = {
 export type MonoTy = DataType<{
   Var: { value: TyVar },
   Param: { name: string },
-  Const: { path: string[], name: string, args: MonoTy[] },
+  Const: { name: string, args: MonoTy[] },
   Fun: { args: MonoTy[], ret: MonoTy },
   Tuple: { tuple: Tuple },
   Struct: { name?: string, row: Row },
@@ -41,8 +41,7 @@ export const MonoTy = {
     Link: ({ to }): MonoTy => ({ variant: 'Var', value: { kind: 'Link', to: MonoTy.deref(to) } }),
   }, 'kind'),
   Param: (name: string): MonoTy => ({ variant: 'Param', name }),
-  Const: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', path: [], name, args }),
-  ConstWithPath: (path: string[], name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', path, name, args }),
+  Const: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', name, args }),
   Fun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'Fun', args, ret }),
   Tuple: (tuple: Tuple): MonoTy => ({ variant: 'Tuple', tuple }),
   Struct: (fields: Readonly<Row>, name?: string): MonoTy => ({ variant: 'Struct', name, row: fields }),
@@ -54,7 +53,7 @@ export const MonoTy = {
   bool: () => MonoTy.Const('bool'),
   unit: () => MonoTy.Const('()'),
   primitiveTypes: new Set(['u32', 'i32', 'u64', 'i64', 'bool', '()']),
-  isPrimitive: (ty: MonoTy): boolean => ty.variant === 'Const' && ty.path.length === 0 && MonoTy.primitiveTypes.has(ty.name),
+  isPrimitive: (ty: MonoTy): boolean => ty.variant === 'Const' && MonoTy.primitiveTypes.has(ty.name),
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
     match(ty, {
       Var: ({ value }) => {
@@ -218,7 +217,7 @@ export const MonoTy = {
       Link: ({ to }) => MonoTy.show(to),
     }, 'kind'),
     Param: ({ name }) => `?${name}`,
-    Const: ({ path, name, args }) => (path.length > 0 ? `${path.join('.')}.` : '') + cond(args.length === 0, {
+    Const: ({ name, args }) => cond(args.length === 0, {
       then: () => name,
       else: () => `${name}<${joinWith(args, MonoTy.show, ', ')}>`,
     }),
@@ -258,8 +257,7 @@ export const MonoTy = {
     'Const Const': (c1, c2) => {
       if (
         c1.name === c2.name &&
-        c1.args.length === c2.args.length &&
-        zip(c1.path, c2.path).every(([s, t]) => s === t)
+        c1.args.length === c2.args.length
       ) {
         return zip(c1.args, c2.args).every(([s, t]) => MonoTy.eq(s, t));
       }

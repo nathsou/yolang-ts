@@ -1,0 +1,207 @@
+
+#meta(addI32)
+pub fun +(a: i32, b: i32): i32
+
+#meta(addU32)
+pub fun +(a: u32, b: u32): u32
+
+#meta(addI64)
+pub fun +(a: i64, b: i64): i64
+
+#meta(addU64)
+pub fun +(a: u64, b: u64): u64
+
+#meta(subI32)
+pub fun -(a: i32, b: i32): i32
+
+#meta(subU32)
+pub fun -(a: u32, b: u32): u32
+
+#meta(subI64)
+pub fun -(a: i64, b: i64): i64
+
+#meta(subU64)
+pub fun -(a: u64, b: u64): u64
+
+#meta(negI32)
+pub fun -(n: i32): i32
+
+#meta(negI64)
+pub fun -(n: i64): i64
+
+#meta(not)
+pub fun not(q: bool): bool
+
+#meta(mulI32)
+pub fun *(a: i32, b: i32): i32
+
+#meta(mulU32)
+pub fun *(a: u32, b: u32): u32
+
+#meta(mulI64)
+pub fun *(a: i64, b: i64): i64
+
+#meta(mulU64)
+pub fun *(a: u64, b: u64): u64
+
+#meta(divI32)
+pub fun /(a: i32, b: i32): i32
+
+#meta(divU32)
+pub fun /(a: u32, b: u32): u32
+
+#meta(divI64)
+pub fun /(a: i64, b: i64): i64
+
+#meta(divU64)
+pub fun /(a: u64, b: u64): u64
+
+#meta(modI32)
+pub fun mod(a: i32, b: i32): i32
+
+#meta(modU32)
+pub fun mod(a: u32, b: u32): u32
+
+#meta(modI64)
+pub fun mod(a: i64, b: i64): i64
+
+#meta(modU64)
+pub fun mod(a: u64, b: u64): u64
+
+#meta(logicalAnd)
+pub fun and (a: bool, b: bool): bool
+
+#meta(logicalOr)
+pub fun or (a: bool, b: bool): bool
+
+pub fun nand(a: bool, b: bool): bool {
+  not (a and b)
+}
+
+pub fun nor(a: bool, b: bool): bool {
+  not (a or b)
+}
+
+pub fun xor(a: bool, b: bool): bool {
+  (a or b) and nand(a, b)
+}
+
+pub fun xnor(a: bool, b: bool): bool {
+  nor(a, b) or (a and b)
+}
+
+#meta(bitwiseAndI32)
+pub fun and(a: i32, b: i32): i32
+
+#meta(bitwiseAndU32)
+pub fun and(a: u32, b: u32): u32
+
+#meta(bitwiseAndI64)
+pub fun and(a: i64, b: i64): i64
+
+#meta(bitwiseAndU64)
+pub fun and(a: u64, b: u64): u64
+
+#meta(bitwiseOrI32)
+pub fun or(a: i32, b: i32): i32
+
+#meta(bitwiseOrU32)
+pub fun or(a: u32, b: u32): u32
+
+#meta(bitwiseOrI64)
+pub fun or(a: i64, b: i64): i64
+
+#meta(bitwiseOrU64)
+pub fun or(a: u64, b: u64): u64
+
+#meta(lssI32)
+pub fun <(a: i32, b: i32): bool
+
+#meta(lssU32)
+pub fun <(a: u32, b: u32): bool
+
+#meta(lssI64)
+pub fun <(a: i64, b: i64): bool
+
+#meta(lssU64)
+pub fun <(a: u64, b: u64): bool
+
+#meta(leqI32)
+pub fun <=(a: i32, b: i32): bool
+
+#meta(leqU32)
+pub fun <=(a: u32, b: u32): bool
+
+#meta(leqI64)
+pub fun <=(a: i64, b: i64): bool
+
+#meta(leqU64)
+pub fun <=(a: u64, b: u64): bool
+
+#meta(gtrI32)
+pub fun >(a: i32, b: i32): bool
+
+#meta(gtrU32)
+pub fun >(a: u32, b: u32): bool
+
+#meta(gtrI64)
+pub fun >(a: i64, b: i64): bool
+
+#meta(gtrU64)
+pub fun >(a: u64, b: u64): bool
+
+#meta(geqI32)
+pub fun >=(a: i32, b: i32): bool
+
+#meta(geqU32)
+pub fun >=(a: u32, b: u32): bool
+
+#meta(geqI64)
+pub fun >=(a: i64, b: i64): bool
+
+#meta(geqU64)
+pub fun >=(a: u64, b: u64): bool
+
+#meta(eqI32)
+pub fun ==(a: i32, b: i32): bool
+
+#meta(eqU32)
+pub fun ==(a: u32, b: u32): bool
+
+#meta(eqI64)
+pub fun ==(a: i64, b: i64): bool
+
+#meta(eqU64)
+pub fun ==(a: u64, b: u64): bool
+
+#meta(neqI32)
+pub fun !=(a: i32, b: i32): bool
+
+#meta(neqU32)
+pub fun !=(a: u32, b: u32): bool
+
+#meta(neqI64)
+pub fun !=(a: i64, b: i64): bool
+
+#meta(neqU64)
+pub fun !=(a: u64, b: u64): bool
+
+pub fun even(n: i32): bool {
+  n and 1 == 0
+}
+
+pub fun odd(n: i32): bool {
+  n and 1 == 1
+}
+
+pub fun pow(a: i32, n: i32): i32 {
+  if n == 0 {
+    1
+  } else {
+    if n.even() {
+      (a * a).pow(n / 2)
+    } else {
+      a * (a * a).pow((n - 1) / 2)
+    }
+  }
+}

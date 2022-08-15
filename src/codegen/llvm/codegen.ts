@@ -1,6 +1,6 @@
-import { match, VariantOf } from 'itsamatch';
+import { match } from 'itsamatch';
 import type LLVM from 'llvm-bindings';
-import { Decl, Expr, Stmt } from '../../ast/bitter';
+import { Decl, Expr, Prog, Stmt } from '../../ast/bitter';
 import { VarName } from '../../ast/name';
 import { Expr as SweetExpr } from '../../ast/sweet';
 import { Row } from '../../infer/structs';
@@ -34,37 +34,15 @@ type Struct = { row: Row, fields: Record<string, number>, ty: LLVM.StructType };
 export const createLLVMCompiler = async () => {
   const llvm = await import('llvm-bindings');
 
-  function compile(mod: VariantOf<Decl, 'Module'>): LLVM.Module {
+  function compile(prog: Prog): LLVM.Module {
     const context = new llvm.LLVMContext();
-    const modules: LLVM.Module[] = [];
+    const mod = new llvm.Module('top', context);
     const builder = new llvm.IRBuilder(context);
     const scopes: LexicalScope[] = [];
     const unit = Expr.Const(Const.unit(), SweetExpr.Const(Const.unit()));
     const unitTy = MonoTy.Const('()');
     const funcs = new Map<string, LLVM.Function>();
     const structs = new Map<string, Struct>();
-
-    function currentModule(): LLVM.Module {
-      if (modules.length === 0) {
-        panic('empty module stack');
-      }
-
-      return last(modules);
-    }
-
-    function compileModule(mod: VariantOf<Decl, 'Module'>): LLVM.Module {
-      const module = new llvm.Module(mod.name, context);
-      modules.push(module);
-
-      mod.decls.forEach(d => { compileDecl(d); });
-      if (llvm.verifyModule(module)) {
-        panic('module verification failed');
-      }
-
-      modules.pop();
-
-      return module;
-    }
 
     type ResolvedVar =
       | { kind: 'immut', value: LLVM.Value, ty: MonoTy }
@@ -334,13 +312,14 @@ export const createLLVMCompiler = async () => {
             f.instances.forEach(g => {
               compileDecl(g);
             });
+
             return;
           }
 
-          const returnTy = llvmTy(f.returnTy.unwrap());
+          const returnTy = llvmTy(f.returnTy.or(f.body.map(b => b.ty)).unwrap());
           const argTys = f.args.map(a => llvmTy(a.name.ty));
           const funcTy = llvm.FunctionType.get(returnTy, argTys, false);
-          const func = llvm.Function.Create(funcTy, llvm.Function.LinkageTypes.ExternalLinkage, f.name.mangled, currentModule());
+          const func = llvm.Function.Create(funcTy, llvm.Function.LinkageTypes.ExternalLinkage, f.name.mangled, mod);
           funcs.set(f.name.mangled, func);
           const entry = llvm.BasicBlock.Create(context, 'entry', func);
           builder.SetInsertPoint(entry);
@@ -373,9 +352,6 @@ export const createLLVMCompiler = async () => {
             panic('function verification failed');
           }
         },
-        Module: mod => {
-          compileModule(mod);
-        },
         TypeAlias: ({ name, alias }) => {
           match(alias, {
             Struct: ({ row }) => {
@@ -387,11 +363,18 @@ export const createLLVMCompiler = async () => {
             _: () => { },
           })
         },
+        Import: () => { },
         _: () => { },
       });
     }
 
-    return compileModule(mod);
+    prog.forEach(decl => { compileDecl(decl); });
+
+    if (llvm.verifyModule(mod)) {
+      panic('module verification failed');
+    }
+
+    return mod;
   }
 
   async function compileIR(module: LLVM.Module, outfile: string, optLevel: 0 | 1 | 2 | 3): Promise<string> {

@@ -9,7 +9,7 @@ import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, pos, satisfy, satisfyBy, sepBy, seq, squareBrackets, symbol, uninitialized } from './combinators';
+import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, pos, satisfy, satisfyBy, seq, squareBrackets, symbol, uninitialized } from './combinators';
 import { Const, Token, TokenWithPos } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -71,9 +71,6 @@ const unexpected = mapParserResult(
   }
 );
 
-const modulePath = sepBy(symbol('.'))(upperIdent);
-const typePath = map(sepBy(symbol('.'))(upperIdent), path => [path.slice(0, -1), last(path)] as const);
-
 const angleBrackets = <T>(p: Parser<T>) => map(
   seq(
     ident2('<'),
@@ -95,19 +92,10 @@ const i64Ty = map(ident2('i64'), () => MonoTy.Const('i64'));
 const constTy = alt(unitTy, boolTy, u32Ty, i32Ty, u64Ty, i64Ty);
 const namedTy = map(
   seq(
-    alt(
-      map<[string, null], [string[], string]>(seq(upperIdent, not(symbol('.'))), ([name]) => [[], name]),
-      map<string[], [string[], string]>(modulePath, path => [path.slice(0, -1), last(path)])
-    ),
+    upperIdent,
     optionalOrDefault(angleBrackets(optionalOrDefault(commas(monoTy), [])), []),
   ),
-  ([[path, name], args]) => {
-    if (path.length === 0 && args.length === 0) {
-      return MonoTy.Const(name);
-    } else {
-      return MonoTy.ConstWithPath(path, name, ...args);
-    }
-  }
+  ([name, args]) => MonoTy.Const(name, ...args),
 );
 
 const tupleTy = map(
@@ -234,21 +222,8 @@ export const primary = alt(
   // unexpected
 );
 
-// e.g Main.Yolo.yo
-const moduleAccess = alt(
-  map(
-    seq(
-      modulePath,
-      expect(symbol('.'), `Expected '.' after module path`),
-      expectOrDefault(ident, `Expected identifier after '.'`, '<?>'),
-    ),
-    ([path, _, member]) => Expr.ModuleAccess(path, member),
-  ),
-  primary
-);
-
 const app = leftAssoc(
-  moduleAccess,
+  primary,
   seq(optionalOrDefault(typeParamsInst, []), parens(optionalOrDefault(commas(expr), []))),
   (lhs, [tyParams, args]) => Expr.Call(lhs, tyParams, args)
 );
@@ -297,11 +272,11 @@ const structField = map(seq(
 
 const namedStruct = alt(
   map(seq(
-    typePath,
+    upperIdent,
     optionalOrDefault(angleBrackets(optionalOrDefault(commas(monoTy), [])), []),
     curlyBrackets(optionalOrDefault(commas(structField), [])),
   ),
-    ([[path, name], params, fields]) => Expr.Struct(path, name, params, fields)
+    ([name, params, fields]) => Expr.Struct(name, params, fields)
   ),
   tuple
 );
@@ -577,6 +552,7 @@ const attributeList = map(seq(symbol('#'), alt(squareBrackets(commas(attribute))
 
 const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
   optionalOrDefault(attributeList, []),
+  optionalOrDefault(map(keyword('pub'), () => true), false),
   keyword('fun'),
   expectOrDefault(ident, `Expected identifier after 'fun' keyword`, '<?>'),
   scopedTypeParams(seq(
@@ -588,22 +564,15 @@ const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
     optional(block),
   ))
 ),
-  ([attributes, _, name, [typeParams, [args, returnTy, body]]]) => Decl.Function({
+  ([attributes, pub, _, name, [typeParams, [args, returnTy, body]]]) => Decl.Function({
     attributes,
+    pub,
     name,
     typeParams,
     args,
     returnTy: returnTy.map(snd),
     body,
   })
-);
-
-const moduleDecl = map(seq(
-  keyword('module'),
-  expectOrDefault(upperIdent, `Expected an uppercase identifier after 'module' keyword`, '<?>'),
-  curlyBrackets(many(decl)),
-),
-  ([_, name, decls]) => Decl.Module({ name, decls })
 );
 
 const typeAliasDecl: Parser<Decl> = map(seq(
@@ -617,25 +586,33 @@ const typeAliasDecl: Parser<Decl> = map(seq(
   ([_t, name, [typeParams, [_eq, alias]]]) => Decl.TypeAlias({ name, typeParams, alias })
 );
 
-const useDecl = map(
+const importPath = map(
+  chainLeft(
+    map(ident, name => [name]),
+    ident2('/'),
+    ident,
+    (lhs, _, rhs) => [...lhs, rhs],
+  ),
+  path => path.join('/')
+);
+
+const importDecl = map(
   seq(
-    keyword('use'),
-    expect(modulePath, `Expected module path after 'use' keyword`),
-    expect(symbol('.'), `Expected '.' after module path`),
-    alt(
-      map(curlyBrackets(commas(alt(upperIdent, ident))), Imports.names),
-      map(ident2('*'), Imports.all),
+    keyword('import'),
+    expect(importPath, `Expected module path after 'import' keyword`),
+    optionalOrDefault(
+      map(squareBrackets(commas(alt(upperIdent, ident))), Imports.names),
+      Imports.all(),
     ),
     optional(symbol(';')),
   ),
-  ([_, path, _dot, imports]) => Decl.Use({ path, imports })
+  ([_, path, imports]) => Decl.Import({ path, imports })
 );
 
 initParser(decl, alt(
   funcDecl,
   typeAliasDecl,
-  moduleDecl,
-  useDecl,
+  importDecl,
 ));
 
 export const parse = (tokens: Slice<TokenWithPos>): [Prog, ParserError[]] => {

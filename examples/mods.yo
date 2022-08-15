@@ -1,9 +1,0 @@
-
-module Yolo {
-  type Yop = (u32, u32)
-}
-
-fun main() {
-  let (a, (b, c)): (Vec2.Vec2, Yolo.Yop) = (Vec2.Vec2 { x: 3, y: 7 }, (1, 2))
-  in a.x * (b + a.y - c)
-}

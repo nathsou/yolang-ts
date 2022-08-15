@@ -55,12 +55,11 @@ export type Expr = DataType<{
   Block: { statements: Stmt[], lastExpr: Maybe<Expr> },
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
   Assignment: { lhs: Expr, rhs: Expr },
-  ModuleAccess: { path: string[], member: string },
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
   Match: { expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[] },
   Parenthesized: { expr: Expr },
-  Struct: { path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
+  Struct: { name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
   LetIn: { pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr },
   While: { condition: Expr, body: Expr },
@@ -75,12 +74,11 @@ export const Expr = {
   Block: (statements: Stmt[], lastExpr?: Maybe<Expr>): Expr => ({ variant: 'Block', statements, lastExpr: lastExpr ?? none }),
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>): Expr => ({ variant: 'IfThenElse', condition, then, else_ }),
   Assignment: (lhs: Expr, rhs: Expr): Expr => ({ variant: 'Assignment', lhs, rhs }),
-  ModuleAccess: (path: string[], member: string): Expr => ({ variant: 'ModuleAccess', path, member }),
   FieldAccess: (lhs: Expr, field: string): Expr => ({ variant: 'FieldAccess', lhs, field }),
   Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
   Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[]): Expr => ({ variant: 'Match', annotation, expr, cases }),
   Parenthesized: (expr: Expr): Expr => ({ variant: 'Parenthesized', expr }),
-  Struct: (path: string[], name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[]): Expr => ({ variant: 'Struct', path, name, typeParams, fields }),
+  Struct: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[]): Expr => ({ variant: 'Struct', name, typeParams, fields }),
   TupleIndexing: (lhs: Expr, index: number): Expr => ({ variant: 'TupleIndexing', lhs, index }),
   LetIn: (pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr): Expr => ({ variant: 'LetIn', pattern, annotation, value, body }), While: (condition: Expr, body: Expr): Expr => ({ variant: 'While', condition, body }),
   show: (expr: Expr): string => match(expr, {
@@ -111,12 +109,11 @@ export const Expr = {
     Block: ({ statements, lastExpr }) => `{\n${joinWith([...statements, ...lastExpr.mapWithDefault(e => [Stmt.Expr(e)], [])], s => '  ' + Stmt.show(s), '\n')}\n}`,
     IfThenElse: ({ condition, then, else_ }) => `if ${Expr.show(condition)} ${Expr.show(then)}${else_.map(e => ` else ${Expr.show(e)}`).orDefault('')}`,
     Assignment: ({ lhs, rhs }) => `${Expr.show(lhs)} = ${Expr.show(rhs)}`,
-    ModuleAccess: ({ path, member }) => `${path.join('.')}.${member}`,
     FieldAccess: ({ lhs, field }) => `${Expr.show(lhs)}.${field}`,
     Tuple: ({ elements }) => `(${joinWith(elements, Expr.show, ', ')})`,
     Match: ({ expr, cases }) => `match ${Expr.show(expr)} {\n${joinWith(cases, ({ pattern, body }) => `  ${Pattern.show(pattern)} => ${Expr.show(body)}\n`, '\n')}\n}`,
     Parenthesized: ({ expr }) => `(${Expr.show(expr)})`,
-    Struct: ({ path, name, typeParams, fields }) => `${path.join('.')}${path.length > 0 ? '.' : ''}${name} <${joinWith(typeParams, MonoTy.show, ', ')}> {\n${joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, ', ')}\n}`,
+    Struct: ({ name, typeParams, fields }) => `${name} <${joinWith(typeParams, MonoTy.show, ', ')}> {\n${joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, ', ')}\n}`,
     TupleIndexing: ({ lhs, index }) => `${Expr.show(lhs)}.${index}`,
     LetIn: ({ pattern, value, body }) => `let ${Pattern.show(pattern)} = ${Expr.show(value)} in ${Expr.show(body)}`,
     While: ({ condition, body }) => `while ${Expr.show(condition)} ${Expr.show(body)}`,
@@ -132,12 +129,11 @@ export const Expr = {
       Block: ({ statements: stmts, lastExpr }) => Expr.Block(stmts.map(s => Stmt.rewrite(s, f)), lastExpr.map(go)),
       IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(f)),
       Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs)),
-      ModuleAccess: ({ path, member }) => Expr.ModuleAccess(path, member),
       FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field),
       Tuple: ({ elements }) => Expr.Tuple(elements.map(go)),
       Match: ({ expr, annotation, cases }) => Expr.Match(go(expr), annotation, cases.map(({ pattern, annotation, body }) => ({ pattern, annotation, body: go(body) }))),
       Parenthesized: ({ expr }) => Expr.Parenthesized(go(expr)),
-      Struct: ({ path, name, typeParams, fields }) => Expr.Struct(path, name, typeParams, fields.map(({ name, value }) => ({ name, value: go(value) }))),
+      Struct: ({ name, typeParams, fields }) => Expr.Struct(name, typeParams, fields.map(({ name, value }) => ({ name, value: go(value) }))),
       TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index),
       LetIn: ({ pattern, annotation, value, body }) => Expr.LetIn(pattern, annotation, go(value), go(body)),
       While: ({ condition, body }) => Expr.While(go(condition), go(body)),
@@ -211,38 +207,43 @@ export const Imports = {
   names: (names: string[]): Imports => ({ variant: 'names', names: new Set(names) }),
   all: (): Imports => ({ variant: 'all' }),
   show: (importType: Imports): string => match(importType, {
-    names: ({ names }) => `{${[...names].join(', ')}}`,
-    all: () => '*',
+    names: ({ names }) => `[${[...names].join(', ')}]`,
+    all: () => '',
   }),
 };
 
 export type Decl = DataType<{
-  Function: { attributes: Attribute[], name: string, typeParams: TypeParam[], args: Argument[], returnTy: Maybe<MonoTy>, body: Maybe<Expr> },
-  Module: { name: string, decls: Decl[] },
+  Function: {
+    attributes: Attribute[],
+    pub: boolean,
+    name: string,
+    typeParams: TypeParam[],
+    args: Argument[],
+    returnTy: Maybe<MonoTy>,
+    body: Maybe<Expr>
+  },
   TypeAlias: { name: string, typeParams: TypeParam[], alias: MonoTy },
-  Use: { path: string[], imports: Imports },
+  Import: { path: string, imports: Imports },
   Error: { message: string },
 }>;
 
 export const Decl = {
-  ...genConstructors<Decl>(['Function', 'Module', 'TypeAlias', 'Use', 'Error']),
+  ...genConstructors<Decl>(['Function', 'TypeAlias', 'Import', 'Error']),
   show: (decl: Decl): string => match(decl, {
     Function: ({ attributes, name, typeParams, args, body }) => {
       const fun = `fun ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${body.mapWithDefault(Expr.show, '')}`;
       return attributes.length > 0 ? `${Attribute.showMany(attributes)}\n${fun}` : fun;
     },
-    Module: ({ name, decls }) => `module ${name} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)}`,
-    Use: ({ path, imports }) => `use ${path.join('.')}.${Imports.show(imports)}`,
+    Import: ({ path, imports }) => `import ${path}${Imports.show(imports)}`,
     Error: ({ message }) => `<Error: ${message}> `,
   }),
   rewrite: (decl: Decl, rfs: RewriteFuncs): Decl => {
     const { rewriteExpr: f = id, rewriteDecl: g = id } = rfs;
     return g(match(decl, {
-      Function: ({ attributes, name, typeParams, args, returnTy, body }) => Decl.Function({ attributes, name, typeParams, args, returnTy, body: body.map(b => Expr.rewrite(b, f)) }),
-      Module: ({ name, decls }) => Decl.Module({ name, decls: decls.map(d => Decl.rewrite(d, rfs)) }),
+      Function: ({ attributes, pub, name, typeParams, args, returnTy, body }) => Decl.Function({ attributes, pub, name, typeParams, args, returnTy, body: body.map(b => Expr.rewrite(b, f)) }),
       TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias({ name, typeParams, alias }),
-      Use: ({ path, imports }) => Decl.Use({ path, imports }),
+      Import: ({ path, imports }) => Decl.Import({ path, imports }),
       Error: ({ message }) => Decl.Error({ message }),
     }));
   },

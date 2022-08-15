@@ -22,9 +22,6 @@ export type TypingError = DataType<{
     func: string, arg: string
   },
   UnassignableExpression: { expr: Expr },
-  UnknownModule: { path: string[] },
-  UnknownModuleMember: { path: string[], member: string },
-  TEMP_OnlyFunctionModuleAccessAllowed: { path: string[], member: string },
   TupleIndexTooBig: { index: number },
   ParsingError: { message: string },
   WasmBlockExpressionsRequireTypeAnnotations: { expr: Expr },
@@ -277,29 +274,6 @@ const inferExpr = (
 
       unify(tau, funTy);
     },
-    ModuleAccess: ({ path, member }) => {
-      TypeContext.resolveModule(ctx, path).match({
-        Some: mod => {
-          if (member in mod.members) {
-            const m = mod.members[member];
-            match(m, {
-              Function: ({ funTy }) => {
-                const instTy = PolyTy.instantiate(funTy);
-                unify(instTy.ty, tau);
-              },
-              _: () => {
-                errors.push(Error.Typing({ type: 'TEMP_OnlyFunctionModuleAccessAllowed', path, member }));
-              },
-            });
-          } else {
-            errors.push(Error.Typing({ type: 'UnknownModuleMember', path, member }));
-          }
-        },
-        None: () => {
-          errors.push(Error.Typing({ type: 'UnknownModule', path }));
-        },
-      });
-    },
     Tuple: ({ elements }) => {
       elements.forEach(e => {
         inferExpr(e, ctx, errors);
@@ -352,8 +326,8 @@ const inferExpr = (
       inferExpr(lhs, ctx, errors);
       unify(partialRecordTy, lhs.ty);
     },
-    Struct: ({ path, name, typeParams, fields }) => {
-      TypeContext.findTypeAlias(ctx, path, name).match({
+    Struct: ({ name, typeParams, fields }) => {
+      TypeContext.findTypeAlias(ctx, name).match({
         Some: ([ty]) => {
           if (ty.variant !== 'Struct') {
             errors.push(Error.Typing({ type: 'UndeclaredStruct', name }));
@@ -376,7 +350,7 @@ const inferExpr = (
                 unify(value.ty, expectedFieldTy);
               });
 
-              const expectedTy = MonoTy.ConstWithPath(path, name, ...typeParams);
+              const expectedTy = MonoTy.Const(name, ...typeParams);
               const actualTy = MonoTy.Struct(
                 Row.fromFields(fields.map(f => [f.name, f.value.ty]))
               );
@@ -461,13 +435,14 @@ const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[] => {
 
   match(decl, {
     Function: f => {
-      const { attributes, name, typeParams, args, returnTy, body } = f;
+      const { name, typeParams, args, returnTy, body } = f;
 
       if (body.isNone() && returnTy.isNone()) {
         errors.push(Error.Typing({ type: 'MissingFuncPrototypeReturnTy', name: name.original }));
       }
 
       Env.declareFunc(ctx.env, f);
+
       const bodyCtx = TypeContext.clone(ctx);
       TypeContext.declareTypeParams(bodyCtx, ...typeParams);
 
@@ -479,48 +454,33 @@ const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[] => {
         Env.addMonoVar(bodyCtx.env, name, name.ty);
       });
 
-      body.do(b => {
-        inferExpr(b, bodyCtx, errors);
+      body.do(body => {
+        inferExpr(body, bodyCtx, errors);
 
         returnTy.do(retTy => {
-          unify(b.ty, retTy, bodyCtx);
+          unify(body.ty, retTy, bodyCtx);
         });
+
+        const funTy = MonoTy.Fun(
+          args.map(({ name: arg }) => arg.ty),
+          body.ty
+        );
+
+        unify(funTy, name.ty);
+
+        const genFunTy = MonoTy.generalize(ctx.env, funTy);
+        f.funTy = genFunTy;
       });
-
-      const retTy = returnTy.or(body.map(b => b.ty)).orDefault(MonoTy.fresh);
-
-      f.returnTy = some(retTy);
-
-      const funTy = MonoTy.Fun(
-        args.map(({ name: arg }) => arg.ty),
-        retTy
-      );
-
-      unify(funTy, name.ty);
-
-      const genFunTy = MonoTy.generalize(ctx.env, funTy);
-      f.funTy = genFunTy;
 
       const overloadsCount = Env.lookupFuncs(ctx.env, name.original).length;
       if (overloadsCount > 1 && !name.mangled.includes('[')) {
         name.mangled += `[${overloadsCount}]`;
       }
     },
-    Module: mod => {
-      TypeContext.declareModule(ctx, mod);
-      const modCtx = TypeContext.clone(ctx);
-      TypeContext.enterModule(modCtx, mod.name);
-
-      for (const decl of mod.decls) {
-        inferDecl(decl, modCtx, errors);
-      }
-    },
     TypeAlias: ({ name, typeParams, alias }) => {
       TypeContext.declareTypeAlias(ctx, name, typeParams, alias);
     },
-    Use: ({ path, imports }) => {
-      TypeContext.bringIntoScope(ctx, path, imports);
-    },
+    Import: () => { },
     Error: ({ message }) => {
       errors.push(Error.Typing({ type: 'ParsingError', message }));
     },
