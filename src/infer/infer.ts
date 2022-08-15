@@ -503,6 +503,8 @@ const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[] => {
 
       const retTy = returnTy.or(body.map(b => b.ty)).orDefault(MonoTy.fresh);
 
+      f.returnTy = some(retTy);
+
       const funTy = MonoTy.Fun(
         args.map(({ name: arg }) => arg.ty),
         retTy

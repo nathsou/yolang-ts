@@ -1,15 +1,16 @@
 
-#[meta(addU64), inline(always)]
+#[meta(addI32)]
+fun add(a: i32, b: i32): i32
+
+#[meta(addU32)]
+fun add(a: u32, b: u32): u32
+
+#[meta(addU64)]
 fun add(a: u64, b: u64): u64
 
-#[meta(addI64), inline(always)]
+#[meta(addI64)]
 fun add(a: i64, b: i64): i64
 
-fun f(x: u32) { x }
-fun f(x: i32) { x }
-fun f(x: u64) { x }
-fun f(x: i64) { x }
-
 fun main() {
-  f(3i64)
+  3.add(7)
 }
