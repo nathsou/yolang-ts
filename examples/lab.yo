@@ -1,4 +1,10 @@
 
+#[meta(addU64), inline(always)]
+fun add(a: u64, b: u64): u64
+
+#[meta(addI64), inline(always)]
+fun add(a: i64, b: i64): i64
+
 fun f(x: u32) { x }
 fun f(x: i32) { x }
 fun f(x: u64) { x }

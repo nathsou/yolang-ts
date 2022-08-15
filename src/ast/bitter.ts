@@ -5,9 +5,9 @@ import { Tuple } from "../infer/tuples";
 import { MonoTy, PolyTy, TypeParam } from "../infer/types";
 import { Const } from "../parse/token";
 import { Either } from "../utils/either";
-import { Maybe, none } from "../utils/maybe";
+import { Maybe, none, some } from "../utils/maybe";
 import { FuncName, NameEnv, VarName } from "./name";
-import { Argument as SweetArgument, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Imports, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
+import { Argument as SweetArgument, Attribute, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Imports, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
 
 // Bitter expressions are *unsugared* representations
 // of the structure of yolang source code
@@ -266,11 +266,12 @@ type FuncArg = { name: VarName, mutable: boolean, annotation: Maybe<MonoTy> };
 
 export type Decl = DataType<{
   Function: {
+    attributes: Attribute[],
     name: FuncName,
     typeParams: { name: string, ty: Maybe<MonoTy> }[],
     args: FuncArg[],
     returnTy: Maybe<MonoTy>,
-    body: Expr,
+    body: Maybe<Expr>,
     funTy: PolyTy,
     instances: FuncDecl[],
   },
@@ -282,13 +283,15 @@ export type Decl = DataType<{
 
 export const Decl = {
   Function: (
+    attributes: Attribute[],
     name: FuncName,
     typeParams: { name: string, ty: Maybe<MonoTy> }[],
     args: FuncArg[],
     returnTy: Maybe<MonoTy>,
-    body: Expr
+    body: Maybe<Expr>,
   ): Decl => ({
     variant: 'Function',
+    attributes,
     name,
     typeParams,
     args,
@@ -328,16 +331,20 @@ export const Decl = {
   Error: (message: string): Decl => ({ variant: 'Error', message }),
   fromSweet: (sweet: SweetDecl, nameEnv: NameEnv, moduleStack: string[], errors: Error[]): Decl =>
     match(sweet, {
-      Function: ({ name, typeParams, args, returnTy, body }) => {
+      Function: ({ attributes, name, typeParams, args, returnTy, body }) => {
         const nameRef = NameEnv.declareFunc(nameEnv, name);
-        const withoutPatterns = rewriteFuncArgsPatternMatching(args, body, nameEnv, errors);
+        const withoutPatterns = rewriteFuncArgsPatternMatching(args, body.orDefault(SweetExpr.Block([], none)), nameEnv, errors);
 
         return Decl.Function(
+          attributes,
           nameRef,
           typeParams,
           withoutPatterns.args,
           returnTy,
-          withoutPatterns.body
+          body.match({
+            Some: () => some(withoutPatterns.body),
+            None: () => none,
+          }),
         );
       },
       Module: ({ name, decls }) => {
@@ -356,14 +363,15 @@ export const Decl = {
     const go = (decl: Decl): Decl => Decl.rewrite(decl, nameEnv, rewriteExpr, rewriteDecl);
 
     return match(decl, {
-      Function: ({ name, typeParams, args, body, returnTy }) => {
+      Function: ({ attributes, name, typeParams, args, body, returnTy }) => {
         const bodyEnv = NameEnv.clone(nameEnv);
         return Decl.Function(
+          attributes,
           NameEnv.declareFunc(nameEnv, name.original, name.mangled),
           typeParams.map(p => ({ name: p.name, ty: none })),
           args.map(arg => ({ ...arg, name: NameEnv.declareVar(bodyEnv, arg.name.original, false, arg.name.mangled) })),
           returnTy,
-          Expr.rewrite(body, bodyEnv, rewriteExpr),
+          body.map(b => Expr.rewrite(b, bodyEnv, rewriteExpr)),
         );
       },
       Module: ({ name, decls }) => Decl.Module(name, decls.map(decl => go(decl))),

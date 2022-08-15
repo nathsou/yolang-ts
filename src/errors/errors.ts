@@ -5,6 +5,7 @@ import { MAX_TUPLE_INDEX, Tuple } from "../infer/tuples";
 import { MonoTy, PolyTy } from "../infer/types";
 import { UnificationError } from "../infer/unification";
 import { ParserError } from "../parse/combinators";
+import { Position } from "../parse/token";
 import { ResolutionError } from '../resolve/resolve';
 
 export type Error = DataType<{
@@ -33,7 +34,7 @@ export const Error = {
       DifferentLengthTuples: ({ s, t }) => `Cannot unify tuples with different lengths: ${Tuple.show(s)} with ${Tuple.show(t)}`,
       CouldNotResolveType: ({ ty }) => `Could not resolve type: ${MonoTy.show(ty)}`,
     }, 'type'),
-    Parser: ({ err }) => `Parser error: ${err.message} at ${err.pos}`,
+    Parser: ({ err }) => `Parser error: ${err.message} at ${Position.show(err.pos)}`,
     BitterConversion: ({ err }) => `Bitter conversion error: ${err.message}`,
     Typing: ({ err }) => matchVariant(err, {
       ParsingError: ({ message }) => `Parsing error: ${message}`,
@@ -52,6 +53,7 @@ export const Error = {
       MissingStructFields: ({ name, fields }) => `Missing fields in struct constructor expression for '${name}': ${fields.join(', ')}`,
       ExtraneoussStructFields: ({ name, fields }) => `Extraneous fields in struct constructor expression for '${name}': ${fields.join(', ')}`,
       CannotUseImmutableValueForImmutableFuncArg: ({ func, arg }) => `Cannot use an immutable value in place of an immutable argument: '${arg}' in function '${func}'`,
+      MissingFuncPrototypeReturnTy: ({ name }) => `Missing return type in function prototype for ${name}`,
     }, 'type'),
     Resolution: ({ err }) => matchVariant(err, {
       ModuleNotFound: ({ name }) => `Module '${name}' not found`,

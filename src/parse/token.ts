@@ -41,6 +41,10 @@ export type Position = {
   column: number,
 };
 
+export const Position = {
+  show: ({ line, column }: Position): string => `${line}:${column}`,
+};
+
 export type TokenWithPos = DataType<{
   [Variant in Token['variant']]: VariantOf<Token, Variant> & { pos: Position }
 }>;
@@ -54,7 +58,7 @@ const symbols = [
   '->', '=>', '==', '!=', '&&=', '||=', '&&', '||', '+=', '-=', '*=', '/=', '%=',
   '+', '-', '*', '/', '%', '<=', '>=', '<', '>', '(', ')', ',',
   ';', '=', '{', '}', '[', ']', ':', '!', '.', '&', '|', '\'', '"',
-  '_', '...',
+  '_', '...', '#',
 ] as const;
 
 export type Symbol = (typeof symbols)[number];

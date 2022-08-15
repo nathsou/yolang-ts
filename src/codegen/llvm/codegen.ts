@@ -381,28 +381,30 @@ export const createLLVMCompiler = async () => {
             return;
           }
 
-          const returnTy = llvmTy(f.body.ty);
-          const argTys = f.args.map(a => llvmTy(a.name.ty));
-          const funcTy = llvm.FunctionType.get(returnTy, argTys, false);
-          const func = llvm.Function.Create(funcTy, llvm.Function.LinkageTypes.ExternalLinkage, f.name.mangled, currentModule());
-          funcs.set(f.name.mangled, func);
-          const entry = llvm.BasicBlock.Create(context, 'entry', func);
-          builder.SetInsertPoint(entry);
-          const ret = scoped(() => {
-            f.args.forEach((arg, index) => {
-              const llvmArg = func.getArg(index);
-              llvmArg.setName(arg.name.mangled);
-              declareVar(arg.name, llvmArg);
+          f.body.do(body => {
+            const returnTy = llvmTy(body.ty);
+            const argTys = f.args.map(a => llvmTy(a.name.ty));
+            const funcTy = llvm.FunctionType.get(returnTy, argTys, false);
+            const func = llvm.Function.Create(funcTy, llvm.Function.LinkageTypes.ExternalLinkage, f.name.mangled, currentModule());
+            funcs.set(f.name.mangled, func);
+            const entry = llvm.BasicBlock.Create(context, 'entry', func);
+            builder.SetInsertPoint(entry);
+            const ret = scoped(() => {
+              f.args.forEach((arg, index) => {
+                const llvmArg = func.getArg(index);
+                llvmArg.setName(arg.name.mangled);
+                declareVar(arg.name, llvmArg);
+              });
+
+              return compileExpr(body);
             });
 
-            return compileExpr(f.body);
+            builder.CreateRet(ret);
+
+            if (llvm.verifyFunction(func)) {
+              panic('function verification failed');
+            }
           });
-
-          builder.CreateRet(ret);
-
-          if (llvm.verifyFunction(func)) {
-            panic('function verification failed');
-          }
         },
         Module: mod => {
           compileModule(mod);

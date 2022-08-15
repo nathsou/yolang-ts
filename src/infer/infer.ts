@@ -34,6 +34,7 @@ export type TypingError = DataType<{
   UndeclaredStruct: { name: string },
   MissingStructFields: { name: string, fields: string[] },
   ExtraneoussStructFields: { name: string, fields: string[] },
+  MissingFuncPrototypeReturnTy: { name: string },
 }, 'type'>;
 
 const ASSIGNABLE_EXPRESSIONS = new Set<Expr['variant']>(['Variable', 'FieldAccess']);
@@ -474,7 +475,12 @@ const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[] => {
 
   match(decl, {
     Function: f => {
-      const { name, typeParams, args, returnTy, body } = f;
+      const { attributes, name, typeParams, args, returnTy, body } = f;
+
+      if (body.isNone() && returnTy.isNone()) {
+        errors.push(Error.Typing({ type: 'MissingFuncPrototypeReturnTy', name: name.original }));
+      }
+
       Env.declareFunc(ctx.env, f);
       const bodyCtx = TypeContext.clone(ctx);
       TypeContext.declareTypeParams(bodyCtx, ...typeParams);
@@ -487,15 +493,19 @@ const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[] => {
         Env.addMonoVar(bodyCtx.env, name, name.ty);
       });
 
-      inferExpr(body, bodyCtx, errors);
+      body.do(b => {
+        inferExpr(b, bodyCtx, errors);
 
-      returnTy.do(retTy => {
-        unify(body.ty, retTy, bodyCtx);
+        returnTy.do(retTy => {
+          unify(b.ty, retTy, bodyCtx);
+        });
       });
+
+      const retTy = returnTy.or(body.map(b => b.ty)).orDefault(MonoTy.fresh);
 
       const funTy = MonoTy.Fun(
         args.map(({ name: arg }) => arg.ty),
-        body.ty
+        retTy
       );
 
       unify(funTy, name.ty);

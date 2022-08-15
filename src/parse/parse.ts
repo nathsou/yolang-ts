@@ -1,5 +1,5 @@
 import { match, VariantOf } from 'itsamatch';
-import { Argument, Decl, Expr, Imports, Pattern, Prog, Stmt } from '../ast/sweet';
+import { Argument, Attribute, Decl, Expr, Imports, Pattern, Prog, Stmt } from '../ast/sweet';
 import { Row } from '../infer/structs';
 import { Tuple } from '../infer/tuples';
 import { MonoTy, TypeParam } from '../infer/types';
@@ -9,9 +9,8 @@ import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, satisfy, satisfyBy, sepBy, seq, symbol, uninitialized } from './combinators';
-import { str, trie } from './lexerCombinators';
-import { Const, Token } from './token';
+import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, pos, satisfy, satisfyBy, sepBy, seq, squareBrackets, symbol, uninitialized } from './combinators';
+import { Const, Token, TokenWithPos } from './token';
 
 export const expr = uninitialized<Expr>();
 const stmt = uninitialized<Stmt>();
@@ -46,7 +45,7 @@ const invalid = mapParserResult(
         rem,
         [...errs, {
           message: Token.show(token),
-          pos: rem.start,
+          pos: pos(rem.start),
         }],
       ],
       Error: err => [error(err), rem, errs] as ParserResult<Expr>,
@@ -61,7 +60,7 @@ const unexpected = mapParserResult(
       Ok: token => [
         ok(Expr.Error(`Unexpected token: '${Token.show(token)}'`)),
         rem,
-        [...errs, { message: `Unexpected token: '${Token.show(token)}'`, pos: rem.start }],
+        [...errs, { message: `Unexpected token: '${Token.show(token)}'`, pos: pos(rem.start) }],
       ],
       Error: err => [
         ok(Expr.Error(err.message)),
@@ -605,7 +604,14 @@ initParser(
 
 // DECLARATIONS
 
+const attribute = map(
+  seq(ident, optionalOrDefault(parens(commas(ident)), [])),
+  ([name, args]) => Attribute.make(name, args)
+);
+const attributeList = map(seq(symbol('#'), squareBrackets(commas(attribute))), snd);
+
 const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
+  optionalOrDefault(attributeList, []),
   keyword('fun'),
   expectOrDefault(ident, `Expected identifier after 'fun' keyword`, '<?>'),
   scopedTypeParams(seq(
@@ -614,10 +620,17 @@ const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
       symbol(':'),
       expect(monoTy, `Expected type after ':'`),
     )),
-    expectOrDefault(block, 'Expected block after function arguments', Expr.Error),
+    optional(block),
   ))
 ),
-  ([_, name, [typeParams, [args, returnTy, body]]]) => Decl.Function({ name, typeParams, args, returnTy: returnTy.map(snd), body })
+  ([attributes, _, name, [typeParams, [args, returnTy, body]]]) => Decl.Function({
+    attributes,
+    name,
+    typeParams,
+    args,
+    returnTy: returnTy.map(snd),
+    body,
+  })
 );
 
 const moduleDecl = map(seq(
@@ -660,8 +673,10 @@ initParser(decl, alt(
   useDecl,
 ));
 
-export const parse = (tokens: Slice<Token>): [Prog, ParserError[]] => {
+export const parse = (tokens: Slice<TokenWithPos>): [Prog, ParserError[]] => {
+  lexerContext.tokens = tokens.elems;
   const [res, _, errs] = consumeAll(many(decl)).ref(tokens);
+  lexerContext.tokens = [];
 
   return res.match({
     Ok: decls => [decls, errs],

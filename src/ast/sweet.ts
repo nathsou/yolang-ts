@@ -15,7 +15,7 @@ export type CompoundAssignmentOperator = '+=' | '-=' | '*=' | '/=' | '%=' | '&&=
 export type Argument = { pattern: Pattern, mutable: boolean, annotation: Maybe<MonoTy> };
 
 export const Argument = {
-  show: ({ pattern, mutable, annotation }: Argument) => {
+  show: ({ pattern, mutable, annotation }: Argument): string => {
     return `${mutable ? 'mut ' : ''}${Pattern.show(pattern)}${annotation.mapWithDefault(t => `: ${MonoTy.show(t)}`, '')}`;
   },
   asMonoTy: ({ annotation }: Argument): MonoTy => {
@@ -32,6 +32,22 @@ export const ArgumentList = {
       args[0].pattern.variant === 'Tuple'
     ),
   ),
+};
+
+export type Attribute = { name: string, args: string[] };
+
+export const Attribute = {
+  make: (name: string, args: string[]): Attribute => ({ name, args }),
+  show: ({ name, args }: Attribute): string => {
+    if (args.length === 0) {
+      return name;
+    }
+
+    return `${name}(${args.join(', ')})`;
+  },
+  showMany: (attrs: Attribute[]): string => {
+    return `#[${attrs.map(Attribute.show).join(', ')}]`;
+  },
 };
 
 export type Expr = DataType<{
@@ -198,7 +214,7 @@ export const Imports = {
 };
 
 export type Decl = DataType<{
-  Function: { name: string, typeParams: TypeParam[], args: Argument[], returnTy: Maybe<MonoTy>, body: Expr },
+  Function: { attributes: Attribute[], name: string, typeParams: TypeParam[], args: Argument[], returnTy: Maybe<MonoTy>, body: Maybe<Expr> },
   Module: { name: string, decls: Decl[] },
   TypeAlias: { name: string, typeParams: TypeParam[], alias: MonoTy },
   Use: { path: string[], imports: Imports },
@@ -208,7 +224,10 @@ export type Decl = DataType<{
 export const Decl = {
   ...genConstructors<Decl>(['Function', 'Module', 'TypeAlias', 'Use', 'Error']),
   show: (decl: Decl): string => match(decl, {
-    Function: ({ name, typeParams, args, body }) => `fun ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${Expr.show(body)}`,
+    Function: ({ attributes, name, typeParams, args, body }) => {
+      const fun = `fun ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${body.mapWithDefault(Expr.show, '')}`;
+      return attributes.length > 0 ? `${Attribute.showMany(attributes)}\n${fun}` : fun;
+    },
     Module: ({ name, decls }) => `module ${name} {\n${joinWith(decls, d => '  ' + Decl.show(d), '\n')}\n}`,
     TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)}`,
     Use: ({ path, imports }) => `use ${path.join('.')}.${Imports.show(imports)}`,
@@ -217,7 +236,7 @@ export const Decl = {
   rewrite: (decl: Decl, rfs: RewriteFuncs): Decl => {
     const { rewriteExpr: f = id, rewriteDecl: g = id } = rfs;
     return g(match(decl, {
-      Function: ({ name, typeParams, args, returnTy, body }) => Decl.Function({ name, typeParams, args, returnTy, body: Expr.rewrite(body, f) }),
+      Function: ({ attributes, name, typeParams, args, returnTy, body }) => Decl.Function({ attributes, name, typeParams, args, returnTy, body: body.map(b => Expr.rewrite(b, f)) }),
       Module: ({ name, decls }) => Decl.Module({ name, decls: decls.map(d => Decl.rewrite(d, rfs)) }),
       TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias({ name, typeParams, alias }),
       Use: ({ path, imports }) => Decl.Use({ path, imports }),

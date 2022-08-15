@@ -25,25 +25,13 @@ let debugLevel = DebugLvl.nothing;
 // <string> -> parse -> <sweet> -> desugar & resolve modules -> <bitter> -> infer ->
 // monomorphize -> inject reference counting -> emit code
 
-const typeCheck = (sweetProg: SweetProg): [Prog, TypeContext, Error[]] => {
+const typeCheck = (prog: Prog): [TypeContext, Error[]] => {
   Context.clear();
-  const errors: Error[] = [];
-
-  if (debugLevel >= DebugLvl.sweet) {
-    console.log('--- sweet ---');
-    console.log(SweetProg.show(sweetProg) + '\n');
-  }
-
-  const [prog, bitterErrors] = Prog.fromSweet(sweetProg);
-  errors.push(...bitterErrors);
-
   const [typingErrors, typeCtx] = infer(prog);
-  errors.push(...typingErrors);
-
-  return [prog, typeCtx, errors];
+  return [typeCtx, typingErrors];
 };
 
-const runWasmFile = async (source: string): Promise<Function> => {
+const getWasmMainFunc = async (source: string): Promise<Function> => {
   const { readFile } = await import('fs/promises');
 
   const wasm = await readFile(source);
@@ -58,42 +46,63 @@ const runWasmFile = async (source: string): Promise<Function> => {
 };
 
 const run = async (source: string): Promise<boolean> => {
+  const logErrors = (errors: Error[]) => {
+    errors.forEach(err => {
+      console.log('\x1b[31m%s\x1b[0m', Error.show(err));
+    });
+  };
+
   const nfs = await createNodeFileSystem();
   const [sweetProg, errs1] = await resolve(source, nfs);
-  const [prog, _, errs2] = typeCheck(sweetProg);
-  const errors = [...errs1, ...errs2];
 
-  errors.forEach(err => {
-    console.log('\x1b[31m%s\x1b[0m', Error.show(err));
-  });
-
-  if (errors.length === 0) {
-    if (debugLevel >= DebugLvl.types) {
-      console.log('--- types ---');
-      console.log(showTypes(prog, []).join('\n\n') + '\n');
-    }
-
-    if (prog.length === 1 && prog[0].variant === 'Module') {
-      const compiler = await createLLVMCompiler();
-      const module = compiler.compile(prog[0]);
-      module.setSourceFileName(source);
-
-      if (debugLevel >= DebugLvl.sections) {
-        console.log(module.print());
-      }
-
-      const outPath = 'out';
-
-      await compiler.compileIR(module, outPath, 3);
-      const mainFunc = await runWasmFile(`${outPath}.wasm`);
-
-      console.log(mainFunc());
-    } else {
-      panic('no entry module found');
-    }
+  if (errs1.length > 0) {
+    logErrors(errs1);
+    return false;
   }
 
-  return errors.length === 0;
+  if (debugLevel >= DebugLvl.sweet) {
+    console.log('--- sweet ---');
+    console.log(SweetProg.show(sweetProg) + '\n');
+  }
+
+  const [prog, errs2] = Prog.fromSweet(sweetProg);
+
+  if (errs2.length > 0) {
+    logErrors(errs2);
+    return false;
+  }
+
+  const [_, errs3] = typeCheck(prog);
+
+  if (errs3.length > 0) {
+    logErrors(errs3);
+    return false;
+  }
+
+  if (debugLevel >= DebugLvl.types) {
+    console.log('--- types ---');
+    console.log(showTypes(prog, []).join('\n\n') + '\n');
+  }
+
+  if (prog.length === 1 && prog[0].variant === 'Module') {
+    const compiler = await createLLVMCompiler();
+    const module = compiler.compile(prog[0]);
+    module.setSourceFileName(source);
+
+    if (debugLevel >= DebugLvl.sections) {
+      console.log(module.print());
+    }
+
+    const outPath = 'out';
+    await compiler.compileIR(module, outPath, 3);
+    const mainFunc = await getWasmMainFunc(`${outPath}.wasm`);
+
+    console.log(mainFunc());
+  } else {
+    panic('no entry module found');
+  }
+
+  return true;
 };
 
 const showTypes = (decls: Decl[], path: string[]): string[] => {

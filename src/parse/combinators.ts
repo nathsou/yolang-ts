@@ -1,9 +1,9 @@
 import { Maybe, none, some } from "../utils/maybe";
-import { Ref, ref, snd } from "../utils/misc";
+import { panic, Ref, ref, snd } from "../utils/misc";
 import { error, ok, Result } from "../utils/result";
 import { Slice } from "../utils/slice";
 import { RecoveryStrategy } from "./recovery";
-import { Keyword, Symbol, Token, TokenWithPos } from "./token";
+import { Keyword, Position, Symbol, Token, TokenWithPos } from "./token";
 
 // Syntax Error Recovery in Parsing Expression Grammars - https://arxiv.org/abs/1806.11150
 
@@ -13,21 +13,28 @@ export type ParserResult<T> = [res: Result<T, ParserError>, remaining: Slice<Tok
 
 export type ParserError = {
   message: string,
-  pos: number,
+  pos: Position,
   recovery?: RecoveryStrategy,
 };
 
+export const lexerContext = {
+  tokens: new Array<TokenWithPos>(),
+};
+
+export const pos = (index: number): Position => {
+  if (index >= lexerContext.tokens.length) {
+    return panic(`invalid token index: ${index} / ${lexerContext.tokens.length}`);
+  }
+
+  return lexerContext.tokens[index].pos;
+};
+
 export const uninitialized = <T>(): Parser<T> => {
-  return ref(tokens => [error({ message: 'uninitialized', pos: tokens.start }), tokens, []]);
+  return ref(tokens => [error({ message: 'uninitialized', pos: pos(tokens.start) }), tokens, []]);
 };
 
 export const initParser = <T>(l: Parser<T>, r: Parser<T>): void => {
   l.ref = r.ref;
-};
-
-export const formatError = (error: ParserError, tokens: TokenWithPos[]): string => {
-  const { pos } = tokens[error.pos];
-  return `${error.message} at ${pos.line}:${pos.column}`;
 };
 
 const fail: ParserError['message'] = '<fail>';
@@ -36,7 +43,7 @@ export const satisfy = (pred: (t: Token) => boolean): Parser<Token> => {
   return ref(tokens => {
     const err = error<Token, ParserError>({
       message: fail,
-      pos: tokens.start,
+      pos: pos(tokens.start),
     });
 
     return Slice.head(tokens).match({
@@ -51,12 +58,12 @@ export const satisfyBy = <T>(f: (t: Token) => Maybe<T>): Parser<T> => {
     Some: h => {
       const res = f(h);
       return [
-        res.match({ Some: x => ok(x), None: () => error({ message: fail, pos: tokens.start }) }),
+        res.match({ Some: x => ok(x), None: () => error({ message: fail, pos: pos(tokens.start) }) }),
         res.isSome() ? Slice.tail(tokens) : tokens,
         []
       ];
     },
-    None: () => [error({ message: fail, pos: tokens.start }), tokens, []],
+    None: () => [error({ message: fail, pos: pos(tokens.start) }), tokens, []],
   }));
 };
 
@@ -79,7 +86,7 @@ export const flatMap = <T, U>(p: Parser<T>, f: (t: T, tokens: Slice<Token>) => P
     const [t, rem, errs] = p.ref(tokens);
     return t.match({
       Ok: t => f(t, rem).ref(rem),
-      Error: err => [error({ message: fail, pos: rem.start }), rem, [...errs, err]],
+      Error: err => [error({ message: fail, pos: pos(rem.start) }), rem, [...errs, err]],
     });
   });
 };
@@ -134,7 +141,7 @@ export const alt = <T>(...parsers: Parser<T>[]): Parser<T> => {
       }
     }
 
-    return [error({ message: fail, pos: tokens.start }), tokens, errors];
+    return [error({ message: fail, pos: pos(tokens.start) }), tokens, errors];
   });
 };
 
@@ -212,7 +219,7 @@ export const not = <T>(p: Parser<T>, { consume } = { consume: true }): Parser<nu
   return ref(tokens => {
     const [t, rem] = p.ref(tokens);
     return t.match({
-      Ok: () => [error({ message: fail, pos: tokens.start }), consume ? rem : tokens, []], // not.2
+      Ok: () => [error({ message: fail, pos: pos(tokens.start) }), consume ? rem : tokens, []], // not.2
       Error: () => [ok(null), consume ? rem : tokens, []], // not.1
     });
   });
@@ -245,7 +252,7 @@ export const expect = <T>(
           recovery: recovery ?? e.recovery
         }).ref(tokens);
 
-        return [error({ message: fail, pos: tokens.start }), rem2, errs2];
+        return [error({ message: fail, pos: pos(tokens.start) }), rem2, errs2];
       },
     });
   });
@@ -275,7 +282,7 @@ export const conditionalError = <T>(parser: Parser<T>, pred: (data: T) => boolea
     return t.match({
       Ok: t => {
         if (!pred(t)) {
-          return [error({ message, pos: tokens.start }), rem, [...errs, { message, pos: tokens.start }]];
+          return [error({ message, pos: pos(tokens.start) }), rem, [...errs, { message, pos: pos(tokens.start) }]];
         } else {
           return [ok(t), rem, errs];
         }
@@ -290,7 +297,7 @@ export const lookahead = (check: (tokens: Slice<Token>) => boolean): Parser<null
     if (check(tokens)) {
       return [ok(null), tokens, []];
     } else {
-      return [error({ message: fail, pos: tokens.start }), tokens, []];
+      return [error({ message: fail, pos: pos(tokens.start) }), tokens, []];
     }
   });
 };
@@ -307,7 +314,7 @@ export const consumeAll = <T>(p: Parser<T>): Parser<T> => {
 
         const err: ParserError = {
           message: `Unexpected token: '${Token.show(lastToken)}'`,
-          pos: rem.start
+          pos: pos(rem.start)
         };
 
         return t.match({

@@ -23,10 +23,14 @@ export const token = alt(int, bool, keyword, symbol, ident);
 
 const invalid = map(oneOrMore(not(token)), chars => Token.Invalid(chars.join('').trim()));
 
+const removeComments = (input: string): string => {
+  return input.split('\n').map(line => line.split('//')[0]).join('\n');
+};
+
 export const lex = (input: string): TokenWithPos[] => {
   const tokens: TokenWithPos[] = [];
   const pos: Position = { line: 1, column: 1 };
-  const slice = Slice.from((input + ' ').split(''));
+  const slice = Slice.from((removeComments(input) + ' ').split(''));
 
   const spaceActionMap: { [S in Space]: (pos: Position) => void } = {
     [Spaces.enum.space]: pos => {

@@ -3,15 +3,19 @@ import { Context } from '../ast/context';
 import { Expr, Pattern } from '../ast/sweet';
 import { Row } from '../infer/structs';
 import { MonoTy } from '../infer/types';
-import { Parser } from '../parse/combinators';
+import { lexerContext, Parser } from '../parse/combinators';
 import { lex } from '../parse/lex';
 import { binaryExpr, expr, structTy, tuple, unary } from '../parse/parse';
-import { Const, Token } from '../parse/token';
+import { Const, TokenWithPos } from '../parse/token';
 import { none } from '../utils/maybe';
 import { Slice } from '../utils/slice';
 import { Arb } from './arbitraries/arb';
 
-const tokens = (input: string): Slice<Token> => Slice.from(lex(input));
+const tokens = (input: string): Slice<TokenWithPos> => {
+  const toks = Slice.from(lex(input));
+  lexerContext.tokens = toks.elems;
+  return toks;
+};
 
 const expectExpr = (parser: Parser<Expr>, input: string, expected: Expr): void => {
   const [res, _, errs] = parser.ref(tokens(input));
