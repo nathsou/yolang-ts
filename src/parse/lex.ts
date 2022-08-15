@@ -1,6 +1,8 @@
+import { block, id } from "../utils/misc";
 import { Slice } from "../utils/slice";
-import { alphaNum, alphaNumUnderscore, alt, digit, letter, many, map, not, oneOrMore, spaces, str, then, trie } from "./lexerCombinators";
-import { Const, Keyword, Position, Space, Spaces, Symbol, Token, TokenWithPos, withPos } from "./token";
+import { isAlpha } from "../utils/strings";
+import { alphaNum, alphaNumUnderscore, alt, digit, letter, many, map, not, oneOrMore, optional, spaces, str, then, trie, validIdentChar } from "./lexerCombinators";
+import { Const, Keyword, operators, Position, Space, Spaces, Symbol, Token, TokenWithPos, withPos } from "./token";
 
 export const symbol = map(trie(Symbol.values), s => Token.Symbol(s as Symbol));
 
@@ -14,10 +16,22 @@ export const keyword = map(
 
 const digits = map(oneOrMore(digit), digits => parseInt(digits.join(''), 10));
 
-const intKind = trie(['u32', 'u64', 'i32', 'i64', '']);
-export const int = map(then(digits, intKind), ([n, kind]) => Token.Const(Const[kind === '' ? 'i32' : kind](n)));
+const intKind = trie(['u32', 'u64', 'i32', 'i64']);
+export const int = map(
+  then(then(optional(str('-')), digits), optional(intKind)),
+  ([[neg, n], kind]) => Token.Const(Const[kind.mapWithDefault(id, 'i32')](n * neg.match({ Some: () => -1, None: () => 1 })))
+);
 export const bool = map(alt(str('true'), str('false')), b => Token.Const(Const.bool(b === 'true')));
-export const ident = map(then(letter, many(alphaNumUnderscore)), ([h, tl]) => Token.Identifier(h + tl.join('')));
+export const ident = block(() => {
+  const specialOperators = [...operators].filter(op => !op.split('').every(c => isAlpha(c)));
+  return map(
+    alt(
+      trie(specialOperators),
+      map(then(letter, many(alphaNumUnderscore)), ([h, tl]) => h + tl.join('')),
+    ),
+    Token.Identifier
+  );
+});
 
 export const token = alt(int, bool, keyword, symbol, ident);
 

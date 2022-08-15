@@ -2,6 +2,7 @@ import { Maybe, none, some } from "../utils/maybe";
 import { panic, Ref, ref, snd } from "../utils/misc";
 import { error, ok, Result } from "../utils/result";
 import { Slice } from "../utils/slice";
+import { ident } from "./lex";
 import { RecoveryStrategy } from "./recovery";
 import { Keyword, Position, Symbol, Token, TokenWithPos } from "./token";
 
@@ -356,4 +357,3 @@ export const effect = <T>(p: Parser<T>, action: (data: T, tokens: Slice<Token>) 
 export const parens = nestedBy('(', ')');
 export const squareBrackets = nestedBy('[', ']');
 export const curlyBrackets = nestedBy('{', '}');
-export const angleBrackets = nestedBy('<', '>');

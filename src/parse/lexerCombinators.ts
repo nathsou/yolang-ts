@@ -20,6 +20,8 @@ export const letter = satisfy(isAlpha);
 export const digit = satisfy(isDigit);
 export const alphaNum = satisfy(isAlphaNum);
 export const alphaNumUnderscore = satisfy(ch => isAlphaNum(ch) || ch === '_');
+const validIdentSpecialChars = new Set(['_', '+', '-', '*', '/', '<', '>', '=', '!']);
+export const validIdentChar = satisfy(c => isAlphaNum(c) || validIdentSpecialChars.has(c));
 export const isSpace = (char: Char) => Spaces.set.has(char);
 export const space = satisfy(isSpace);
 
@@ -83,6 +85,14 @@ export const not = (lexer: Lexer<any>, consume = true): Lexer<string> => {
       Some: () => none,
       None: () => Slice.head(input).map(h => [h, consume ? Slice.tail(input) : input]),
     });
+};
+
+export const optional = <T>(lexer: Lexer<T>): Lexer<Maybe<T>> => {
+  return (input: Slice<Char>) =>
+    some(lexer(input).match<[Maybe<T>, Slice<string>]>({
+      Some: ([head, tail]) => [some(head), tail],
+      None: () => [none, input],
+    }));
 };
 
 export const trie = <S extends string>(strings: readonly S[]): Lexer<S> => {

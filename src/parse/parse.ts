@@ -9,7 +9,7 @@ import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, angleBrackets, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, pos, satisfy, satisfyBy, sepBy, seq, squareBrackets, symbol, uninitialized } from './combinators';
+import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, not, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, pos, satisfy, satisfyBy, sepBy, seq, squareBrackets, symbol, uninitialized } from './combinators';
 import { Const, Token, TokenWithPos } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -26,8 +26,8 @@ const ident = satisfyBy<string>(token => match(token, {
 
 const ident2 = (name: string) => satisfy(token => token.variant === 'Identifier' && token.name === name);
 
-const stringIn = <S extends string>(names: Set<S>) => map(
-  satisfy(token => token.variant === 'Identifier' && names.has(token.name as S)),
+const stringIn = <S extends string>(...names: S[]) => map(
+  satisfy(token => token.variant === 'Identifier' && names.includes(token.name as S)),
   token => (token as VariantOf<Token, 'Identifier'>).name as S
 );
 
@@ -73,6 +73,15 @@ const unexpected = mapParserResult(
 
 const modulePath = sepBy(symbol('.'))(upperIdent);
 const typePath = map(sepBy(symbol('.'))(upperIdent), path => [path.slice(0, -1), last(path)] as const);
+
+const angleBrackets = <T>(p: Parser<T>) => map(
+  seq(
+    ident2('<'),
+    p,
+    expect(ident2('>'), `expected closing '>'`),
+  ),
+  ([_1, r, _2]) => r
+);
 
 // TYPES
 export const monoTy = uninitialized<MonoTy>();
@@ -197,55 +206,6 @@ const unitConst: Parser<Const> = map(
 );
 
 const constVal: Parser<Const> = alt(integerConst, boolConst, unitConst);
-
-const unaryOp = alt(
-  map(symbol('-'), () => '-' as const),
-  map(symbol('!'), () => '!' as const),
-);
-
-const multiplicativeOp = alt(
-  map(symbol('*'), () => '*' as const),
-  map(symbol('/'), () => '/' as const),
-  map(symbol('%'), () => '%' as const),
-);
-
-const additiveOp = alt(
-  map(symbol('+'), () => '+' as const),
-  map(symbol('-'), () => '-' as const),
-);
-
-const relationalOp = alt(
-  map(symbol('<'), () => '<' as const),
-  map(symbol('>'), () => '>' as const),
-  map(symbol('<='), () => '<=' as const),
-  map(symbol('>='), () => '>=' as const),
-);
-
-const logicalOp = alt(
-  map(symbol('&&'), () => '&&' as const),
-  map(symbol('||'), () => '||' as const),
-);
-
-const bitwiseOp = alt(
-  map(symbol('&'), () => '&' as const),
-  map(symbol('|'), () => '|' as const),
-);
-
-const equalityOp = alt(
-  map(symbol('=='), () => '==' as const),
-  map(symbol('!='), () => '!=' as const),
-);
-
-const assignmentOp = alt(
-  map(symbol('='), () => '=' as const),
-  map(symbol('+='), () => '+=' as const),
-  map(symbol('-='), () => '-=' as const),
-  map(symbol('*='), () => '*=' as const),
-  map(symbol('/='), () => '/=' as const),
-  map(symbol('%='), () => '%=' as const),
-  map(symbol('&&='), () => '&&=' as const),
-  map(symbol('||='), () => '||=' as const),
-);
 
 const variable = map(ident, Expr.Variable);
 
@@ -374,55 +334,55 @@ const factor = fieldAccess;
 
 export const unary = alt(
   map(seq(
-    unaryOp,
+    stringIn('-', 'not'),
     expectOrDefault(factor, `Expected expression after unary operator`, Expr.Error)
-  ), ([op, expr]) => Expr.UnaryOp(op, expr)),
+  ), ([op, expr]) => Expr.Call(Expr.Variable(op), [], [expr])),
   factor
 );
 
 const multiplicative = chainLeft(
   unary,
-  multiplicativeOp,
+  stringIn('*', '/', 'mod'),
   expect(unary, 'Expected expression after multiplicative operator'),
-  (a, op, b) => Expr.BinaryOp(a, op, b)
+  (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b])
 );
 
 const additive = chainLeft(
   multiplicative,
-  additiveOp,
+  stringIn('+', '-'),
   expect(multiplicative, 'Expected expression after additive operator'),
-  (a, op, b) => Expr.BinaryOp(a, op, b)
+  (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b])
 );
 
-const relational = chainLeft(
+const comparison = chainLeft(
   additive,
-  relationalOp,
+  stringIn('<=', '>=', '<', '>'),
   expect(additive, 'Expected expression after relational operator'),
-  (a, op, b) => Expr.BinaryOp(a, op, b)
+  (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b])
 );
 
-const bitwise = chainLeft(
-  relational,
-  bitwiseOp,
-  expect(relational, 'Expected expression after bitwise operator'),
-  (a, op, b) => Expr.BinaryOp(a, op, b)
+const and = chainLeft(
+  comparison,
+  stringIn('and', 'nand'),
+  expect(comparison, 'Expected expression after logical operator'),
+  (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b]),
+);
+
+const or = chainLeft(
+  and,
+  stringIn('or', 'nor', 'xor', 'xnor'),
+  expect(and, 'Expected expression after logical operator'),
+  (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b]),
 );
 
 const equality = chainLeft(
-  bitwise,
-  equalityOp,
-  expect(relational, 'Expected expression after equality operator'),
-  (a, op, b) => Expr.BinaryOp(a, op, b)
+  or,
+  stringIn('==', '!='),
+  expect(or, 'Expected expression after equality operator'),
+  (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b])
 );
 
-const logical = chainLeft(
-  equality,
-  logicalOp,
-  expect(equality, 'Expected expression after logical operator'),
-  (a, op, b) => Expr.BinaryOp(a, op, b)
-);
-
-export const binaryExpr = logical;
+export const binaryExpr = equality;
 
 const ifThenElse = alt(
   map(
@@ -457,7 +417,7 @@ const letIn = alt(
     keyword('let'),
     pattern,
     optional(typeAnnotation),
-    symbol('='),
+    ident2('='),
     expr,
     keyword('in'),
     expectOrDefault(expr, `Expected expression after 'in' in let expression`, Expr.Error),
@@ -471,14 +431,19 @@ const assignment = alt(
   map(
     seq(
       ifThenElse,
-      assignmentOp,
+      alt(
+        stringIn(
+          '=', '+=', '-=', '*=', '/=',
+          'mod=', 'and=', 'or=', 'nand=', 'nor=', 'xor=', 'xnor='
+        ),
+      ),
       expectOrDefault(expr, `Expected expression after assignment operator`, Expr.Error),
     ),
     ([lhs, op, rhs]) => {
       if (op === '=') {
         return Expr.Assignment(lhs, rhs);
       } else {
-        return Expr.CompoundAssignment(lhs, op, rhs);
+        return Expr.Assignment(lhs, Expr.Call(Expr.Variable(op.slice(0, -1)), [], [lhs, rhs]));
       }
     }
   ),
@@ -582,7 +547,7 @@ const letStmt = map(seq(
   alt(keyword('let'), keyword('mut')),
   expectOrDefault(ident, `Expected identifier after 'let' or 'mut' keyword`, '<?>'),
   optional(typeAnnotation),
-  expect(symbol('='), `Expected '=' after identifier`),
+  expect(ident2('='), `Expected '=' after identifier`),
   expectOrDefault(expr, `Expected expression after '='`, Expr.Error),
 ),
   ([kw, name, ann, _, expr]) => Stmt.Let(name, expr, Token.eq(kw, Token.Keyword('mut')), ann)
@@ -608,7 +573,7 @@ const attribute = map(
   seq(ident, optionalOrDefault(parens(commas(ident)), [])),
   ([name, args]) => Attribute.make(name, args)
 );
-const attributeList = map(seq(symbol('#'), squareBrackets(commas(attribute))), snd);
+const attributeList = map(seq(symbol('#'), alt(squareBrackets(commas(attribute)), map(attribute, attr => [attr]))), snd);
 
 const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
   optionalOrDefault(attributeList, []),
@@ -645,7 +610,7 @@ const typeAliasDecl: Parser<Decl> = map(seq(
   keyword('type'),
   expectOrDefault(upperIdent, `Expected identifier after 'type' keyword`, '<?>'),
   scopedTypeParams(seq(
-    expectOrDefault(symbol('='), `Expected '=' after type name`, Token.Symbol('=')),
+    expectOrDefault(ident2('='), `Expected '=' after type name`, Token.Identifier('=')),
     monoTy,
   ))
 ),
@@ -659,7 +624,7 @@ const useDecl = map(
     expect(symbol('.'), `Expected '.' after module path`),
     alt(
       map(curlyBrackets(commas(alt(upperIdent, ident))), Imports.names),
-      map(symbol('*'), Imports.all),
+      map(ident2('*'), Imports.all),
     ),
     optional(symbol(';')),
   ),

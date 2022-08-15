@@ -34,22 +34,22 @@ const expectType = (parser: Parser<MonoTy>, input: string, expected: MonoTy): vo
 describe('Parser', () => {
   describe('unary operators', () => {
     it('should parse arithmetical negation', () => {
-      expectExpr(unary, '-0', Expr.UnaryOp('-', Expr.Const(Const.i32(0))));
-      expectExpr(unary, '-1', Expr.UnaryOp('-', Expr.Const(Const.i32(1))));
+      expectExpr(unary, '-(0)', Expr.Call(Expr.Variable('-'), [], [Expr.Parenthesized(Expr.Const(Const.i32(0)))]));
+      expectExpr(unary, '-1', Expr.Const(Const.i32(-1)));
       expectExpr(
         unary,
         '-(-1621)',
-        Expr.UnaryOp('-', Expr.Parenthesized(Expr.UnaryOp('-', Expr.Const(Const.i32(1621)))))
+        Expr.Call(Expr.Variable('-'), [], [Expr.Parenthesized(Expr.Const(Const.i32(-1621)))])
       );
     });
 
     it('should parse logical negation', () => {
-      expectExpr(unary, '!true', Expr.UnaryOp('!', Expr.Const(Const.bool(true))));
-      expectExpr(unary, '!false', Expr.UnaryOp('!', Expr.Const(Const.bool(false))));
+      expectExpr(unary, 'not true', Expr.Call(Expr.Variable('not'), [], [Expr.Const(Const.bool(true))]));
+      expectExpr(unary, 'not false', Expr.Call(Expr.Variable('not'), [], [Expr.Const(Const.bool(false))]));
       expectExpr(
         unary,
-        '!(!true)',
-        Expr.UnaryOp('!', Expr.Parenthesized(Expr.UnaryOp('!', Expr.Const(Const.bool(true)))))
+        'not (not true)',
+        Expr.Call(Expr.Variable('not'), [], [Expr.Parenthesized(Expr.Call(Expr.Variable('not'), [], [Expr.Const(Const.bool(true))]))])
       );
     });
   });
@@ -59,7 +59,7 @@ describe('Parser', () => {
       expectExpr(
         binaryExpr,
         '1 + 2',
-        Expr.BinaryOp(Expr.Const(Const.i32(1)), '+', Expr.Const(Const.i32(2)))
+        Expr.Call(Expr.Variable('+'), [], [Expr.Const(Const.i32(1)), Expr.Const(Const.i32(2))])
       );
     });
   });
@@ -110,11 +110,14 @@ describe('Parser', () => {
     it('should parse tuples with compound expressions', () => {
       expectExpr(tuple, '(r.x, r.y + r.z)', Expr.Tuple([
         Expr.FieldAccess(Expr.Variable('r'), 'x'),
-        Expr.BinaryOp(
-          Expr.FieldAccess(Expr.Variable('r'), 'y'),
-          '+',
-          Expr.FieldAccess(Expr.Variable('r'), 'z'),
-        ),
+        Expr.Call(
+          Expr.Variable('+'),
+          [],
+          [
+            Expr.FieldAccess(Expr.Variable('r'), 'y'),
+            Expr.FieldAccess(Expr.Variable('r'), 'z'),
+          ]
+        )
       ]));
 
       expectExpr(tuple, '(f(), g(1, ())))', Expr.Tuple([

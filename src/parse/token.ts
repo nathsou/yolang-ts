@@ -55,11 +55,16 @@ export const withPos = (token: Token, pos: Position): TokenWithPos => ({
 });
 
 const symbols = [
-  '->', '=>', '==', '!=', '&&=', '||=', '&&', '||', '+=', '-=', '*=', '/=', '%=',
-  '+', '-', '*', '/', '%', '<=', '>=', '<', '>', '(', ')', ',',
-  ';', '=', '{', '}', '[', ']', ':', '!', '.', '&', '|', '\'', '"',
-  '_', '...', '#',
+  '->', '=>', '(', ')', ',', ';', '{', '}',
+  '[', ']', ':', '.', '\'', '"', '_', '...', '#',
 ] as const;
+
+export const operators = new Set([
+  '=', '+', '-', '*', '/', '==', '!=', 'not', 'mod', 'and', 'or', 'nand',
+  'nor', 'xor', 'xnor', '<', '>', '<=', '>=',
+  '+=', '-=', '*=', '/=', 'not=', 'mod=', 'and=', 'or=',
+  'nand=', 'nor=', 'xor=', 'xnor=',
+]);
 
 export type Symbol = (typeof symbols)[number];
 
@@ -113,6 +118,8 @@ export const Const = {
   eq: (a: Const, b: Const) => matchMany([a, b], {
     'u32 u32': (a, b) => a.value === b.value,
     'i32 i32': (a, b) => a.value === b.value,
+    'u64 u64': (a, b) => a.value === b.value,
+    'i64 i64': (a, b) => a.value === b.value,
     'bool bool': (a, b) => a.value === b.value,
     'unit unit': () => true,
     _: () => false,

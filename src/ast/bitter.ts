@@ -7,7 +7,7 @@ import { Const } from "../parse/token";
 import { Either } from "../utils/either";
 import { Maybe, none, some } from "../utils/maybe";
 import { FuncName, NameEnv, VarName } from "./name";
-import { Argument as SweetArgument, Attribute, BinaryOperator, CompoundAssignmentOperator, Decl as SweetDecl, Expr as SweetExpr, Imports, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt, UnaryOperator } from "./sweet";
+import { Argument as SweetArgument, Attribute, Decl as SweetDecl, Expr as SweetExpr, Imports, Pattern as SweetPattern, Prog as SweetProg, Stmt as SweetStmt } from "./sweet";
 
 // Bitter expressions are *unsugared* representations
 // of the structure of yolang source code
@@ -65,8 +65,6 @@ export type Expr = DataType<WithSweetRefAndType<{
   Variable: { name: VarName },
   NamedFuncCall: { name: Either<string, FuncName>, typeParams: MonoTy[], args: Expr[] },
   Call: { lhs: Expr, args: Expr[] },
-  BinaryOp: { lhs: Expr, op: BinaryOperator, rhs: Expr },
-  UnaryOp: { op: UnaryOperator, expr: Expr },
   Error: { message: string },
   Closure: { args: Argument[], body: Expr },
   Block: { statements: Stmt[], lastExpr: Maybe<Expr> },
@@ -92,8 +90,6 @@ export const Expr = {
   Variable: (name: VarName, sweet: SweetExpr): Expr => typed({ variant: 'Variable', name }, sweet),
   NamedFuncCall: (name: Either<string, FuncName>, typeParams: MonoTy[], args: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'NamedFuncCall', name, typeParams, args }, sweet),
   Call: (lhs: Expr, args: Expr[], sweet: SweetExpr): Expr => typed({ variant: 'Call', lhs, args }, sweet),
-  BinaryOp: (lhs: Expr, op: BinaryOperator, rhs: Expr, sweet: SweetExpr): Expr => typed({ variant: 'BinaryOp', lhs, op, rhs }, sweet),
-  UnaryOp: (op: UnaryOperator, expr: Expr, sweet: SweetExpr): Expr => typed({ variant: 'UnaryOp', op, expr }, sweet),
   Error: (message: string, sweet: SweetExpr): Expr => ({ variant: 'Error', message, sweet, ty: MonoTy.unit() }),
   Closure: (args: Argument[], body: Expr, sweet: SweetExpr): Expr => typed({ variant: 'Closure', args, body }, sweet),
   Block: (statements: Stmt[], lastExpr: Maybe<Expr>, sweet: SweetExpr): Expr => typed({ variant: 'Block', statements, lastExpr }, sweet),
@@ -118,8 +114,6 @@ export const Expr = {
           _: () => Expr.Call(go(lhs), args.map(arg => go(arg)), sweet),
         });
       },
-      BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(go(lhs), op, go(rhs), sweet),
-      UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, go(expr), sweet),
       Error: ({ message }) => Expr.Error(message, sweet),
       Closure: ({ args, body }) => {
         const withoutPatterns = rewriteFuncArgsPatternMatching(args, body, nameEnv, errors);
@@ -135,32 +129,6 @@ export const Expr = {
       },
       IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(go), sweet),
       Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs), sweet),
-      CompoundAssignment: ({ lhs, op, rhs }): Expr => {
-        const opMap: Record<CompoundAssignmentOperator, BinaryOperator> = {
-          '+=': '+',
-          '-=': '-',
-          '*=': '*',
-          '/=': '/',
-          '%=': '%',
-          '&=': '&',
-          '|=': '|',
-          '&&=': '&&',
-          '||=': '||',
-        };
-
-        // syntactic sugar for: lhs = lhs op rhs
-        const bitterLhs = go(lhs);
-        return Expr.Assignment(
-          bitterLhs,
-          Expr.BinaryOp(
-            bitterLhs,
-            opMap[op],
-            go(rhs),
-            sweet
-          ),
-          sweet
-        );
-      },
       ModuleAccess: ({ path, member }) => Expr.ModuleAccess(path, member, sweet),
       FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field, sweet),
       Tuple: ({ elements }) => Expr.Tuple(elements.map(e => go(e)), sweet),
@@ -201,8 +169,6 @@ export const Expr = {
       Variable: ({ name }) => Expr.Variable(NameEnv.resolveVar(nameEnv, name.original), expr.sweet),
       NamedFuncCall: ({ name, typeParams, args }) => Expr.NamedFuncCall(name, typeParams, args.map(arg => go(arg)), expr.sweet),
       Call: ({ lhs, args }) => Expr.Call(go(lhs), args.map(arg => go(arg)), expr.sweet),
-      BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(go(lhs), op, go(rhs), expr.sweet),
-      UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, go(expr), expr.sweet),
       Error: ({ message }) => Expr.Error(message, expr.sweet),
       Closure: ({ args, body }) => Expr.Closure(args.map(arg => ({ ...arg, name: NameEnv.resolveVar(nameEnv, arg.name.original) })), go(body), expr.sweet),
       Block: ({ statements, lastExpr }) => Expr.Block(statements.map(s => Stmt.rewrite(s, nameEnv, rewriteExpr)), lastExpr.map(e => go(e)), expr.sweet),

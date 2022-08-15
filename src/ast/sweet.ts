@@ -1,16 +1,12 @@
 import { DataType, genConstructors, match } from 'itsamatch';
 import { MonoTy, TypeParam, TypeParams } from '../infer/types';
-import { Const } from '../parse/token';
+import { Const, operators } from '../parse/token';
 import { joinWith } from '../utils/array';
 import { Maybe, none } from '../utils/maybe';
 import { id, noop, parenthesized } from '../utils/misc';
 
 // Sweet expressions are *sugared* representations
 // of the structure of yolang source code.
-
-export type UnaryOperator = '-' | '!';
-export type BinaryOperator = '+' | '-' | '*' | '/' | '%' | '==' | '!=' | '<' | '>' | '<=' | '>=' | '&&' | '||' | '&' | '|';
-export type CompoundAssignmentOperator = '+=' | '-=' | '*=' | '/=' | '%=' | '&&=' | '||=' | '&=' | '|=';
 
 export type Argument = { pattern: Pattern, mutable: boolean, annotation: Maybe<MonoTy> };
 
@@ -54,14 +50,11 @@ export type Expr = DataType<{
   Const: { value: Const },
   Variable: { name: string },
   Call: { lhs: Expr, typeParams: MonoTy[], args: Expr[] },
-  BinaryOp: { lhs: Expr, op: BinaryOperator, rhs: Expr },
-  UnaryOp: { op: UnaryOperator, expr: Expr },
   Error: { message: string },
   Closure: { args: Argument[], body: Expr },
   Block: { statements: Stmt[], lastExpr: Maybe<Expr> },
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
   Assignment: { lhs: Expr, rhs: Expr },
-  CompoundAssignment: { lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr },
   ModuleAccess: { path: string[], member: string },
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
@@ -77,14 +70,11 @@ export const Expr = {
   Const: (c: Const): Expr => ({ variant: 'Const', value: c }),
   Variable: (name: string): Expr => ({ variant: 'Variable', name }),
   Call: (lhs: Expr, typeParams: MonoTy[], args: Expr[]): Expr => ({ variant: 'Call', lhs, typeParams, args }),
-  BinaryOp: (lhs: Expr, op: BinaryOperator, rhs: Expr): Expr => ({ variant: 'BinaryOp', lhs, op, rhs }),
-  UnaryOp: (op: UnaryOperator, expr: Expr): Expr => ({ variant: 'UnaryOp', op, expr }),
   Error: (message: string): Expr => ({ variant: 'Error', message }),
   Closure: (args: Argument[], body: Expr): Expr => ({ variant: 'Closure', args, body }),
   Block: (statements: Stmt[], lastExpr?: Maybe<Expr>): Expr => ({ variant: 'Block', statements, lastExpr: lastExpr ?? none }),
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>): Expr => ({ variant: 'IfThenElse', condition, then, else_ }),
   Assignment: (lhs: Expr, rhs: Expr): Expr => ({ variant: 'Assignment', lhs, rhs }),
-  CompoundAssignment: (lhs: Expr, op: CompoundAssignmentOperator, rhs: Expr): Expr => ({ variant: 'CompoundAssignment', lhs, op, rhs }),
   ModuleAccess: (path: string[], member: string): Expr => ({ variant: 'ModuleAccess', path, member }),
   FieldAccess: (lhs: Expr, field: string): Expr => ({ variant: 'FieldAccess', lhs, field }),
   Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
@@ -96,15 +86,31 @@ export const Expr = {
   show: (expr: Expr): string => match(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
-    Call: ({ lhs, typeParams, args }) => `${Expr.show(lhs)}${typeParams.length > 0 ? `<${joinWith(typeParams, MonoTy.show)}>` : ''}(${joinWith(args, Expr.show, ', ')})`,
-    UnaryOp: ({ op, expr }) => `${op}${Expr.show(expr)}`,
-    BinaryOp: ({ lhs, op, rhs }) => `${Expr.show(lhs)} ${op} ${Expr.show(rhs)}`,
+    Call: ({ lhs, typeParams, args }) => {
+      if (lhs.variant === 'Variable' && operators.has(lhs.name)) {
+        // unary operator
+        if (args.length === 1) {
+          if (lhs.name === '-') {
+            return `-${Expr.show(args[0])}`;
+          }
+
+          return `${lhs.name} ${Expr.show(args[0])}`;
+        }
+
+        // binary operator
+        if (args.length === 2) {
+          return `${Expr.show(args[0])} ${lhs.name} ${Expr.show(args[1])}`;
+        }
+      }
+
+      const params = `${typeParams.length > 0 ? `<${joinWith(typeParams, MonoTy.show)}>` : ''}`;
+      return `${Expr.show(lhs)}${params}(${joinWith(args, Expr.show, ', ')})`;
+    },
     Error: ({ message }) => `<Error: ${message}>`,
     Closure: ({ args, body }) => `${ArgumentList.show(args)} -> ${Expr.show(body)}`,
     Block: ({ statements, lastExpr }) => `{\n${joinWith([...statements, ...lastExpr.mapWithDefault(e => [Stmt.Expr(e)], [])], s => '  ' + Stmt.show(s), '\n')}\n}`,
     IfThenElse: ({ condition, then, else_ }) => `if ${Expr.show(condition)} ${Expr.show(then)}${else_.map(e => ` else ${Expr.show(e)}`).orDefault('')}`,
     Assignment: ({ lhs, rhs }) => `${Expr.show(lhs)} = ${Expr.show(rhs)}`,
-    CompoundAssignment: ({ lhs, op, rhs }) => `${Expr.show(lhs)} ${op} ${Expr.show(rhs)}`,
     ModuleAccess: ({ path, member }) => `${path.join('.')}.${member}`,
     FieldAccess: ({ lhs, field }) => `${Expr.show(lhs)}.${field}`,
     Tuple: ({ elements }) => `(${joinWith(elements, Expr.show, ', ')})`,
@@ -121,14 +127,11 @@ export const Expr = {
       Const: ({ value: expr }) => Expr.Const(expr),
       Variable: ({ name }) => Expr.Variable(name),
       Call: ({ lhs, typeParams, args }) => Expr.Call(f(lhs), typeParams, args.map(go)),
-      UnaryOp: ({ op, expr }) => Expr.UnaryOp(op, go(expr)),
-      BinaryOp: ({ lhs, op, rhs }) => Expr.BinaryOp(go(lhs), op, go(rhs)),
       Error: ({ message }) => Expr.Error(message),
       Closure: ({ args, body }) => Expr.Closure(args, go(body)),
       Block: ({ statements: stmts, lastExpr }) => Expr.Block(stmts.map(s => Stmt.rewrite(s, f)), lastExpr.map(go)),
       IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(f)),
       Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs)),
-      CompoundAssignment: ({ lhs, op, rhs }) => Expr.CompoundAssignment(go(lhs), op, go(rhs)),
       ModuleAccess: ({ path, member }) => Expr.ModuleAccess(path, member),
       FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field),
       Tuple: ({ elements }) => Expr.Tuple(elements.map(go)),

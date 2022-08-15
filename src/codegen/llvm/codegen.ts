@@ -130,51 +130,6 @@ export const createLLVMCompiler = async () => {
           i64: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),
           unit: () => llvm.UndefValue.get(llvm.Type.getInt1Ty(context)),
         }),
-        UnaryOp: ({ op, expr }) => {
-          switch (op) {
-            case '-':
-              return builder.CreateNeg(compileExpr(expr));
-            case '!':
-              return builder.CreateNot(compileExpr(expr));
-          }
-        },
-        BinaryOp: ({ lhs, op, rhs }) => {
-          const l = compileExpr(lhs);
-          const r = compileExpr(rhs);
-
-          switch (op) {
-            case '+':
-              return builder.CreateAdd(l, r);
-            case '-':
-              return builder.CreateSub(l, r);
-            case '*':
-              return builder.CreateMul(l, r);
-            case '/':
-              return builder.CreateSDiv(l, r);
-            case '%':
-              return builder.CreateSRem(l, r);
-            case '==':
-              return builder.CreateICmpEQ(l, r);
-            case '!=':
-              return builder.CreateICmpNE(l, r);
-            case '<':
-              return builder.CreateICmpULT(l, r);
-            case '<=':
-              return builder.CreateICmpULE(l, r);
-            case '>':
-              return builder.CreateICmpUGT(l, r);
-            case '>=':
-              return builder.CreateICmpUGE(l, r);
-            case '&&':
-              return builder.CreateAnd(l, r);
-            case '||':
-              return builder.CreateOr(l, r);
-            case '|':
-              return builder.CreateOr(l, r);
-            case '&':
-              return builder.CreateAnd(l, r);
-          }
-        },
         Variable: ({ name }) => {
           const v = resolveVar(name);
 

@@ -8,7 +8,6 @@ import { Maybe, none, some } from '../utils/maybe';
 import { id, panic, proj } from '../utils/misc';
 import { diffSet } from '../utils/set';
 import { Env, FuncDecl } from './env';
-import { signatures } from './signatures';
 import { Row } from './structs';
 import { MAX_TUPLE_INDEX, Tuple } from './tuples';
 import { TypeContext } from './typeContext';
@@ -30,7 +29,7 @@ export type TypingError = DataType<{
   ParsingError: { message: string },
   WasmBlockExpressionsRequireTypeAnnotations: { expr: Expr },
   NoOverloadMatchesCallSignature: { name: string, f: MonoTy, candidates: PolyTy[] },
-  AmbiguousOverload: { name: string, f: MonoTy, matches: PolyTy[] },
+  AmbiguousOverload: { name: string, funTy: string, matches: PolyTy[] },
   UndeclaredStruct: { name: string },
   MissingStructFields: { name: string, fields: string[] },
   ExtraneoussStructFields: { name: string, fields: string[] },
@@ -65,7 +64,7 @@ const resolveOverloading = (
     return Either.left(bestMatches[0].func);
   }
 
-  return Either.right({ type: 'AmbiguousOverload', name, f, matches: bestMatches.map(f => f.func.funTy) });
+  return Either.right({ type: 'AmbiguousOverload', name, funTy: MonoTy.show(f), matches: bestMatches.map(f => f.func.funTy) });
 };
 
 const monomorphizeFunc = (
@@ -160,19 +159,6 @@ const inferExpr = (
         const instTy = PolyTy.instantiate(ty);
         unify(instTy.ty, tau);
       });
-    },
-    UnaryOp: ({ op, expr }) => {
-      inferExpr(expr, ctx, errors);
-      const opTy1 = PolyTy.instantiate(signatures.unaryOp[op]);
-      const opTy2 = MonoTy.Fun([expr.ty], tau);
-      unify(opTy1.ty, opTy2);
-    },
-    BinaryOp: ({ lhs, op, rhs }) => {
-      inferExpr(lhs, ctx, errors);
-      inferExpr(rhs, ctx, errors);
-      const opTy1 = PolyTy.instantiate(signatures.binaryOp[op]);
-      const opTy2 = MonoTy.Fun([lhs.ty, rhs.ty], tau);
-      unify(opTy1.ty, opTy2);
     },
     NamedFuncCall: call => {
       const { name, typeParams, args } = call;

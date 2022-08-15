@@ -20,7 +20,7 @@ fun euler2() {
   mut sum = 0
 
   while nextFib < 4000000 {
-    if nextFib & 1 == 0 {
+    if nextFib and 1 == 0 {
       sum += nextFib
     }
 
