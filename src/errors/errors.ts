@@ -43,7 +43,6 @@ export const Error = {
       ImmutableValue: ({ expr }) => `Cannot update immutable value '${Expr.showSweet(expr)}'`,
       UnassignableExpression: ({ expr }) => `${Expr.showSweet(expr)} is not an assignable expression`,
       TupleIndexTooBig: ({ index }) => `Tuple index ${index} is too big, limit is ${MAX_TUPLE_INDEX}`,
-      WasmBlockExpressionsRequireTypeAnnotations: ({ expr }) => `Expressions inside a wasm block require type annotations, type of '${Expr.showSweet(expr)}' is not fully determined`,
       NoOverloadMatchesCallSignature: ({ name, f, candidates }) => `No overload of '${name}' matches the call signature '${MonoTy.show(f)}', candidates:\n${formatOverloadingCandidates(candidates)}`,
       AmbiguousOverload: ({ name, funTy, matches }) => `Ambiguous overload for '${name}' with call signature ${funTy}, matches:\n${formatOverloadingCandidates(matches)}`,
       UndeclaredStruct: ({ name }) => `Undeclared struct '${name}' in struct constructor expression`,

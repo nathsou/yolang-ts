@@ -8,7 +8,6 @@ export type TypeContext = {
   typeParamsEnv: Record<string, MonoTy>,
   typeAliases: Record<string, { ty: MonoTy, params: TypeParam[] }>,
   topLevelDecls: Decl[],
-  currentPath: string[],
 };
 
 export const TypeContext = {
@@ -17,14 +16,12 @@ export const TypeContext = {
     typeParamsEnv: {},
     typeAliases: {},
     topLevelDecls,
-    currentPath: [],
   }),
   clone: (ctx: TypeContext): TypeContext => ({
     env: Env.clone(ctx.env),
     typeParamsEnv: {},
     typeAliases: { ...ctx.typeAliases },
     topLevelDecls: [...ctx.topLevelDecls],
-    currentPath: [...ctx.currentPath],
   }),
   declareTypeAlias: (
     ctx: TypeContext,
@@ -53,7 +50,7 @@ export const TypeContext = {
 
     return none;
   },
-  findTypeAlias: (ctx: TypeContext, name: string): Maybe<[MonoTy, TypeParam[]]> => {
+  resolveTypeAlias: (ctx: TypeContext, name: string): Maybe<[MonoTy, TypeParam[]]> => {
     if (name in ctx.typeAliases) {
       const { ty, params } = ctx.typeAliases[name];
       return some([ty, params]);

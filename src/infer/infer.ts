@@ -24,7 +24,6 @@ export type TypingError = DataType<{
   UnassignableExpression: { expr: Expr },
   TupleIndexTooBig: { index: number },
   ParsingError: { message: string },
-  WasmBlockExpressionsRequireTypeAnnotations: { expr: Expr },
   NoOverloadMatchesCallSignature: { name: string, f: MonoTy, candidates: PolyTy[] },
   AmbiguousOverload: { name: string, funTy: string, matches: PolyTy[] },
   UndeclaredStruct: { name: string },
@@ -327,7 +326,7 @@ const inferExpr = (
       unify(partialRecordTy, lhs.ty);
     },
     Struct: ({ name, typeParams, fields }) => {
-      TypeContext.findTypeAlias(ctx, name).match({
+      TypeContext.resolveTypeAlias(ctx, name).match({
         Some: ([ty]) => {
           if (ty.variant !== 'Struct') {
             errors.push(Error.Typing({ type: 'UndeclaredStruct', name }));

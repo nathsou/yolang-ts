@@ -57,7 +57,7 @@ const unifyMany = (
         return none;
       }
 
-      const res = TypeContext.findTypeAlias(ctx, ty.name).map(([ty, params]) => ({ ty, params }));
+      const res = TypeContext.resolveTypeAlias(ctx, ty.name).map(([ty, params]) => ({ ty, params }));
       if (res.isNone()) {
         errors.push(Error.Unification({ type: 'CouldNotResolveType', ty }));
       }

@@ -69,10 +69,10 @@ pub fun mod(a: i64, b: i64): i64
 pub fun mod(a: u64, b: u64): u64
 
 #meta(logicalAnd)
-pub fun and (a: bool, b: bool): bool
+pub fun and(a: bool, b: bool): bool
 
 #meta(logicalOr)
-pub fun or (a: bool, b: bool): bool
+pub fun or(a: bool, b: bool): bool
 
 pub fun nand(a: bool, b: bool): bool {
   not (a and b)
@@ -83,11 +83,11 @@ pub fun nor(a: bool, b: bool): bool {
 }
 
 pub fun xor(a: bool, b: bool): bool {
-  (a or b) and nand(a, b)
+  (a or b) and (a nand b)
 }
 
 pub fun xnor(a: bool, b: bool): bool {
-  nor(a, b) or (a and b)
+  (a nor b) or (a and b)
 }
 
 #meta(bitwiseAndI32)
