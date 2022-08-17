@@ -2,6 +2,7 @@ import { FileSystem } from "./fileSystem";
 
 export const createNodeFileSystem = async (): Promise<FileSystem> => {
   const fs = await import('fs/promises');
+  const path = await import('path');
 
   return {
     readDir: async path => {
@@ -16,15 +17,8 @@ export const createNodeFileSystem = async (): Promise<FileSystem> => {
         })
       );
     },
+    resolve: path.resolve,
     readFile: async path => await fs.readFile(path, 'utf8'),
-    directory: async path => {
-      const { dirname } = await import('path');
-      if ((await fs.stat(path)).isDirectory()) {
-        return path;
-      } else {
-        return dirname(path);
-      }
-    },
     stdPath: __dirname + '/..',
   };
 };

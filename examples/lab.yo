@@ -1,4 +1,4 @@
-import std/ops
+import std/ops[pow]
 
 fun main() {
   3.pow(7)

@@ -1,5 +1,5 @@
-import { DataType, match } from 'itsamatch';
-import { Decl, Expr, Pattern, Prog, Stmt } from '../ast/bitter';
+import { DataType, match, VariantOf } from 'itsamatch';
+import { Decl, Expr, Module, Pattern, Prog, Stmt } from '../ast/bitter';
 import { FuncName, NameEnv, VarName } from '../ast/name';
 import { Error } from '../errors/errors';
 import { gen, zip } from '../utils/array';
@@ -81,7 +81,7 @@ const monomorphizeFunc = (
 
   const newCtx = TypeContext.clone(ctx);
   const nameEnv = NameEnv.make();
-  const inst = Decl.rewrite(f, nameEnv, id, id) as FuncDecl;
+  const inst = Decl.rewrite(f, nameEnv, id) as FuncDecl;
 
   if (typeParams.length > inst.typeParams.length) {
     return panic(`Too many type parameters for '${f.name.mangled}', got ${typeParams.length}, expected ${inst.typeParams.length}`);
@@ -108,7 +108,7 @@ const inferExpr = (
   expr: Expr,
   ctx: TypeContext,
   errors: Error[]
-): Error[] => {
+): void => {
   const unify = (s: MonoTy, t: MonoTy): void => {
     errors.push(...unifyMut(s, t, ctx));
   };
@@ -387,11 +387,9 @@ const inferExpr = (
       errors.push(Error.Typing({ type: 'ParsingError', message }));
     },
   });
-
-  return errors;
 };
 
-const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors: Error[]): Error[] => {
+const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors: Error[]): void => {
   const unify = (s: MonoTy, t: MonoTy): void => {
     errors.push(...unifyMut(s, t, ctx));
   };
@@ -399,11 +397,9 @@ const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors: Error[
   const tau = expr.ty;
 
   unify(Pattern.type(pat), tau);
-
-  return errors;
 };
 
-const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): Error[] => {
+const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): void => {
   match(stmt, {
     Let: ({ name, expr, annotation }) => {
       inferExpr(expr, ctx, errors);
@@ -423,11 +419,9 @@ const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): Error[] => {
       errors.push(Error.Typing({ type: 'ParsingError', message }));
     },
   });
-
-  return errors;
 };
 
-const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[] => {
+const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void => {
   const unify = (s: MonoTy, t: MonoTy, context = ctx): void => {
     errors.push(...unifyMut(s, t, context));
   };
@@ -479,22 +473,62 @@ const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): Error[] => {
     TypeAlias: ({ name, typeParams, alias }) => {
       TypeContext.declareTypeAlias(ctx, name, typeParams, alias);
     },
-    Import: () => { },
+    Import: ({ path, imports }) => {
+      const mod = ctx.modules.get(path)!;
+      if (!mod.typeChecked) {
+        inferModule(mod, ctx.modules, errors);
+        mod.typeChecked = true;
+      }
+
+      const declareImport = (d: VariantOf<Decl, 'Function' | 'TypeAlias'>) => {
+        if (d.pub) {
+          match(d, {
+            Function: f => {
+              Env.declareFunc(ctx.env, f);
+            },
+            TypeAlias: ({ name, typeParams, alias }) => {
+              TypeContext.declareTypeAlias(ctx, name, typeParams, alias);
+            },
+          });
+        }
+      };
+
+      match(imports, {
+        names: ({ names }) => {
+          names.forEach(name => {
+            const decl = mod.members.get(name)!;
+            decl.forEach(declareImport);
+          });
+        },
+        all: () => {
+          mod.members.forEach(decls => {
+            decls.forEach(declareImport);
+          });
+        },
+      });
+    },
     Error: ({ message }) => {
       errors.push(Error.Typing({ type: 'ParsingError', message }));
     },
   });
-
-  return errors;
 };
 
-export const infer = (prog: Prog): [Error[], TypeContext] => {
-  const errors: Error[] = [];
-  const ctx = TypeContext.make(prog);
-
-  for (const decl of prog) {
+const inferModule = (mod: Module, modules: Map<string, Module>, errors: Error[]): TypeContext => {
+  const ctx = TypeContext.make(modules);
+  mod.decls.forEach(decl => {
     inferDecl(decl, ctx, errors);
+  });
+
+  return ctx;
+};
+
+export const infer = (prog: Prog): Error[] => {
+  const errors: Error[] = [];
+
+  // build dependency graph (in resolve?) and check for circular dependencies
+  for (const mod of prog.modules.values()) {
+    inferModule(mod, prog.modules, errors);
   }
 
-  return [errors, ctx];
+  return errors;
 };

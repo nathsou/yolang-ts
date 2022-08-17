@@ -53,8 +53,8 @@ export const Error = {
     }, 'type'),
     Resolution: ({ err }) => matchVariant(err, {
       ModuleNotFound: ({ name }) => `Module '${name}' not found`,
-      ModuleAlreadyExists: ({ name, path, existingPath }) => `Module '${name}' already exists at '${path}', but was already imported at '${existingPath}'`,
-      TypeNotFound: ({ name, path }) => `Type '${[...path, name].join('.')}' not found`,
-    }, 'type'),
+      UnknownMember: ({ modulePath, member }) => `Module '${modulePath}' has no exported member '${member}'`,
+      MemberIsNotPublic: ({ modulePath, member }) => `Member '${member}' from module '${modulePath}' is not public`,
+    }),
   }),
 };

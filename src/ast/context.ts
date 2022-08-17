@@ -4,7 +4,7 @@ export type Context = {
   typeVarIndex: TyVarId,
 };
 
-export const context: Context = {
+const context: Context = {
   typeVarIndex: 0,
 };
 

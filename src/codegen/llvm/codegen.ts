@@ -1,8 +1,8 @@
-import { match } from 'itsamatch';
+import { match, VariantOf } from 'itsamatch';
 import type LLVM from 'llvm-bindings';
-import { Decl, Expr, Prog, Stmt } from '../../ast/bitter';
+import { Decl, Expr, Module, Prog, Stmt } from '../../ast/bitter';
 import { VarName } from '../../ast/name';
-import { Expr as SweetExpr } from '../../ast/sweet';
+import * as sweet from '../../ast/sweet';
 import { Row } from '../../infer/structs';
 import { MonoTy } from '../../infer/types';
 import { Const } from '../../parse/token';
@@ -31,15 +31,21 @@ const LexicalScope = {
 
 type Struct = { row: Row, fields: Record<string, number>, ty: LLVM.StructType };
 
+const getModuleName = (path: string) => {
+  return last(path.split('/')).replace('.yo', '');
+};
+
 export const createLLVMCompiler = async () => {
   const llvm = await import('llvm-bindings');
 
-  function compile(prog: Prog): LLVM.Module {
+  function compileModule(module: Module, modules: Map<string, Module>): LLVM.Module {
     const context = new llvm.LLVMContext();
-    const mod = new llvm.Module('top', context);
+    const mod = new llvm.Module(module.path, context);
+    mod.setModuleIdentifier(getModuleName(module.path));
+    mod.setSourceFileName(module.path);
     const builder = new llvm.IRBuilder(context);
     const scopes: LexicalScope[] = [];
-    const unit = Expr.Const(Const.unit(), SweetExpr.Const(Const.unit()));
+    const unit = Expr.Const(Const.unit(), sweet.Expr.Const(Const.unit()));
     const unitTy = MonoTy.Const('()');
     const funcs = new Map<string, LLVM.Function>();
     const structs = new Map<string, Struct>();
@@ -305,6 +311,30 @@ export const createLLVMCompiler = async () => {
       return ret;
     }
 
+    function declareFunc(f: VariantOf<Decl, 'Function'>): LLVM.Function {
+      const returnTy = llvmTy(f.returnTy.or(f.body.map(b => b.ty)).unwrap());
+      const argTys = f.args.map(a => llvmTy(a.name.ty));
+      const funcTy = llvm.FunctionType.get(returnTy, argTys, false);
+      const isExternal = f.pub || f.name.original === 'main';
+      const linkage = llvm.Function.LinkageTypes[isExternal ? 'ExternalLinkage' : 'PrivateLinkage'];
+      const func = llvm.Function.Create(funcTy, linkage, f.name.mangled, mod);
+      funcs.set(f.name.mangled, func);
+
+      return func;
+    }
+
+    function declareTypeAlias({ name, alias }: VariantOf<Decl, 'TypeAlias'>) {
+      match(alias, {
+        Struct: ({ row }) => {
+          const fields = Row.fields(row);
+          const fieldIndices = Object.fromEntries(fields.map(([name], index) => [name, index]));
+          const ty = llvm.StructType.create(context, fields.map(([_, t]) => llvmTy(t)), name);
+          structs.set(name, { fields: fieldIndices, row, ty });
+        },
+        _: () => { },
+      });
+    }
+
     function compileDecl(decl: Decl): void {
       match(decl, {
         Function: f => {
@@ -316,11 +346,7 @@ export const createLLVMCompiler = async () => {
             return;
           }
 
-          const returnTy = llvmTy(f.returnTy.or(f.body.map(b => b.ty)).unwrap());
-          const argTys = f.args.map(a => llvmTy(a.name.ty));
-          const funcTy = llvm.FunctionType.get(returnTy, argTys, false);
-          const func = llvm.Function.Create(funcTy, llvm.Function.LinkageTypes.ExternalLinkage, f.name.mangled, mod);
-          funcs.set(f.name.mangled, func);
+          const func = declareFunc(f);
           const entry = llvm.BasicBlock.Create(context, 'entry', func);
           builder.SetInsertPoint(entry);
           const ret = scoped(() => {
@@ -352,23 +378,42 @@ export const createLLVMCompiler = async () => {
             panic('function verification failed');
           }
         },
-        TypeAlias: ({ name, alias }) => {
-          match(alias, {
-            Struct: ({ row }) => {
-              const fields = Row.fields(row);
-              const fieldIndices = Object.fromEntries(fields.map(([name], index) => [name, index]));
-              const ty = llvm.StructType.create(context, fields.map(([_, t]) => llvmTy(t)), name);
-              structs.set(name, { fields: fieldIndices, row, ty });
-            },
-            _: () => { },
-          })
+        TypeAlias: t => {
+          declareTypeAlias(t);
         },
-        Import: () => { },
+        Import: ({ path, imports }) => {
+          const importedMod = modules.get(path)!;
+
+          const declareImport = (decl: VariantOf<Decl, 'Function' | 'TypeAlias'>) => {
+            match(decl, {
+              Function: f => {
+                declareFunc(f);
+              },
+              TypeAlias: t => {
+                declareTypeAlias(t);
+              },
+            });
+          };
+
+          match(imports, {
+            names: ({ names }) => {
+              names.forEach(name => {
+                const decls = importedMod.members.get(name)!;
+                decls.forEach(declareImport);
+              });
+            },
+            all: () => {
+              importedMod.members.forEach(decls => {
+                decls.forEach(declareImport);
+              });
+            },
+          });
+        },
         _: () => { },
       });
     }
 
-    prog.forEach(decl => { compileDecl(decl); });
+    module.decls.forEach(decl => { compileDecl(decl); });
 
     if (llvm.verifyModule(mod)) {
       panic('module verification failed');
@@ -377,12 +422,63 @@ export const createLLVMCompiler = async () => {
     return mod;
   }
 
-  async function compileIR(module: LLVM.Module, outfile: string, optLevel: 0 | 1 | 2 | 3): Promise<string> {
-    const { exec } = await import('node:child_process');
+  function compile(prog: Prog): Map<string, LLVM.Module> {
+    const llvmModules = new Map<string, LLVM.Module>();
 
-    module.setTargetTriple('wasm32-wasi');
-    llvm.WriteBitcodeToFile(module, `${outfile}.bc`);
+    prog.modules.forEach(mod => {
+      const llvmModule = compileModule(mod, prog.modules);
+      llvmModules.set(mod.path, llvmModule);
+    });
 
+    return llvmModules;
+  }
+
+  async function compileIR(
+    modules: Map<string, LLVM.Module>,
+    outDir: string,
+    outFile: string,
+    optLevel: 0 | 1 | 2 | 3
+  ): Promise<string> {
+    const { exec } = await import('child_process');
+    const { existsSync, mkdirSync } = await import('fs');
+
+    if (!existsSync(outDir)) {
+      mkdirSync(outDir);
+    }
+
+    const byteCodeFiles: string[] = [];
+
+    const execPromise = (cmd: string): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        exec(cmd, (error, stdout) => {
+          if (error != null) {
+            reject(error);
+          } else {
+            resolve(stdout);
+          }
+        });
+      });
+    };
+
+    modules.forEach(module => {
+      module.setTargetTriple('wasm32-wasi');
+      const modOutFile = `${outDir}/${module.getName()}.bc`;
+      llvm.WriteBitcodeToFile(module, modOutFile);
+      byteCodeFiles.push(modOutFile);
+    });
+
+    // link all the modules together
+    const linkedFile = `${outDir}/_linked.bc`;
+    const linkCommand = [
+      'llvm-link',
+      ...byteCodeFiles,
+      '-o',
+      linkedFile,
+    ].join(' ');
+
+    const linkOutput = await execPromise(linkCommand);
+
+    // generate wasm file
     const buildCommand = [
       'clang',
       `--target=wasm32-wasi`,
@@ -392,19 +488,22 @@ export const createLLVMCompiler = async () => {
       '-Wl,--export-all',
       `-Wl,--lto-O${optLevel}`,
       '-Wl,--allow-undefined',
-      `-o ${outfile}.wasm`,
-      `${outfile}.bc`,
+      `-o ${outFile}`,
+      linkedFile,
     ].join(' ');
 
-    return new Promise((resolve, reject) => {
-      exec(buildCommand, (error, stdout) => {
-        if (error != null) {
-          reject(error);
-        } else {
-          resolve(stdout);
-        }
-      });
-    });
+    const buildOutput = await execPromise(buildCommand);
+    const stdout: string[] = [];
+
+    if (linkOutput.length > 0) {
+      stdout.push(linkOutput);
+    }
+
+    if (buildOutput.length > 0) {
+      stdout.push(buildOutput);
+    }
+
+    return stdout.join('\n');
   }
 
   return { compile, compileIR };

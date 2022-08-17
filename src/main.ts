@@ -1,11 +1,10 @@
 import { match as matchVariant } from "itsamatch";
-import { Decl, Prog } from "./ast/bitter";
+import * as bitter from "./ast/bitter";
 import { Context } from './ast/context';
-import { Prog as SweetProg } from "./ast/sweet";
+import * as sweet from "./ast/sweet";
 import { createLLVMCompiler } from "./codegen/llvm/codegen";
 import { Error } from './errors/errors';
 import { infer } from "./infer/infer";
-import { TypeContext } from "./infer/typeContext";
 import { MonoTy, PolyTy, TypeParams } from "./infer/types";
 import { createNodeFileSystem } from './resolve/nodefs';
 import { resolve } from './resolve/resolve';
@@ -25,10 +24,9 @@ let debugLevel = DebugLvl.nothing;
 // <string> -> parse -> <sweet> -> desugar & resolve modules -> <bitter> -> infer ->
 // monomorphize -> inject reference counting -> emit code
 
-const typeCheck = (prog: Prog): [TypeContext, Error[]] => {
+const typeCheck = (prog: bitter.Prog): Error[] => {
   Context.clear();
-  const [typingErrors, typeCtx] = infer(prog);
-  return [typeCtx, typingErrors];
+  return infer(prog);
 };
 
 const getWasmMainFunc = async (source: string): Promise<Function> => {
@@ -62,17 +60,17 @@ const run = async (source: string): Promise<boolean> => {
 
   if (debugLevel >= DebugLvl.sweet) {
     console.log('--- sweet ---');
-    console.log(SweetProg.show(sweetProg) + '\n');
+    console.log(sweet.Prog.show(sweetProg) + '\n');
   }
 
-  const [prog, errs2] = Prog.fromSweet(sweetProg);
+  const [prog, errs2] = bitter.Prog.from(sweetProg, nfs);
 
   if (errs2.length > 0) {
     logErrors(errs2);
     return false;
   }
 
-  const [_, errs3] = typeCheck(prog);
+  const errs3 = typeCheck(prog);
 
   if (errs3.length > 0) {
     logErrors(errs3);
@@ -81,27 +79,34 @@ const run = async (source: string): Promise<boolean> => {
 
   if (debugLevel >= DebugLvl.types) {
     console.log('--- types ---');
-    console.log(showTypes(prog).join('\n\n') + '\n');
+    console.log(showTypes(prog.entry.decls).join('\n\n') + '\n');
   }
 
   const compiler = await createLLVMCompiler();
-  const module = compiler.compile(prog);
-  module.setSourceFileName(source);
+  const modules = compiler.compile(prog);
 
   if (debugLevel >= DebugLvl.sections) {
-    console.log(module.print());
+    modules.forEach(m => {
+      console.log(m.print());
+    });
   }
 
-  const outPath = 'out';
-  await compiler.compileIR(module, outPath, 3);
-  const mainFunc = await getWasmMainFunc(`${outPath}.wasm`);
+  const outDir = 'out';
+  const outFile = `${outDir}/main.wasm`;
+  const stdout = await compiler.compileIR(modules, outDir, outFile, 3);
+
+  if (stdout.length > 0) {
+    console.log(stdout);
+  }
+
+  const mainFunc = await getWasmMainFunc(outFile);
 
   console.log(mainFunc());
 
   return true;
 };
 
-const showTypes = (decls: Decl[]): string[] => {
+const showTypes = (decls: bitter.Decl[]): string[] => {
   const types: string[] = [];
 
   for (const decl of decls) {

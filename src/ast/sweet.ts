@@ -1,9 +1,9 @@
-import { DataType, genConstructors, match } from 'itsamatch';
+import { DataType, genConstructors, match, VariantOf } from 'itsamatch';
 import { MonoTy, TypeParam, TypeParams } from '../infer/types';
 import { Const, operators } from '../parse/token';
 import { joinWith } from '../utils/array';
 import { Maybe, none } from '../utils/maybe';
-import { id, noop, parenthesized } from '../utils/misc';
+import { parenthesized } from '../utils/misc';
 
 // Sweet expressions are *sugared* representations
 // of the structure of yolang source code.
@@ -118,27 +118,6 @@ export const Expr = {
     LetIn: ({ pattern, value, body }) => `let ${Pattern.show(pattern)} = ${Expr.show(value)} in ${Expr.show(body)}`,
     While: ({ condition, body }) => `while ${Expr.show(condition)} ${Expr.show(body)}`,
   }),
-  rewrite: (expr: Expr, f: (expr: Expr) => Expr): Expr => {
-    const go = (e: Expr) => Expr.rewrite(e, f);
-    return f(match(expr, {
-      Const: ({ value: expr }) => Expr.Const(expr),
-      Variable: ({ name }) => Expr.Variable(name),
-      Call: ({ lhs, typeParams, args }) => Expr.Call(f(lhs), typeParams, args.map(go)),
-      Error: ({ message }) => Expr.Error(message),
-      Closure: ({ args, body }) => Expr.Closure(args, go(body)),
-      Block: ({ statements: stmts, lastExpr }) => Expr.Block(stmts.map(s => Stmt.rewrite(s, f)), lastExpr.map(go)),
-      IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(f)),
-      Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs)),
-      FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field),
-      Tuple: ({ elements }) => Expr.Tuple(elements.map(go)),
-      Match: ({ expr, annotation, cases }) => Expr.Match(go(expr), annotation, cases.map(({ pattern, annotation, body }) => ({ pattern, annotation, body: go(body) }))),
-      Parenthesized: ({ expr }) => Expr.Parenthesized(go(expr)),
-      Struct: ({ name, typeParams, fields }) => Expr.Struct(name, typeParams, fields.map(({ name, value }) => ({ name, value: go(value) }))),
-      TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index),
-      LetIn: ({ pattern, annotation, value, body }) => Expr.LetIn(pattern, annotation, go(value), go(body)),
-      While: ({ condition, body }) => Expr.While(go(condition), go(body)),
-    }));
-  },
 };
 
 export type Pattern = DataType<{
@@ -190,12 +169,7 @@ export const Stmt = {
     Let: ({ name, expr, mutable, annotation }) => `${mutable ? 'mut' : 'let'} ${name}${annotation.mapWithDefault(ty => ': ' + MonoTy.show(ty), '')} = ${Expr.show(expr)}`,
     Expr: ({ expr }) => Expr.show(expr),
     Error: ({ message }) => `<Error: ${message}>`,
-  }),
-  rewrite: (stmt: Stmt, f: (expr: Expr) => Expr): Stmt => match(stmt, {
-    Let: ({ name, expr, mutable, annotation }) => Stmt.Let(name, Expr.rewrite(expr, f), mutable, annotation),
-    Expr: ({ expr }) => Stmt.Expr(Expr.rewrite(expr, f)),
-    Error: ({ message }) => Stmt.Error(message),
-  }),
+  })
 };
 
 export type Imports = DataType<{
@@ -222,7 +196,9 @@ export type Decl = DataType<{
     returnTy: Maybe<MonoTy>,
     body: Maybe<Expr>
   },
-  TypeAlias: { name: string, typeParams: TypeParam[], alias: MonoTy },
+  TypeAlias: {
+    pub: boolean, name: string, typeParams: TypeParam[], alias: MonoTy
+  },
   Import: { path: string, imports: Imports },
   Error: { message: string },
 }>;
@@ -238,35 +214,20 @@ export const Decl = {
     Import: ({ path, imports }) => `import ${path}${Imports.show(imports)}`,
     Error: ({ message }) => `<Error: ${message}> `,
   }),
-  rewrite: (decl: Decl, rfs: RewriteFuncs): Decl => {
-    const { rewriteExpr: f = id, rewriteDecl: g = id } = rfs;
-    return g(match(decl, {
-      Function: ({ attributes, pub, name, typeParams, args, returnTy, body }) => Decl.Function({ attributes, pub, name, typeParams, args, returnTy, body: body.map(b => Expr.rewrite(b, f)) }),
-      TypeAlias: ({ name, typeParams, alias }) => Decl.TypeAlias({ name, typeParams, alias }),
-      Import: ({ path, imports }) => Decl.Import({ path, imports }),
-      Error: ({ message }) => Decl.Error({ message }),
-    }));
-  },
-  traverse: (decl: Decl, { traverseExpr = noop, traverseDecl = noop }: TraverseFuncs): Decl => Decl.rewrite(decl, {
-    rewriteExpr: (expr: Expr): Expr => { traverseExpr(expr); return expr; },
-    rewriteDecl: (decl: Decl): Decl => { traverseDecl(decl); return decl; },
-  }),
 };
 
-export type Prog = Decl[];
-
-type RewriteFuncs = {
-  rewriteExpr?: (expr: Expr) => Expr,
-  rewriteDecl?: (decl: Decl) => Decl,
+export type Module = {
+  path: string,
+  decls: Decl[],
+  members: Map<string, VariantOf<Decl, 'Function' | 'TypeAlias'>[]>,
+  imports: Map<string, Set<string>>,
 };
 
-type TraverseFuncs = {
-  traverseExpr?: (expr: Expr) => void,
-  traverseDecl?: (decl: Decl) => void,
+export type Prog = {
+  modules: Map<string, Module>,
+  entry: Module,
 };
 
 export const Prog = {
-  show: (prog: Prog): string => joinWith(prog, Decl.show, '\n\n'),
-  rewrite: (prog: Prog, rfs: RewriteFuncs): Prog => prog.map(d => Decl.rewrite(d, rfs)),
-  traverse: (prog: Prog, rfs: TraverseFuncs): Prog => prog.map(d => Decl.traverse(d, rfs)),
+  show: (prog: Prog): string => joinWith(prog.entry.decls, Decl.show, '\n\n'),
 };

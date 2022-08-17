@@ -44,11 +44,23 @@ export const mapRecord = <T, U>(obj: Record<string, T>, f: (value: T) => U): Rec
   return Object.fromEntries(Object.entries(obj).map(([key, value]) => [key, f(value)]));
 };
 
+export const mapMap = <T, U>(obj: Map<string, T>, f: (value: T) => U): Map<string, U> => {
+  return new Map(Array.from(obj.entries()).map(([key, value]) => [key, f(value)]));
+};
+
 export const pushRecord = <T>(obj: Record<string, T[]>, key: string, value: T): void => {
   if (key in obj) {
     obj[key].push(value);
   } else {
     obj[key] = [value];
+  }
+};
+
+export const pushMap = <T>(obj: Map<string, T[]>, key: string, value: T): void => {
+  if (obj.has(key)) {
+    obj.get(key)!.push(value);
+  } else {
+    obj.set(key, [value]);
   }
 };
 

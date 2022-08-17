@@ -1,4 +1,4 @@
-import { Decl } from "../ast/bitter";
+import { Module } from "../ast/bitter";
 import { Maybe, none, some } from "../utils/maybe";
 import { Env } from "./env";
 import { MonoTy, TypeParam } from "./types";
@@ -7,21 +7,21 @@ export type TypeContext = {
   env: Env,
   typeParamsEnv: Record<string, MonoTy>,
   typeAliases: Record<string, { ty: MonoTy, params: TypeParam[] }>,
-  topLevelDecls: Decl[],
+  modules: Map<string, Module>,
 };
 
 export const TypeContext = {
-  make: (topLevelDecls: Decl[]): TypeContext => ({
+  make: (modules: Map<string, Module>): TypeContext => ({
     env: Env.make(),
     typeParamsEnv: {},
     typeAliases: {},
-    topLevelDecls,
+    modules,
   }),
   clone: (ctx: TypeContext): TypeContext => ({
     env: Env.clone(ctx.env),
-    typeParamsEnv: {},
+    typeParamsEnv: { ...ctx.typeParamsEnv },
     typeAliases: { ...ctx.typeAliases },
-    topLevelDecls: [...ctx.topLevelDecls],
+    modules: ctx.modules,
   }),
   declareTypeAlias: (
     ctx: TypeContext,

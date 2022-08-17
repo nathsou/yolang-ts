@@ -550,9 +550,11 @@ const attribute = map(
 );
 const attributeList = map(seq(symbol('#'), alt(squareBrackets(commas(attribute)), map(attribute, attr => [attr]))), snd);
 
+const memberVisibility = optionalOrDefault(map(keyword('pub'), () => true), false);
+
 const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
   optionalOrDefault(attributeList, []),
-  optionalOrDefault(map(keyword('pub'), () => true), false),
+  memberVisibility,
   keyword('fun'),
   expectOrDefault(ident, `Expected identifier after 'fun' keyword`, '<?>'),
   scopedTypeParams(seq(
@@ -576,6 +578,7 @@ const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
 );
 
 const typeAliasDecl: Parser<Decl> = map(seq(
+  memberVisibility,
   keyword('type'),
   expectOrDefault(upperIdent, `Expected identifier after 'type' keyword`, '<?>'),
   scopedTypeParams(seq(
@@ -583,7 +586,7 @@ const typeAliasDecl: Parser<Decl> = map(seq(
     monoTy,
   ))
 ),
-  ([_t, name, [typeParams, [_eq, alias]]]) => Decl.TypeAlias({ name, typeParams, alias })
+  ([pub, _t, name, [typeParams, [_eq, alias]]]) => Decl.TypeAlias({ pub, name, typeParams, alias })
 );
 
 const importPath = map(
@@ -615,7 +618,7 @@ initParser(decl, alt(
   importDecl,
 ));
 
-export const parse = (tokens: Slice<TokenWithPos>): [Prog, ParserError[]] => {
+export const parse = (tokens: Slice<TokenWithPos>): [Decl[], ParserError[]] => {
   lexerContext.tokens = tokens.elems;
   const [res, _, errs] = consumeAll(many(decl)).ref(tokens);
   lexerContext.tokens = [];
