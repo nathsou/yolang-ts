@@ -591,7 +591,13 @@ const typeAliasDecl: Parser<Decl> = map(seq(
 
 const importPath = map(
   chainLeft(
-    map(ident, name => [name]),
+    map(seq(
+      optional(alt(
+        map(seq(symbol('.'), ident2('/')), () => './'),
+        map(seq(symbol('..'), ident2('/')), () => '../'),
+      )),
+      ident,
+    ), ([l, r]) => [l.orDefault('') + r]),
     ident2('/'),
     ident,
     (lhs, _, rhs) => [...lhs, rhs],
@@ -609,7 +615,7 @@ const importDecl = map(
     ),
     optional(symbol(';')),
   ),
-  ([_, path, imports]) => Decl.Import({ path, imports })
+  ([_, path, imports]) => Decl.Import({ path, resolvedPath: '', imports })
 );
 
 initParser(decl, alt(

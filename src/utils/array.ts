@@ -1,4 +1,5 @@
 import { Maybe, none, some } from "./maybe";
+import { pushRecord } from './misc';
 
 export const findRev = <T>(elems: T[], pred: (elem: T) => boolean): Maybe<T> => {
   for (let i = elems.length - 1; i >= 0; i--) {
@@ -91,4 +92,18 @@ export const deconsLast = <T>(vals: T[]): [T[], T] => {
 
 export const reverse = <T>(elems: T[]): T[] => {
   return [...elems].reverse();
+};
+
+export const groupBy = <T>(
+  elems: T[],
+  f: (elem: T) => string
+): Record<string, T[]> => {
+  const groups: Record<string, T[]> = {};
+
+  for (const elem of elems) {
+    const group = f(elem);
+    pushRecord(groups, group, elem);
+  }
+
+  return groups;
 };

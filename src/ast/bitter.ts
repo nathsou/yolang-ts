@@ -4,8 +4,6 @@ import { FuncDecl } from "../infer/env";
 import { Tuple } from "../infer/tuples";
 import { MonoTy, PolyTy, TypeParam } from "../infer/types";
 import { Const } from "../parse/token";
-import { FileSystem } from "../resolve/fileSystem";
-import { fullImportPath } from "../resolve/resolve";
 import { Either } from "../utils/either";
 import { Maybe, none, some } from "../utils/maybe";
 import { mapMap, pushMap } from "../utils/misc";
@@ -279,7 +277,7 @@ export const Decl = {
   TypeAlias,
   Import,
   Error: (message: string): Decl => ({ variant: 'Error', message }),
-  from: (decl: sweet.Decl, nameEnv: NameEnv, fs: FileSystem, errors: Error[]): Decl =>
+  from: (decl: sweet.Decl, nameEnv: NameEnv, errors: Error[]): Decl =>
     match(decl, {
       Function: ({ attributes, pub, name, typeParams, args, returnTy, body }) => {
         const nameRef = NameEnv.declareFunc(nameEnv, name);
@@ -299,7 +297,7 @@ export const Decl = {
         });
       },
       TypeAlias: ({ pub, name, typeParams, alias }) => Decl.TypeAlias({ pub, name, typeParams, alias }),
-      Import: ({ path, imports }) => Decl.Import({ path: fullImportPath(path, fs), imports }),
+      Import: ({ resolvedPath, imports }) => Decl.Import({ path: resolvedPath, imports }),
       Error: ({ message }) => Decl.Error(message),
     }),
   rewrite: (decl: Decl, nameEnv: NameEnv, rewriteExpr: (expr: Expr) => Expr): Decl => {
@@ -328,6 +326,7 @@ export type BitterConversionError = {
 };
 
 export type Module = {
+  name: string,
   path: string,
   decls: Decl[],
   members: Map<string, VariantOf<Decl, 'Function' | 'TypeAlias'>[]>,
@@ -336,9 +335,10 @@ export type Module = {
 };
 
 const Module = {
-  from: (mod: sweet.Module, nameEnv: NameEnv, fs: FileSystem, errors: Error[]): Module => {
-    const decls = mod.decls.map(d => Decl.from(d, nameEnv, fs, errors));
+  from: (mod: sweet.Module, nameEnv: NameEnv, errors: Error[]): Module => {
+    const decls = mod.decls.map(d => Decl.from(d, nameEnv, errors));
     const bitterMod: Module = {
+      name: mod.name,
       path: mod.path,
       decls,
       imports: mod.imports,
@@ -369,10 +369,10 @@ export type Prog = {
 };
 
 export const Prog = {
-  from: (prog: sweet.Prog, fs: FileSystem): [prog: Prog, errors: Error[]] => {
+  from: (prog: sweet.Prog): [prog: Prog, errors: Error[]] => {
     const nameEnv = NameEnv.make();
     const errors: Error[] = [];
-    const bitterModules = mapMap(prog.modules, m => Module.from(m, nameEnv, fs, errors));
+    const bitterModules = mapMap(prog.modules, m => Module.from(m, nameEnv, errors));
     const bitterProg: Prog = {
       modules: bitterModules,
       nameEnv,

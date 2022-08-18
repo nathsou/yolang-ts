@@ -464,11 +464,6 @@ const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void => {
         const genFunTy = MonoTy.generalize(ctx.env, funTy);
         f.funTy = genFunTy;
       });
-
-      const overloadsCount = Env.lookupFuncs(ctx.env, name.original).length;
-      if (overloadsCount > 1 && !name.mangled.includes('[')) {
-        name.mangled += `[${overloadsCount}]`;
-      }
     },
     TypeAlias: ({ name, typeParams, alias }) => {
       TypeContext.declareTypeAlias(ctx, name, typeParams, alias);

@@ -8,5 +8,6 @@ export type FileSystem = {
   readDir: (path: string) => Promise<File[]>,
   readFile: (path: string) => Promise<string>,
   resolve: (...paths: string[]) => string,
+  parentDir: (path: string) => string,
   stdPath: string,
 };

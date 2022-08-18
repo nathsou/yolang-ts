@@ -56,7 +56,7 @@ export const withPos = (token: Token, pos: Position): TokenWithPos => ({
 
 const symbols = [
   '->', '=>', '(', ')', ',', ';', '{', '}',
-  '[', ']', ':', '.', '\'', '"', '_', '...', '#',
+  '[', ']', ':', '.', '\'', '"', '_', '..', '...', '#',
 ] as const;
 
 export const operators = new Set([

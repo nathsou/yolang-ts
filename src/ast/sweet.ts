@@ -199,7 +199,7 @@ export type Decl = DataType<{
   TypeAlias: {
     pub: boolean, name: string, typeParams: TypeParam[], alias: MonoTy
   },
-  Import: { path: string, imports: Imports },
+  Import: { readonly path: string, resolvedPath: string, imports: Imports },
   Error: { message: string },
 }>;
 
@@ -217,6 +217,7 @@ export const Decl = {
 };
 
 export type Module = {
+  name: string,
   path: string,
   decls: Decl[],
   members: Map<string, VariantOf<Decl, 'Function' | 'TypeAlias'>[]>,

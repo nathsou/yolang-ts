@@ -63,7 +63,7 @@ const run = async (source: string): Promise<boolean> => {
     console.log(sweet.Prog.show(sweetProg) + '\n');
   }
 
-  const [prog, errs2] = bitter.Prog.from(sweetProg, nfs);
+  const [prog, errs2] = bitter.Prog.from(sweetProg);
 
   if (errs2.length > 0) {
     logErrors(errs2);

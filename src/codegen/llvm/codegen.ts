@@ -31,17 +31,13 @@ const LexicalScope = {
 
 type Struct = { row: Row, fields: Record<string, number>, ty: LLVM.StructType };
 
-const getModuleName = (path: string) => {
-  return last(path.split('/')).replace('.yo', '');
-};
-
 export const createLLVMCompiler = async () => {
   const llvm = await import('llvm-bindings');
 
   function compileModule(module: Module, modules: Map<string, Module>): LLVM.Module {
     const context = new llvm.LLVMContext();
     const mod = new llvm.Module(module.path, context);
-    mod.setModuleIdentifier(getModuleName(module.path));
+    mod.setModuleIdentifier(module.name);
     mod.setSourceFileName(module.path);
     const builder = new llvm.IRBuilder(context);
     const scopes: LexicalScope[] = [];
@@ -468,7 +464,7 @@ export const createLLVMCompiler = async () => {
     });
 
     // link all the modules together
-    const linkedFile = `${outDir}/_linked.bc`;
+    const linkedFile = `${outDir}/main.linked.bc`;
     const linkCommand = [
       'llvm-link',
       ...byteCodeFiles,

@@ -3,6 +3,7 @@ import { Module, Prog } from "../ast/sweet";
 import { Error } from "../errors/errors";
 import { lex } from '../parse/lex';
 import { parse } from '../parse/parse';
+import { groupBy, last } from '../utils/array';
 import { block, pushMap } from '../utils/misc';
 import { Slice } from '../utils/slice';
 import { FileSystem } from "./fileSystem";
@@ -18,13 +19,28 @@ const { UnknownMember, MemberIsNotPublic } = genConstructors<ResolutionError>([
 ]);
 
 const ext = 'yo';
-export const fullImportPath = (path: string, fs: FileSystem) => fs.resolve(block(() => {
+const fullImportPath = (path: string, dir: string, fs: FileSystem) => fs.resolve(block(() => {
   if (path.startsWith('.')) {
-    return `${path}.${ext}`;
+    return `${dir}/${path}.${ext}`;
   }
 
   return `${fs.stdPath}/${path}.${ext}`;
 }));
+
+const fileName = (path: string): string => {
+  return last(path.split('/')).replace('.yo', '');
+};
+
+const renameModules = (modules: Module[]): void => {
+  const names = groupBy(modules, m => fileName(m.path));
+
+  for (const [name, mods] of Object.entries(names)) {
+    mods.forEach((mod, index) => {
+      const suffix = mods.length === 1 ? '' : `${index}`;
+      mod.name = name + suffix;
+    });
+  }
+};
 
 export const resolve = async (path: string, fs: FileSystem): Promise<[Prog, Error[]]> => {
   const errors: Error[] = [];
@@ -37,6 +53,7 @@ export const resolve = async (path: string, fs: FileSystem): Promise<[Prog, Erro
     }
 
     const mod: Module = {
+      name: 'tmp',
       path: resolvedPath,
       decls: [],
       members: new Map(),
@@ -50,8 +67,10 @@ export const resolve = async (path: string, fs: FileSystem): Promise<[Prog, Erro
 
     for (const decl of decls) {
       await match(decl, {
-        Import: async ({ path: importPath, imports }) => {
-          const fullPath = fullImportPath(importPath, fs);
+        Import: async imp => {
+          const { imports, path: importPath } = imp;
+          const fullPath = fullImportPath(importPath, fs.parentDir(path), fs);
+          imp.resolvedPath = fullPath;
           const importedMod = await aux(fullPath);
           const importedMembers = new Set<string>();
           mod.imports.set(fullPath, importedMembers);
@@ -101,6 +120,9 @@ export const resolve = async (path: string, fs: FileSystem): Promise<[Prog, Erro
   };
 
   const mod = await aux(path);
+
+  renameModules([...modules.values()]);
+
   const prog: Prog = {
     modules,
     entry: mod,
