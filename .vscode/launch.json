@@ -10,7 +10,7 @@
       "name": "Launch Program",
       "program": "${workspaceFolder}/src/main.ts",
       "args": [
-        "examples/id.yo"
+        "examples/lab.yo"
       ],
       "outFiles": [
         "${workspaceFolder}/build/yolang.js"

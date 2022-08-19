@@ -273,6 +273,22 @@ const inferExpr = (
 
       unify(tau, funTy);
     },
+    Array: ({ init, elemTy }) => {
+      match(init, {
+        elems: ({ elems }) => {
+          elems.forEach(elem => {
+            inferExpr(elem, ctx, errors);
+            unify(elem.ty, elemTy);
+          });
+        },
+        fill: ({ value }) => {
+          inferExpr(value, ctx, errors);
+          unify(value.ty, elemTy);
+        },
+      });
+
+      unify(tau, MonoTy.Array(elemTy));
+    },
     Tuple: ({ elements }) => {
       elements.forEach(e => {
         inferExpr(e, ctx, errors);
@@ -327,7 +343,7 @@ const inferExpr = (
     },
     Struct: ({ name, typeParams, fields }) => {
       TypeContext.resolveTypeAlias(ctx, name).match({
-        Some: ([ty]) => {
+        Some: ({ ty }) => {
           if (ty.variant !== 'Struct') {
             errors.push(Error.Typing({ type: 'UndeclaredStruct', name }));
           } else {
@@ -471,7 +487,7 @@ const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void => {
     Import: ({ path, imports }) => {
       const mod = ctx.modules.get(path)!;
       if (!mod.typeChecked) {
-        inferModule(mod, ctx.modules, errors);
+        inferModule(mod, errors);
         mod.typeChecked = true;
       }
 
@@ -508,13 +524,14 @@ const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void => {
   });
 };
 
-const inferModule = (mod: Module, modules: Map<string, Module>, errors: Error[]): TypeContext => {
-  const ctx = TypeContext.make(modules);
-  mod.decls.forEach(decl => {
-    inferDecl(decl, ctx, errors);
-  });
+const inferModule = (mod: Module, errors: Error[]): void => {
+  if (!mod.typeChecked) {
+    mod.decls.forEach(decl => {
+      inferDecl(decl, mod.typeContext, errors);
+    });
 
-  return ctx;
+    mod.typeChecked = true;
+  }
 };
 
 export const infer = (prog: Prog): Error[] => {
@@ -522,7 +539,7 @@ export const infer = (prog: Prog): Error[] => {
 
   // build dependency graph (in resolve?) and check for circular dependencies
   for (const mod of prog.modules.values()) {
-    inferModule(mod, prog.modules, errors);
+    inferModule(mod, errors);
   }
 
   return errors;

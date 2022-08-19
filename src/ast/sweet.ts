@@ -46,6 +46,19 @@ export const Attribute = {
   },
 };
 
+export type ArrayInit = DataType<{
+  elems: { elems: Expr[] },
+  fill: { value: Expr, count: number },
+}>;
+
+export const ArrayInit = {
+  ...genConstructors<ArrayInit>(['elems', 'fill']),
+  show: (init: ArrayInit): string => match(init, {
+    elems: ({ elems }) => `[${elems.map(Expr.show).join(', ')}]`,
+    fill: ({ value, count }) => `[${Expr.show(value)}; ${count}]`,
+  }),
+};
+
 export type Expr = DataType<{
   Const: { value: Const },
   Variable: { name: string },
@@ -57,6 +70,7 @@ export type Expr = DataType<{
   Assignment: { lhs: Expr, rhs: Expr },
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
+  Array: { init: ArrayInit },
   Match: { expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[] },
   Parenthesized: { expr: Expr },
   Struct: { name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
@@ -76,6 +90,7 @@ export const Expr = {
   Assignment: (lhs: Expr, rhs: Expr): Expr => ({ variant: 'Assignment', lhs, rhs }),
   FieldAccess: (lhs: Expr, field: string): Expr => ({ variant: 'FieldAccess', lhs, field }),
   Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
+  Array: (init: ArrayInit): Expr => ({ variant: 'Array', init }),
   Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[]): Expr => ({ variant: 'Match', annotation, expr, cases }),
   Parenthesized: (expr: Expr): Expr => ({ variant: 'Parenthesized', expr }),
   Struct: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[]): Expr => ({ variant: 'Struct', name, typeParams, fields }),
@@ -111,6 +126,7 @@ export const Expr = {
     Assignment: ({ lhs, rhs }) => `${Expr.show(lhs)} = ${Expr.show(rhs)}`,
     FieldAccess: ({ lhs, field }) => `${Expr.show(lhs)}.${field}`,
     Tuple: ({ elements }) => `(${joinWith(elements, Expr.show, ', ')})`,
+    Array: ({ init }) => ArrayInit.show(init),
     Match: ({ expr, cases }) => `match ${Expr.show(expr)} {\n${joinWith(cases, ({ pattern, body }) => `  ${Pattern.show(pattern)} => ${Expr.show(body)}\n`, '\n')}\n}`,
     Parenthesized: ({ expr }) => `(${Expr.show(expr)})`,
     Struct: ({ name, typeParams, fields }) => `${name} <${joinWith(typeParams, MonoTy.show, ', ')}> {\n${joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, ', ')}\n}`,

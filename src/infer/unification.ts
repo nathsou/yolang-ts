@@ -1,15 +1,14 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { match, P } from "ts-pattern";
 import { Error } from "../errors/errors";
-import { zip } from "../utils/array";
 import { Maybe, none } from "../utils/maybe";
-import { panic, proj } from "../utils/misc";
+import { panic } from "../utils/misc";
 import { Result } from "../utils/result";
 import { Row } from "./structs";
 import { Subst } from "./subst";
 import { Tuple } from "./tuples";
-import { TypeContext } from "./typeContext";
-import { MonoTy, TypeParam, TyVar } from "./types";
+import { TypeAlias, TypeContext } from "./typeContext";
+import { MonoTy, TyVar } from "./types";
 
 export type UnificationError = DataType<{
   RecursiveType: { s: MonoTy, t: MonoTy },
@@ -52,12 +51,12 @@ const unifyMany = (
   };
 
   const instantiateGenericTyConst = (c: VariantOf<MonoTy, 'Const'>): Maybe<MonoTy> => {
-    const resolveTypeAlias = (ty: VariantOf<MonoTy, 'Const'>): Maybe<{ ty: MonoTy, params: TypeParam[] }> => {
+    const resolveTypeAlias = (ty: VariantOf<MonoTy, 'Const'>): Maybe<TypeAlias> => {
       if (MonoTy.isPrimitive(ty)) {
         return none;
       }
 
-      const res = TypeContext.resolveTypeAlias(ctx, ty.name).map(([ty, params]) => ({ ty, params }));
+      const res = TypeContext.resolveTypeAlias(ctx, ty.name);
       if (res.isNone()) {
         errors.push(Error.Unification({ type: 'CouldNotResolveType', ty }));
       }
@@ -69,9 +68,8 @@ const unifyMany = (
     // if the type parameters environment contains this Const name
     // then interpret it as a type parameter
     const typeParam = TypeContext.resolveTypeParam(ctx, c.name);
-    const typeAlias = () => resolveTypeAlias(c).map(({ ty: genericTy, params }) => {
-      const subst = new Map<string, MonoTy>(zip(params.map(proj('name')), c.args));
-      return MonoTy.substituteTyParams(genericTy, subst);
+    const typeAlias = () => resolveTypeAlias(c).map(ta => {
+      return TypeContext.instantiateTypeAlias(ctx, ta, c.args);
     });
 
     return typeParam.or(typeAlias);

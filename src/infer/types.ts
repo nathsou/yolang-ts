@@ -2,7 +2,7 @@ import { DataType, match, matchMany } from "itsamatch";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
 import { Maybe } from "../utils/maybe";
-import { cond, panic, parenthesized, proj } from "../utils/misc";
+import { block, cond, panic, parenthesized, proj } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./structs";
@@ -27,7 +27,7 @@ export type MonoTy = DataType<{
   Const: { name: string, args: MonoTy[] },
   Fun: { args: MonoTy[], ret: MonoTy },
   Tuple: { tuple: Tuple },
-  Struct: { name?: string, row: Row },
+  Struct: { name?: string, params: MonoTy[], row: Row },
 }>;
 
 export const showTyVarId = (n: TyVarId): string => {
@@ -43,8 +43,10 @@ export const MonoTy = {
   Param: (name: string): MonoTy => ({ variant: 'Param', name }),
   Const: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', name, args }),
   Fun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'Fun', args, ret }),
+  Ptr: (ty: MonoTy): MonoTy => MonoTy.Const('ptr', ty),
+  Array: (elemTy: MonoTy): MonoTy => MonoTy.Const('Array', elemTy),
   Tuple: (tuple: Tuple): MonoTy => ({ variant: 'Tuple', tuple }),
-  Struct: (fields: Readonly<Row>, name?: string): MonoTy => ({ variant: 'Struct', name, row: fields }),
+  Struct: (fields: Readonly<Row>, name?: string, params: MonoTy[] = []): MonoTy => ({ variant: 'Struct', name, params, row: fields }),
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
   u32: () => MonoTy.Const('u32'),
   i32: () => MonoTy.Const('i32'),
@@ -52,7 +54,7 @@ export const MonoTy = {
   i64: () => MonoTy.Const('i64'),
   bool: () => MonoTy.Const('bool'),
   unit: () => MonoTy.Const('()'),
-  primitiveTypes: new Set(['u32', 'i32', 'u64', 'i64', 'bool', '()']),
+  primitiveTypes: new Set(['u32', 'i32', 'u64', 'i64', 'bool', '()', 'ptr']),
   isPrimitive: (ty: MonoTy): boolean => ty.variant === 'Const' && MonoTy.primitiveTypes.has(ty.name),
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
     match(ty, {
@@ -193,7 +195,13 @@ export const MonoTy = {
 
         return subst.get(name)!;
       },
-      Const: ({ name, args }) => MonoTy.Const(name, ...args.map(a => MonoTy.substituteTyParams(a, subst))),
+      Const: ({ name, args }) => {
+        if (subst.has(name) && args.length === 0) {
+          return subst.get(name)!;
+        }
+
+        return MonoTy.Const(name, ...args.map(a => MonoTy.substituteTyParams(a, subst)));
+      },
       Fun: ({ args, ret }) => MonoTy.Fun(
         args.map(a => MonoTy.substituteTyParams(a, subst)),
         MonoTy.substituteTyParams(ret, subst)
@@ -219,7 +227,14 @@ export const MonoTy = {
     Param: ({ name }) => `?${name}`,
     Const: ({ name, args }) => cond(args.length === 0, {
       then: () => name,
-      else: () => `${name}<${joinWith(args, MonoTy.show, ', ')}>`,
+      else: () => block(() => {
+        switch (name) {
+          case 'Array':
+            return `${MonoTy.show(args[0])}[]`;
+          default:
+            return `${name}<${joinWith(args, MonoTy.show, ', ')}>`
+        }
+      }),
     }),
     Fun: ({ args, ret }) => {
       const showParens = args.length !== 1 || (
@@ -230,9 +245,13 @@ export const MonoTy = {
       return `${parenthesized(joinWith(args, MonoTy.show, ', '), showParens)} -> ${MonoTy.show(ret)}`;
     },
     Tuple: ({ tuple }) => Tuple.show(tuple),
-    Struct: ({ row, name }) => {
+    Struct: ({ row, name, params }) => {
       if (name != null) {
-        return name;
+        if (params.length > 0) {
+          return `${name}<${params.map(MonoTy.show).join(', ')}>`;
+        } else {
+          return name;
+        }
       }
 
       if (row.type === 'empty') {

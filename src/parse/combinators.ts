@@ -1,5 +1,5 @@
 import { Maybe, none, some } from "../utils/maybe";
-import { panic, Ref, ref, snd } from "../utils/misc";
+import { fst, panic, Ref, ref, snd } from "../utils/misc";
 import { error, ok, Result } from "../utils/result";
 import { Slice } from "../utils/slice";
 import { ident } from "./lex";
@@ -209,8 +209,14 @@ export const chainLeft = <L, Op, R>(
   return leftAssoc(l, seq(op, r), (lhs, [op, rhs]) => combine(lhs, op, rhs));
 };
 
-export const sepBy = <S>(sep: Parser<S>) => <T>(p: Parser<T>): Parser<T[]> => {
-  return map(seq(p, many(seq(sep, p))), ([h, tl]) => [h, ...tl.map(snd)]);
+export const sepBy = <S>(sep: Parser<S>) => <T>(p: Parser<T>, allowEmpty = false): Parser<T[]> => {
+  const base = map(seq(p, many(seq(sep, p)), optional(sep)), ([h, tl]) => [h, ...tl.map(snd)]);
+
+  if (allowEmpty) {
+    return alt(base, map(yes(), () => []));
+  }
+
+  return base;
 };
 
 export const commas = sepBy(symbol(','));
@@ -351,6 +357,12 @@ export const effect = <T>(p: Parser<T>, action: (data: T, tokens: Slice<Token>) 
   return map(p, (data, tokens) => {
     action(data, tokens);
     return data;
+  });
+};
+
+export const yes = (): Parser<undefined> => {
+  return ref(tokens => {
+    return [ok(undefined), tokens, []];
   });
 };
 

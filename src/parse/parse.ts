@@ -1,5 +1,5 @@
 import { match, VariantOf } from 'itsamatch';
-import { Argument, Attribute, Decl, Expr, Imports, Pattern, Prog, Stmt } from '../ast/sweet';
+import { Argument, ArrayInit, Attribute, Decl, Expr, Imports, Pattern, Stmt } from '../ast/sweet';
 import { Row } from '../infer/structs';
 import { Tuple } from '../infer/tuples';
 import { MonoTy, TypeParam } from '../infer/types';
@@ -9,7 +9,7 @@ import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, pos, satisfy, satisfyBy, seq, squareBrackets, symbol, uninitialized } from './combinators';
+import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, pos, satisfy, satisfyBy, seq, squareBrackets, symbol, uninitialized, yes } from './combinators';
 import { Const, Token, TokenWithPos } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -92,8 +92,8 @@ const i64Ty = map(ident2('i64'), () => MonoTy.Const('i64'));
 const constTy = alt(unitTy, boolTy, u32Ty, i32Ty, u64Ty, i64Ty);
 const namedTy = map(
   seq(
-    upperIdent,
-    optionalOrDefault(angleBrackets(optionalOrDefault(commas(monoTy), [])), []),
+    alt(upperIdent, stringIn('ptr')),
+    optionalOrDefault(angleBrackets(commas(monoTy)), []),
   ),
   ([name, args]) => MonoTy.Const(name, ...args),
 );
@@ -108,11 +108,11 @@ const tupleTy = map(
 );
 
 export const structTy = map(
-  curlyBrackets(optionalOrDefault(commas(seq(
+  curlyBrackets(commas(seq(
     ident,
     symbol(':'),
     expectOrDefault(monoTy, `Expected type in struct type after ':'`, MonoTy.Const('()')),
-  )), [])),
+  ), true)),
   fields => MonoTy.Struct(Row.fromFields(fields.map(([name, _, ty]) => [name, ty]), false))
 );
 
@@ -262,6 +262,16 @@ export const tuple = alt(
   app
 );
 
+const array = alt(
+  map(squareBrackets(
+    alt<ArrayInit>(
+      map(seq(expr, symbol(';'), integerConst), ([value, _, count]) => ArrayInit.fill({ value, count: count.value })),
+      map(commas(expr, true), elems => ArrayInit.elems({ elems })),
+    )
+  ), init => Expr.Array(init)),
+  tuple
+);
+
 const structField = map(seq(
   expectOrDefault(ident, `Expected field name`, '<?>'),
   expectOrDefault(symbol(':'), `Expected ':' after field name`, Token.Symbol(':')),
@@ -278,7 +288,7 @@ const namedStruct = alt(
   ),
     ([name, params, fields]) => Expr.Struct(name, params, fields)
   ),
-  tuple
+  array
 );
 
 // field access or method call or tuple indexing

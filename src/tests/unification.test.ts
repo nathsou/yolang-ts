@@ -10,7 +10,7 @@ import { none } from "../utils/maybe";
 import { Arb } from './arbitraries/arb';
 
 const testContext = (() => {
-  const ctx = TypeContext.make([]);
+  const ctx = TypeContext.make(new Map());
   TypeContext.declareTypeAlias(ctx, 'Yolo', [], MonoTy.u32());
   TypeContext.declareTypeAlias(ctx, 'Hola', [], MonoTy.bool());
   const pairTy = MonoTy.Tuple(Tuple.fromArray([MonoTy.Param('A'), MonoTy.Param('B')]));
@@ -90,7 +90,7 @@ describe('unifyMut', () => {
   });
 
   it('should fail to resolve undeclared type aliases', () => {
-    const emptyCtx = TypeContext.make([]);
+    const emptyCtx = TypeContext.make(new Map());
     const errs = unify(MonoTy.Const('Hola'), MonoTy.Const('u32'), emptyCtx);
     expect(errs.length).toBeGreaterThan(1);
     expect(errs[0]).toMatchObject(Error.Unification({
@@ -194,7 +194,7 @@ describe('unifyPure', () => {
     const ty1 = MonoTy.Tuple(Tuple.fromArray([tv1, tv2]));
     const ty2 = MonoTy.Tuple(Tuple.fromArray([MonoTy.bool(), MonoTy.u32()]));
 
-    const res = unifyPure(ty1, ty2, TypeContext.make([]));
+    const res = unifyPure(ty1, ty2, TypeContext.make(new Map()));
 
     expect(res.isOk()).toBeTruthy();
     expect(tv1).toMatchObject(MonoTy.Var({ kind: 'Unbound', id: 0 }));

@@ -2,6 +2,7 @@ import { DataType, genConstructors, match, VariantOf } from "itsamatch";
 import { Error } from "../errors/errors";
 import { FuncDecl } from "../infer/env";
 import { Tuple } from "../infer/tuples";
+import { TypeContext } from "../infer/typeContext";
 import { MonoTy, PolyTy, TypeParam } from "../infer/types";
 import { Const } from "../parse/token";
 import { Either } from "../utils/either";
@@ -61,6 +62,19 @@ export const Argument = {
   asMonoTy: ({ annotation }: Argument): MonoTy => annotation.orDefault(MonoTy.fresh),
 };
 
+export type ArrayInit = DataType<{
+  elems: { elems: Expr[] },
+  fill: { value: Expr, count: number },
+}>;
+
+export const ArrayInit = {
+  ...genConstructors<ArrayInit>(['elems', 'fill']),
+  len: (init: ArrayInit): number => match(init, {
+    elems: ({ elems }) => elems.length,
+    fill: ({ count }) => count,
+  }),
+};
+
 export type Expr = DataType<WithSweetRefAndType<{
   Const: { value: Const },
   Variable: { name: VarName },
@@ -72,6 +86,7 @@ export type Expr = DataType<WithSweetRefAndType<{
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
   Assignment: { lhs: Expr, rhs: Expr },
   FieldAccess: { lhs: Expr, field: string },
+  Array: { init: ArrayInit, elemTy: MonoTy },
   Tuple: { elements: Expr[] },
   Match: { expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[] },
   Struct: { name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
@@ -96,6 +111,7 @@ export const Expr = {
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>, sweet: sweet.Expr): Expr => typed({ variant: 'IfThenElse', condition, then, else_ }, sweet),
   Assignment: (lhs: Expr, rhs: Expr, sweet: sweet.Expr): Expr => typed({ variant: 'Assignment', lhs, rhs }, sweet),
   FieldAccess: (lhs: Expr, field: string, sweet: sweet.Expr): Expr => typed({ variant: 'FieldAccess', lhs, field }, sweet),
+  Array: (init: ArrayInit, sweet: sweet.Expr): Expr => typed({ variant: 'Array', init, elemTy: MonoTy.fresh() }, sweet),
   Tuple: (elements: Expr[], sweet: sweet.Expr): Expr => typed({ variant: 'Tuple', elements }, sweet),
   Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[], sweet: sweet.Expr): Expr => typed({ variant: 'Match', expr, annotation, cases }, sweet),
   Struct: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], sweet: sweet.Expr): Expr => typed({ variant: 'Struct', name, typeParams, fields }, sweet),
@@ -129,6 +145,10 @@ export const Expr = {
       IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(go), sweet),
       Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs), sweet),
       FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field, sweet),
+      Array: ({ init }) => Expr.Array(match(init, {
+        elems: ({ elems }) => ArrayInit.elems({ elems: elems.map(e => go(e)) }),
+        fill: ({ value, count }) => ArrayInit.fill({ count, value: go(value) }),
+      }), sweet),
       Tuple: ({ elements }) => Expr.Tuple(elements.map(e => go(e)), sweet),
       Match: ({ expr, annotation, cases }) => Expr.Match(
         go(expr),
@@ -173,6 +193,10 @@ export const Expr = {
       IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(go), expr.sweet),
       Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs), expr.sweet),
       FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field, expr.sweet),
+      Array: ({ init }) => Expr.Array(match(init, {
+        elems: ({ elems }) => ArrayInit.elems({ elems: elems.map(e => go(e)) }),
+        fill: ({ value, count }) => ArrayInit.fill({ count, value: go(value) }),
+      }), expr.sweet),
       Tuple: ({ elements }) => Expr.Tuple(elements.map(e => go(e)), expr.sweet),
       Match: ({ expr, annotation, cases }) => Expr.Match(go(expr), annotation, cases.map(c => ({ ...c, body: go(c.body) })), expr.sweet),
       Struct: ({ name, typeParams, fields }) => Expr.Struct(name, typeParams, fields.map(f => ({ ...f, value: go(f.value) })), expr.sweet),
@@ -239,7 +263,12 @@ export type Decl = DataType<{
     funTy: PolyTy,
     instances: FuncDecl[],
   },
-  TypeAlias: { pub: boolean, name: string, typeParams: TypeParam[], alias: MonoTy },
+  TypeAlias: {
+    pub: boolean,
+    name: string,
+    typeParams: TypeParam[],
+    alias: MonoTy,
+  },
   Import: { path: string, imports: sweet.Imports },
   Error: { message: string },
 }>;
@@ -314,7 +343,12 @@ export const Decl = {
           body: body.map(b => Expr.rewrite(b, bodyEnv, rewriteExpr)),
         });
       },
-      TypeAlias: ({ pub, name, typeParams, alias }) => Decl.TypeAlias({ pub, name, typeParams, alias }),
+      TypeAlias: ({ pub, name, typeParams, alias }) => Decl.TypeAlias({
+        pub,
+        name,
+        typeParams,
+        alias,
+      }),
       Import: ({ path, imports }) => Decl.Import({ path, imports }),
       Error: ({ message }) => Decl.Error(message),
     });
@@ -331,11 +365,12 @@ export type Module = {
   decls: Decl[],
   members: Map<string, VariantOf<Decl, 'Function' | 'TypeAlias'>[]>,
   imports: Map<string, Set<string>>,
+  typeContext: TypeContext,
   typeChecked: boolean,
 };
 
 const Module = {
-  from: (mod: sweet.Module, nameEnv: NameEnv, errors: Error[]): Module => {
+  from: (mod: sweet.Module, modules: Map<string, Module>, nameEnv: NameEnv, errors: Error[]): Module => {
     const decls = mod.decls.map(d => Decl.from(d, nameEnv, errors));
     const bitterMod: Module = {
       name: mod.name,
@@ -343,6 +378,7 @@ const Module = {
       decls,
       imports: mod.imports,
       members: new Map(),
+      typeContext: TypeContext.make(modules),
       typeChecked: false,
     };
 
@@ -372,7 +408,12 @@ export const Prog = {
   from: (prog: sweet.Prog): [prog: Prog, errors: Error[]] => {
     const nameEnv = NameEnv.make();
     const errors: Error[] = [];
-    const bitterModules = mapMap(prog.modules, m => Module.from(m, nameEnv, errors));
+    const bitterModules = new Map<string, Module>();
+
+    for (const [path, mod] of prog.modules) {
+      bitterModules.set(path, Module.from(mod, bitterModules, nameEnv, errors));
+    }
+
     const bitterProg: Prog = {
       modules: bitterModules,
       nameEnv,
