@@ -1,8 +1,9 @@
-import std/ops
 import std/arrays
+
+#meta(getUnchecked)
+fun getUnchecked<T>(elems: ptr<T>, index: u32): T
 
 fun main() {
   let a = [1, 2, 3, 4, 5, 6, 7]
-  let b = [3; 17]
-  a.len + b.len
+  a.data.getUnchecked(4u32)
 }

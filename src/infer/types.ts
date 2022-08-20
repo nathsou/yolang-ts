@@ -303,6 +303,11 @@ export type PolyTy = [TyVarId[], MonoTy];
 export const PolyTy = {
   make: (quantifiedVars: TyVarId[], monoTy: MonoTy): PolyTy => [quantifiedVars, monoTy],
   fresh: () => MonoTy.toPoly(MonoTy.fresh()),
+  from: (tyParams: string[], ty: MonoTy): PolyTy => {
+    const quantified = tyParams.map(Context.freshTyVarIndex);
+    const subst = new Map(zip(tyParams, quantified.map(id => MonoTy.Var(TyVar.Unbound(id)))));
+    return PolyTy.make(quantified, MonoTy.substituteTyParams(ty, subst));
+  },
   instantiate: ([quantifiedVars, ty]: PolyTy) => {
     // replace all bound type variables with fresh type variables
     const subst = new Map<TyVarId, MonoTy>();
@@ -353,7 +358,7 @@ export const PolyTy = {
       Unbound: ({ id }) => vars.includes(id),
       Link: ({ to }) => PolyTy.isDetermined([vars, to]),
     }, 'kind'),
-    Const: () => true,
+    Const: ({ args }) => args.every(a => PolyTy.isDetermined([vars, a])),
     Fun: ({ args, ret }) => args.every(arg => PolyTy.isDetermined([vars, arg])) && PolyTy.isDetermined([vars, ret]),
     Tuple: ({ tuple }) => Tuple.toArray(tuple).every(t => PolyTy.isDetermined([vars, t])),
     Struct: ({ row }) => Row.fields(row).every(([, ty]) => PolyTy.isDetermined([vars, ty])),

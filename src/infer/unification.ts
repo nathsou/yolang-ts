@@ -69,7 +69,7 @@ const unifyMany = (
     // then interpret it as a type parameter
     const typeParam = TypeContext.resolveTypeParam(ctx, c.name);
     const typeAlias = () => resolveTypeAlias(c).map(ta => {
-      return TypeContext.instantiateTypeAlias(ctx, ta, c.args);
+      return TypeContext.instantiateTypeAlias(ta, c.args);
     });
 
     return typeParam.or(typeAlias);

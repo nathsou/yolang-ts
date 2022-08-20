@@ -4,12 +4,12 @@ import { ArrayInit, Decl, Expr, Module, Prog, Stmt } from '../../ast/bitter';
 import { VarName } from '../../ast/name';
 import * as sweet from '../../ast/sweet';
 import { Row } from '../../infer/structs';
-import { TypeAliasInstance, TypeContext } from '../../infer/typeContext';
-import { MonoTy } from '../../infer/types';
+import { TypeContext } from '../../infer/typeContext';
+import { MonoTy, PolyTy } from '../../infer/types';
 import { Const } from '../../parse/token';
 import { gen, last, zip } from '../../utils/array';
 import { Maybe, none, some } from '../../utils/maybe';
-import { assert, matchString, panic, pushMap } from '../../utils/misc';
+import { assert, matchString, panic, proj, pushMap } from '../../utils/misc';
 import { meta } from './attributes';
 
 type LocalVar =
@@ -46,7 +46,6 @@ export const createLLVMCompiler = async () => {
     const unit = Expr.Const(Const.unit(), sweet.Expr.Const(Const.unit()));
     const unitTy = MonoTy.Const('()');
     const funcs = new Map<string, LLVM.Function>();
-    const structs = new Map<string, Struct[]>();
 
     type ResolvedVar =
       | { kind: 'immut', value: LLVM.Value, ty: MonoTy }
@@ -88,10 +87,12 @@ export const createLLVMCompiler = async () => {
       }
     }
 
-    function structFieldPointer(struct: Struct, structPtr: LLVM.Value, field: string): LLVM.Value {
-      const fieldIndex = builder.getInt32(struct.fields[field]);
+    function structFieldPointer(struct: VariantOf<MonoTy, 'Struct'>, structPtr: LLVM.Value, field: string): LLVM.Value {
+      const index = Row.fields(struct.row).findIndex(([name]) => name === field);
+      assert(index >= 0);
+      const fieldIndex = builder.getInt32(index);
       return builder.CreateInBoundsGEP(
-        struct.ty,
+        llvmTy(struct),
         structPtr,
         [builder.getInt32(0), fieldIndex],
         field,
@@ -108,6 +109,16 @@ export const createLLVMCompiler = async () => {
 
     function createUnit(): LLVM.Value {
       return compileExpr(unit);
+    }
+
+    function resolveStruct(name: string, typeParams: MonoTy[]): Maybe<VariantOf<MonoTy, 'Struct'>> {
+      const ta = TypeContext.resolveTypeAlias(module.typeContext, name);
+
+      return ta.map(({ ty, params }) => {
+        assert(ty.variant === 'Struct');
+        const subst = new Map(zip(params.map(proj('name')), typeParams));
+        return MonoTy.substituteTyParams(ty, subst) as VariantOf<MonoTy, 'Struct'>;
+      });
     }
 
     function compileExpr(expr: Expr): llvm.Value {
@@ -215,12 +226,8 @@ export const createLLVMCompiler = async () => {
             FieldAccess: ({ lhs, field }) => {
               const structTy = MonoTy.deref(lhs.ty);
               assert(structTy.variant === 'Struct');
-              llvmTy(structTy); // resolve the struct type name
-              assert(structTy.name != null);
-              assert(structs.has(structTy.name));
-              const struct = resolveStruct(structTy.name, []).unwrap('resolveStruct');
               const structPtr = compileExpr(lhs);
-              const fieldPtr = structFieldPointer(struct, structPtr, field);
+              const fieldPtr = structFieldPointer(structTy, structPtr, field);
               const value = compileExpr(rhs);
 
               builder.CreateStore(value, fieldPtr);
@@ -230,9 +237,8 @@ export const createLLVMCompiler = async () => {
           });
         },
         Struct: ({ name, fields, typeParams }) => {
-          assert(structs.has(name), 'unknown struct');
           const struct = resolveStruct(name, typeParams).unwrap('resolveStruct');
-          const structPtr = builder.CreateAlloca(struct.ty, null, name);
+          const structPtr = builder.CreateAlloca(llvmTy(struct), null, name);
 
           fields.forEach(({ name, value }) => {
             const fieldPtr = structFieldPointer(struct, structPtr, name);
@@ -244,12 +250,8 @@ export const createLLVMCompiler = async () => {
         FieldAccess: ({ lhs, field, ty }) => {
           const structTy = MonoTy.deref(lhs.ty);
           assert(structTy.variant === 'Struct');
-          llvmTy(structTy); // resolve the struct type name
-          assert(structTy.name != null);
-          assert(structs.has(structTy.name));
-          const struct = resolveStruct(structTy.name, structTy.params).unwrap('resolveStruct');
           const structPtr = compileExpr(lhs);
-          const fieldPtr = structFieldPointer(struct, structPtr, field);
+          const fieldPtr = structFieldPointer(structTy, structPtr, field);
 
           return builder.CreateLoad(llvmTy(ty), fieldPtr)
         },
@@ -260,7 +262,8 @@ export const createLLVMCompiler = async () => {
           const arrayData = builder.CreateAlloca(ty, null);
           const arrayDataPtr = builder.CreateBitCast(arrayData, llvm.PointerType.get(elemTyLlvm, 0));
           const arrayStruct = resolveStruct('Array', [elemTy]).unwrap('resolveStruct array');
-          const arrayStructPtr = builder.CreateAlloca(arrayStruct.ty, null);
+          const arrayStructTy = llvmTy(arrayStruct);
+          const arrayStructPtr = builder.CreateAlloca(arrayStructTy, null);
           const dataFieldPtr = structFieldPointer(arrayStruct, arrayStructPtr, 'data');
           const lenFieldPtr = structFieldPointer(arrayStruct, arrayStructPtr, 'len');
 
@@ -297,6 +300,8 @@ export const createLLVMCompiler = async () => {
       });
     }
 
+    const structInstances: { row: Row, ty: LLVM.StructType }[] = [];
+
     function llvmTy(ty: MonoTy): llvm.Type {
       return match(ty, {
         Const: c => matchString<string, llvm.Type>(c.name, {
@@ -309,7 +314,12 @@ export const createLLVMCompiler = async () => {
           '()': () => llvm.Type.getInt1Ty(context),
           'ptr': () => llvm.PointerType.get(llvmTy(c.args[0]), 0),
           _: () => {
-            return panic(`Unknown type representation for const type: ${c.name}`);
+            const typeAlias = TypeContext.resolveTypeAlias(module.typeContext, c.name).map(ta => {
+              const t = TypeContext.instantiateTypeAlias(ta, c.args);
+              return llvmTy(t);
+            });
+
+            return typeAlias.unwrap(`Unknown type representation for const type: ${c.name}, ${Object.values(module.typeContext.typeParamsEnv).map(MonoTy.show)}`);
           },
         }),
         Var: v => match(v.value, {
@@ -317,26 +327,18 @@ export const createLLVMCompiler = async () => {
           Unbound: () => panic('llvmTy: found uninstantiated type variable'),
         }, 'kind'),
         Struct: s => {
-          if (s.name === undefined) {
-            for (const [name, candidates] of structs) {
-              for (const struct of candidates) {
-                if (Row.strictEq(s.row, struct.row)) {
-                  s.name = name;
-                  s.params = struct.params;
-                  return struct.ty.getPointerTo();
-                }
-              }
+          const fields = Row.fields(s.row);
+
+          for (const inst of structInstances) {
+            if (Row.strictEq(inst.row, s.row)) {
+              return inst.ty;
             }
-
-            return panic(`anonymous struct type: ${Row.show(s.row)}`);
           }
 
-          if (!structs.has(s.name)) {
-            panic(`undeclared struct type: '${s.name}'`);
-          }
+          const structTy = llvm.StructType.create(context, fields.map(([_, t]) => llvmTy(t)), s.name ?? 'anon_struct');
+          structInstances.push({ row: s.row, ty: structTy });
 
-          const struct = resolveStruct(s.name, []).unwrap('resolveStruct');
-          return struct.ty.getPointerTo();
+          return structTy;
         },
         Integer: () => llvm.Type.getInt32Ty(context),
         _: () => panic('llvmpTy: ' + ty.variant + ' not implemented'),
@@ -364,40 +366,6 @@ export const createLLVMCompiler = async () => {
       return func;
     }
 
-    function declareTypeAlias({ name, alias, typeParams }: VariantOf<Decl, 'TypeAlias'>): void {
-      const ta = TypeContext.resolveTypeAlias(module.typeContext, name).unwrap('unknown type alias');
-      const instances: TypeAliasInstance[] =
-        ta.instances.length > 0
-          ? ta.instances
-          : typeParams.length === 0 ? [{ ty: alias, params: [] }] : [];
-
-      instances.forEach(inst => {
-        match(inst.ty, {
-          Struct: ({ row }) => {
-            const fields = Row.fields(row);
-            const fieldIndices = Object.fromEntries(fields.map(([name], index) => [name, index]));
-            const ty = llvm.StructType.create(context, fields.map(([_, t]) => llvmTy(t)), name);
-            pushMap(structs, name, { fields: fieldIndices, row, ty, params: inst.params });
-          },
-          _: () => { },
-        });
-      });
-    }
-
-    function resolveStruct(name: string, params: MonoTy[]): Maybe<Struct> {
-      if (!structs.has(name)) {
-        return none;
-      }
-
-      for (const struct of structs.get(name)!) {
-        if (zip(struct.params, params).every(([a, b]) => MonoTy.eq(a, b))) {
-          return some(struct);
-        }
-      }
-
-      return none;
-    }
-
     function compileDecl(decl: Decl): void {
       match(decl, {
         Function: f => {
@@ -406,6 +374,10 @@ export const createLLVMCompiler = async () => {
               compileDecl(g);
             });
 
+            return;
+          }
+
+          if (PolyTy.isPolymorphic(f.funTy)) {
             return;
           }
 
@@ -423,8 +395,10 @@ export const createLLVMCompiler = async () => {
               Some: body => compileExpr(body),
               None: () => {
                 if (f.attributes.some(attr => attr.name === 'meta')) {
+                  const sig = { args: f.args.map(arg => llvmTy(arg.name.ty)), ret: f.returnTy.map(t => llvmTy(t)).unwrap() };
                   return meta(
                     f.attributes.find(attr => attr.name === 'meta')!.args[0],
+                    sig,
                     func,
                     builder
                   );
@@ -442,7 +416,7 @@ export const createLLVMCompiler = async () => {
           }
         },
         TypeAlias: t => {
-          declareTypeAlias(t);
+          // declareTypeAlias(t);
         },
         Import: ({ path, imports }) => {
           const importedMod = modules.get(path)!;
@@ -453,7 +427,7 @@ export const createLLVMCompiler = async () => {
                 declareFunc(f);
               },
               TypeAlias: t => {
-                declareTypeAlias(t);
+                // declareTypeAlias(t);
               },
             });
           };

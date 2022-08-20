@@ -67,7 +67,7 @@ const monomorphizeFunc = (
   ctx: TypeContext,
   f: FuncDecl,
   typeParams: MonoTy[],
-  instanceTy: MonoTy,
+  instanceTy: VariantOf<MonoTy, 'Fun'>,
   errors: Error[]
 ): FuncDecl => {
   // check if an instance for these args already exists
@@ -82,6 +82,9 @@ const monomorphizeFunc = (
   const newCtx = TypeContext.clone(ctx);
   const nameEnv = NameEnv.make();
   const inst = Decl.rewrite(f, nameEnv, id) as FuncDecl;
+  inst.args = zip(inst.args, instanceTy.args).map(([a, ty]) => ({ name: a.name, mutable: a.mutable, annotation: some(ty) }));
+  inst.returnTy = some(instanceTy.ret);
+  inst.typeParams = [];
 
   if (typeParams.length > inst.typeParams.length) {
     return panic(`Too many type parameters for '${f.name.mangled}', got ${typeParams.length}, expected ${inst.typeParams.length}`);
@@ -95,10 +98,8 @@ const monomorphizeFunc = (
   });
 
   TypeContext.declareTypeParams(newCtx, ...inst.typeParams);
-  const instTy = PolyTy.instantiate(f.funTy);
-  inst.funTy = MonoTy.toPoly(instTy.ty);
+  inst.funTy = MonoTy.toPoly(PolyTy.instantiate(f.funTy).ty);
   inferDecl(inst, newCtx, errors);
-  errors.push(...unifyMut(instTy.ty, instanceTy, newCtx));
   f.instances.push(inst);
 
   return inst;
@@ -170,7 +171,7 @@ const inferExpr = (
         });
 
         const argTys = args.map(proj('ty'));
-        const actualFunTy = MonoTy.Fun(argTys, tau);
+        const actualFunTy = MonoTy.Fun(argTys, tau) as VariantOf<MonoTy, 'Fun'>;
 
         resolveOverloading(funcName, actualFunTy, funcs, ctx).match({
           left: resolvedFunc => {
@@ -477,7 +478,7 @@ const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void => {
 
         unify(funTy, name.ty);
 
-        const genFunTy = MonoTy.generalize(ctx.env, funTy);
+        const genFunTy = PolyTy.isPolymorphic(f.funTy) ? f.funTy : MonoTy.generalize(ctx.env, funTy);
         f.funTy = genFunTy;
       });
     },

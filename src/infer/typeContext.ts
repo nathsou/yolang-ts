@@ -4,10 +4,8 @@ import { Maybe, none, some } from "../utils/maybe";
 import { proj } from "../utils/misc";
 import { Env } from "./env";
 import { MonoTy, TypeParam } from "./types";
-import { unifyPure } from "./unification";
 
-export type TypeAliasInstance = { params: MonoTy[], ty: MonoTy };
-export type TypeAlias = { ty: MonoTy, params: TypeParam[], instances: TypeAliasInstance[] };
+export type TypeAlias = { ty: MonoTy, params: TypeParam[] };
 
 export type TypeContext = {
   env: Env,
@@ -39,7 +37,6 @@ export const TypeContext = {
     ctx.typeAliases[name] = {
       ty: alias,
       params: typeParams,
-      instances: [],
     };
   },
   declareTypeParams: (ctx: TypeContext, ...ps: TypeParam[]): void => {
@@ -57,24 +54,15 @@ export const TypeContext = {
 
     return none;
   },
-  instantiateTypeAlias: (ctx: TypeContext, ta: TypeAlias, params: MonoTy[]): MonoTy => {
+  instantiateTypeAlias: (ta: TypeAlias, params: MonoTy[]): MonoTy => {
     if (ta.params.length === 0) {
       return ta.ty;
     }
 
-    for (const inst of ta.instances) {
-      if (zip(params, inst.params).every(([p, q]) => unifyPure(p, q, ctx).isOk())) {
-        return inst.ty;
-      }
-    }
-
     const subst = new Map<string, MonoTy>(zip(ta.params.map(proj('name')), params));
-    const inst = MonoTy.substituteTyParams(ta.ty, subst);
-    ta.instances.push({ ty: inst, params });
-
-    return inst;
+    return MonoTy.substituteTyParams(ta.ty, subst);
   },
-  resolveTypeAlias: (ctx: TypeContext, name: string): Maybe<{ ty: MonoTy, params: TypeParam[], instances: TypeAliasInstance[] }> => {
+  resolveTypeAlias: (ctx: TypeContext, name: string): Maybe<{ ty: MonoTy, params: TypeParam[] }> => {
     if (name in ctx.typeAliases) {
       return some(ctx.typeAliases[name]);
     }

@@ -3,11 +3,13 @@ import { Error } from "../errors/errors";
 import { FuncDecl } from "../infer/env";
 import { Tuple } from "../infer/tuples";
 import { TypeContext } from "../infer/typeContext";
-import { MonoTy, PolyTy, TypeParam } from "../infer/types";
+import { MonoTy, PolyTy, TypeParam, TyVar } from "../infer/types";
 import { Const } from "../parse/token";
+import { zip } from "../utils/array";
 import { Either } from "../utils/either";
 import { Maybe, none, some } from "../utils/maybe";
-import { mapMap, pushMap } from "../utils/misc";
+import { mapMap, proj, pushMap } from "../utils/misc";
+import { Context } from "./context";
 import { FuncName, NameEnv, VarName } from "./name";
 import * as sweet from "./sweet";
 
@@ -286,23 +288,28 @@ type FuncConstructorParams = {
 };
 
 export const Decl = {
-  Function: ({ attributes, pub, name, typeParams, args, returnTy, body }: FuncConstructorParams): Decl => ({
-    variant: 'Function',
-    attributes,
-    pub,
-    name,
-    typeParams,
-    args,
-    body,
-    returnTy,
-    funTy: MonoTy.toPoly(
-      MonoTy.Fun(
-        args.map(a => a.annotation.orDefault(MonoTy.fresh)),
-        returnTy.orDefault(MonoTy.fresh)
-      )
-    ),
-    instances: [],
-  }),
+  Function: ({ attributes, pub, name, typeParams, args, returnTy, body }: FuncConstructorParams): Decl => {
+    const quantifiedVars = typeParams.map(Context.freshTyVarIndex);
+    const newParams = zip(typeParams, quantifiedVars).map(([{ name }, id]) => ({ name, ty: some(MonoTy.Var(TyVar.Unbound(id))) }));
+    const subst = new Map<string, MonoTy>(newParams.map(({ name, ty }) => [name, ty.unwrap()]));
+    const funTy = PolyTy.make(quantifiedVars, MonoTy.substituteTyParams(MonoTy.Fun(
+      args.map(a => a.annotation.orDefault(MonoTy.fresh)),
+      returnTy.orDefault(MonoTy.fresh)
+    ), subst));
+
+    return {
+      variant: 'Function',
+      attributes,
+      pub,
+      name,
+      typeParams: newParams,
+      args,
+      body,
+      returnTy,
+      funTy,
+      instances: [],
+    };
+  },
   TypeAlias,
   Import,
   Error: (message: string): Decl => ({ variant: 'Error', message }),

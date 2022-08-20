@@ -1,7 +1,7 @@
 import type LLVM from 'llvm-bindings';
 import { panic } from "../../utils/misc";
 
-export const meta = (name: string, f: LLVM.Function, builder: LLVM.IRBuilder): LLVM.Value => {
+export const meta = (name: string, sig: { args: LLVM.Type[], ret: LLVM.Type }, f: LLVM.Function, builder: LLVM.IRBuilder): LLVM.Value => {
   switch (name) {
     case 'addU64':
     case 'addI64':
@@ -81,6 +81,18 @@ export const meta = (name: string, f: LLVM.Function, builder: LLVM.IRBuilder): L
     case 'neqU32':
     case 'neqU64':
       return builder.CreateICmpNE(f.getArg(0), f.getArg(1));
+    case 'getUnchecked': {
+      const arrayArg = f.getArg(0);
+      const indexArg = f.getArg(1);
+
+      const elemPtr = builder.CreateGEP(
+        sig.ret,
+        arrayArg,
+        [indexArg],
+      );
+
+      return builder.CreateLoad(sig.ret, elemPtr);
+    }
     default:
       return panic(`Unknown meta attribute argument: '${name}'`);
   }
