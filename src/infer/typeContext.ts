@@ -9,23 +9,23 @@ export type TypeAlias = { ty: MonoTy, params: TypeParam[] };
 
 export type TypeContext = {
   env: Env,
-  typeParamsEnv: Record<string, MonoTy>,
-  typeAliases: Record<string, TypeAlias>,
+  typeParamsEnv: Map<string, MonoTy>,
+  typeAliases: Map<string, TypeAlias>,
   modules: Map<string, Module>,
 };
 
 export const TypeContext = {
   make: (modules: Map<string, Module>): TypeContext => ({
     env: Env.make(),
-    typeParamsEnv: {},
-    typeAliases: {},
+    typeParamsEnv: new Map(),
+    typeAliases: new Map(),
     modules,
   }),
   clone: (ctx: TypeContext): TypeContext => ({
     env: Env.clone(ctx.env),
-    typeParamsEnv: { ...ctx.typeParamsEnv },
-    typeAliases: { ...ctx.typeAliases },
-    modules: ctx.modules,
+    typeParamsEnv: new Map(ctx.typeParamsEnv),
+    typeAliases: new Map(ctx.typeAliases),
+    modules: new Map(ctx.modules),
   }),
   declareTypeAlias: (
     ctx: TypeContext,
@@ -34,22 +34,22 @@ export const TypeContext = {
     alias: MonoTy
   ): void => {
     TypeContext.declareTypeParams(ctx, ...typeParams);
-    ctx.typeAliases[name] = {
+    ctx.typeAliases.set(name, {
       ty: alias,
       params: typeParams,
-    };
+    });
   },
   declareTypeParams: (ctx: TypeContext, ...ps: TypeParam[]): void => {
     ps.forEach(p => {
-      ctx.typeParamsEnv[p.name] = p.ty.match({
+      ctx.typeParamsEnv.set(p.name, p.ty.match({
         Some: ty => ty,
         None: () => MonoTy.fresh(),
-      });
+      }));
     });
   },
   resolveTypeParam: (ctx: TypeContext, name: string): Maybe<MonoTy> => {
-    if (name in ctx.typeParamsEnv) {
-      return some(ctx.typeParamsEnv[name]);
+    if (ctx.typeParamsEnv.has(name)) {
+      return some(ctx.typeParamsEnv.get(name)!);
     }
 
     return none;
@@ -63,8 +63,8 @@ export const TypeContext = {
     return MonoTy.substituteTyParams(ta.ty, subst);
   },
   resolveTypeAlias: (ctx: TypeContext, name: string): Maybe<{ ty: MonoTy, params: TypeParam[] }> => {
-    if (name in ctx.typeAliases) {
-      return some(ctx.typeAliases[name]);
+    if (ctx.typeAliases.has(name)) {
+      return some(ctx.typeAliases.get(name)!);
     }
 
     return none;

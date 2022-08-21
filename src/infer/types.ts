@@ -44,7 +44,7 @@ export const MonoTy = {
   Const: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', name, args }),
   Fun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'Fun', args, ret }),
   Ptr: (ty: MonoTy): MonoTy => MonoTy.Const('ptr', ty),
-  Array: (elemTy: MonoTy): MonoTy => MonoTy.Const('Array', elemTy),
+  Array: (elemTy: MonoTy): MonoTy => MonoTy.Const('[]', elemTy),
   Tuple: (tuple: Tuple): MonoTy => ({ variant: 'Tuple', tuple }),
   Struct: (fields: Readonly<Row>, name?: string, params: MonoTy[] = []): MonoTy => ({ variant: 'Struct', name, params, row: fields }),
   toPoly: (ty: MonoTy): PolyTy => [[], ty],

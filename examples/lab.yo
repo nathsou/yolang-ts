@@ -1,9 +1,27 @@
 import std/arrays
+import std/ops
 
-#meta(getUnchecked)
-fun getUnchecked<T>(elems: ptr<T>, index: u32): T
+fun get(a: i32[], index: u32): i32 {
+  a.data.getUnchecked(index)
+}
+
+fun containsAux(a: i32[], elem: i32, index: u32) {
+  if index == a.len {
+    false
+  } else {
+    if a.get(index) == elem {
+      true
+    } else {
+      containsAux(a, elem, index + 1u32)
+    }
+  }
+}
+
+fun contains(a: i32[], elem: i32): bool {
+  containsAux(a, elem, 0u32)
+}
 
 fun main() {
-  let a = [1, 2, 3, 4, 5, 6, 7]
-  a.data.getUnchecked(4u32)
+  let primes = [2, 3, 5, 7, 11, 13, 17, 19, 23]
+  primes.contains(21)
 }

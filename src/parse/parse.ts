@@ -9,7 +9,7 @@ import { compose, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, pos, satisfy, satisfyBy, seq, squareBrackets, symbol, uninitialized, yes } from './combinators';
+import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, pos, satisfy, satisfyBy, seq, squareBrackets, symbol, uninitialized } from './combinators';
 import { Const, Token, TokenWithPos } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -135,9 +135,17 @@ const funTy = map(seq(
   ([args, _, ret]) => MonoTy.Fun(args, ret)
 );
 
-initParser(monoTy, alt(
-  funTy,
-  allExceptFunTy,
+initParser(monoTy, map(
+  seq(
+    alt(
+      funTy,
+      allExceptFunTy,
+    ),
+    optional(seq(symbol('['), symbol(']'))),
+  ), ([ty, arr]) => arr.match({
+    Some: () => MonoTy.Array(ty),
+    None: () => ty,
+  }),
 ));
 
 const typeParams: Parser<TypeParam[]> = map(
@@ -590,11 +598,16 @@ const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
 const typeAliasDecl: Parser<Decl> = map(seq(
   memberVisibility,
   keyword('type'),
-  expectOrDefault(upperIdent, `Expected identifier after 'type' keyword`, '<?>'),
+  expectOrDefault(alt(
+    upperIdent,
+    map(seq(symbol('['), symbol(']')), () => '[]')
+  ),
+    `Expected identifier after 'type' keyword`, '<?>'
+  ),
   scopedTypeParams(seq(
     expectOrDefault(ident2('='), `Expected '=' after type name`, Token.Identifier('=')),
     monoTy,
-  ))
+  )),
 ),
   ([pub, _t, name, [typeParams, [_eq, alias]]]) => Decl.TypeAlias({ pub, name, typeParams, alias })
 );
