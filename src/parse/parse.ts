@@ -85,11 +85,13 @@ export const monoTy = uninitialized<MonoTy>();
 const parenthesizedTy = map(parens(monoTy), ty => ty);
 const unitTy = map(seq(symbol('('), symbol(')')), () => MonoTy.Const('()'));
 const boolTy = map(ident2('bool'), () => MonoTy.Const('bool'));
-const u32Ty = map(ident2('u32'), () => MonoTy.Const('u32'));
-const i32Ty = map(ident2('i32'), () => MonoTy.Const('i32'));
-const u64Ty = map(ident2('u64'), () => MonoTy.Const('u64'));
-const i64Ty = map(ident2('i64'), () => MonoTy.Const('i64'));
-const constTy = alt(unitTy, boolTy, u32Ty, i32Ty, u64Ty, i64Ty);
+const u32Ty = map(ident2('u32'), () => MonoTy.u32());
+const i32Ty = map(ident2('i32'), () => MonoTy.i32());
+const u64Ty = map(ident2('u64'), () => MonoTy.u64());
+const i64Ty = map(ident2('i64'), () => MonoTy.i64());
+const u8Ty = map(ident2('u8'), () => MonoTy.u8());
+const i8Ty = map(ident2('i8'), () => MonoTy.i8());
+const constTy = alt(unitTy, boolTy, u32Ty, i32Ty, u64Ty, i64Ty, u8Ty, i8Ty);
 const namedTy = map(
   seq(
     alt(upperIdent, stringIn('ptr')),
@@ -575,7 +577,16 @@ const attribute = map(
   seq(ident, optionalOrDefault(parens(commas(ident)), [])),
   ([name, args]) => Attribute.make(name, args)
 );
-const attributeList = map(seq(symbol('#'), alt(squareBrackets(commas(attribute)), map(attribute, attr => [attr]))), snd);
+
+const attributeList = map(seq(
+  symbol('#'),
+  alt(
+    squareBrackets(commas(attribute)),
+    map(attribute, attr => [attr])
+  ),
+),
+  snd
+);
 
 const memberVisibility = optionalOrDefault(map(keyword('pub'), () => true), false);
 

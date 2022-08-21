@@ -75,7 +75,7 @@ export const Symbol = {
 
 const keywords = [
   'let', 'mut', 'in', 'if', 'else', 'fun', 'while',
-  'return', 'as', 'unsafe', 'impl', 'extern',
+  'return', 'as', 'unsafe', 'impl',
   'module', 'match', 'type', 'trait', 'for',
   'import', 'export', 'sugar', 'pub',
 ] as const;
@@ -94,17 +94,23 @@ export type Const = DataType<{
   i32: { value: number },
   u64: { value: number },
   i64: { value: number },
+  i8: { value: number },
+  u8: { value: number },
   bool: { value: boolean },
   unit: {},
 }>;
 
-const { u32, i32, u64, i64, bool, unit } = genConstructors<Const>(['u32', 'i32', 'u64', 'i64', 'bool', 'unit']);
+const { u32, i32, u64, i64, i8, u8, bool, unit } = genConstructors<Const>([
+  'u32', 'i32', 'u64', 'i64', 'i8', 'u8', 'bool', 'unit'
+]);
 
 export const Const = {
   u32: (value: number) => u32({ value }),
   u64: (value: number) => u64({ value }),
   i32: (value: number) => i32({ value }),
   i64: (value: number) => i64({ value }),
+  i8: (value: number) => i8({ value }),
+  u8: (value: number) => u8({ value }),
   bool: (value: boolean) => bool({ value }),
   unit: () => unit({}),
   show: (c: Const) => match(c, {
@@ -112,6 +118,8 @@ export const Const = {
     i32: ({ value }) => `${value}`,
     u64: ({ value }) => `${value}`,
     i64: ({ value }) => `${value}`,
+    i8: ({ value }) => `${value}`,
+    u8: ({ value }) => `${value}`,
     bool: ({ value }) => `${value}`,
     unit: () => '()',
   }),
@@ -120,6 +128,8 @@ export const Const = {
     'i32 i32': (a, b) => a.value === b.value,
     'u64 u64': (a, b) => a.value === b.value,
     'i64 i64': (a, b) => a.value === b.value,
+    'i8 i8': (a, b) => a.value === b.value,
+    'u8 u8': (a, b) => a.value === b.value,
     'bool bool': (a, b) => a.value === b.value,
     'unit unit': () => true,
     _: () => false,
@@ -129,6 +139,8 @@ export const Const = {
     i32: () => MonoTy.Const('i32'),
     u64: () => MonoTy.Const('u64'),
     i64: () => MonoTy.Const('i64'),
+    i8: () => MonoTy.Const('i8'),
+    u8: () => MonoTy.Const('u8'),
     bool: MonoTy.bool,
     unit: MonoTy.unit,
   }),

@@ -132,6 +132,8 @@ export const createLLVMCompiler = async () => {
           i32: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
           u64: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),
           i64: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),
+          i8: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt8Ty(context), value),
+          u8: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt8Ty(context), value),
           unit: () => llvm.UndefValue.get(llvm.Type.getInt1Ty(context)),
         }),
         Variable: ({ name }) => {
@@ -319,6 +321,8 @@ export const createLLVMCompiler = async () => {
           'i32': () => llvm.Type.getInt32Ty(context),
           'u64': () => llvm.Type.getInt64Ty(context),
           'i64': () => llvm.Type.getInt64Ty(context),
+          'u8': () => llvm.Type.getInt8Ty(context),
+          'i8': () => llvm.Type.getInt8Ty(context),
           'bool': () => llvm.Type.getInt1Ty(context),
           '()': () => llvm.Type.getInt1Ty(context),
           'ptr': () => llvm.PointerType.get(llvmTy(c.args[0]), 0),
@@ -367,7 +371,10 @@ export const createLLVMCompiler = async () => {
       const returnTy = llvmTy(f.returnTy.or(f.body.map(b => b.ty)).unwrap());
       const argTys = f.args.map(a => llvmTy(a.name.ty));
       const funcTy = llvm.FunctionType.get(returnTy, argTys, false);
-      const isExternal = f.pub || f.name.original === 'main';
+      const isExternal =
+        f.pub ||
+        f.name.original === 'main' ||
+        f.attributes.some(attr => attr.name === 'extern');
       const linkage = llvm.Function.LinkageTypes[isExternal ? 'ExternalLinkage' : 'PrivateLinkage'];
       const func = llvm.Function.Create(funcTy, linkage, f.name.mangled, mod);
       funcs.set(f.name.mangled, func);
@@ -391,6 +398,11 @@ export const createLLVMCompiler = async () => {
           }
 
           const func = declareFunc(f);
+
+          if (f.attributes.some(attr => attr.name === 'extern')) {
+            return;
+          }
+
           const entry = llvm.BasicBlock.Create(context, 'entry', func);
           builder.SetInsertPoint(entry);
           const ret = scoped(() => {
@@ -407,7 +419,9 @@ export const createLLVMCompiler = async () => {
                   return meta(
                     f.attributes.find(attr => attr.name === 'meta')!.args[0],
                     func,
-                    builder
+                    builder,
+                    llvm,
+                    context,
                   );
                 }
 
@@ -481,6 +495,7 @@ export const createLLVMCompiler = async () => {
 
   async function compileIR(
     modules: Map<string, LLVM.Module>,
+    target: 'native' | 'wasm',
     outDir: string,
     outFile: string,
     optLevel: 0 | 1 | 2 | 3
@@ -506,8 +521,13 @@ export const createLLVMCompiler = async () => {
       });
     };
 
+    const targetTriple = matchString(target, {
+      wasm: () => 'wasm32-unknown-unknown',
+      native: () => llvm.config.LLVM_DEFAULT_TARGET_TRIPLE,
+    });
+
     modules.forEach(module => {
-      module.setTargetTriple('wasm32-wasi');
+      module.setTargetTriple(targetTriple);
       const modOutFile = `${outDir}/${module.getName()}.bc`;
       llvm.WriteBitcodeToFile(module, modOutFile);
       byteCodeFiles.push(modOutFile);
@@ -522,23 +542,30 @@ export const createLLVMCompiler = async () => {
       linkedFile,
     ].join(' ');
 
+    const buildCommand = matchString(target, {
+      wasm: () => [
+        'clang',
+        `--target=${targetTriple}`,
+        '-nostdlib',
+        `-O${optLevel}`,
+        '-Wl,--no-entry',
+        '-Wl,--export-all',
+        `-Wl,--lto-O${optLevel}`,
+        '-Wl,--allow-undefined',
+        `-o ${outFile}`,
+        linkedFile,
+      ],
+      native: () => [
+        'clang',
+        `--target=${targetTriple}`,
+        `-O${optLevel}`,
+        `-o ${outFile}`,
+        linkedFile,
+      ],
+    });
+
     const linkOutput = await execPromise(linkCommand);
-
-    // generate wasm file
-    const buildCommand = [
-      'clang',
-      `--target=wasm32-wasi`,
-      '-nostdlib',
-      `-O${optLevel}`,
-      '-Wl,--no-entry',
-      '-Wl,--export-all',
-      `-Wl,--lto-O${optLevel}`,
-      '-Wl,--allow-undefined',
-      `-o ${outFile}`,
-      linkedFile,
-    ].join(' ');
-
-    const buildOutput = await execPromise(buildCommand);
+    const buildOutput = await execPromise(buildCommand.join(' '));
     const stdout: string[] = [];
 
     if (linkOutput.length > 0) {

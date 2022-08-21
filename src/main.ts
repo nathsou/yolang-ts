@@ -34,7 +34,26 @@ const getWasmMainFunc = async (source: string): Promise<Function> => {
 
   const wasm = await readFile(source);
   const module = new WebAssembly.Module(wasm);
-  const instance = new WebAssembly.Instance(module, {});
+  const putcharBuffer: number[] = [];
+  const utf8Decoder = new TextDecoder('utf-8');
+  const instance = new WebAssembly.Instance(module, {
+    env: {
+      log: (chars: number, len: number): void => {
+        const mem = instance.exports.memory as WebAssembly.Memory;
+        console.log(utf8Decoder.decode(mem.buffer.slice(chars, chars + len)));
+      },
+      putchar: (char: number): number => {
+        if (char === 10) { // \n
+          console.log(utf8Decoder.decode(Uint8Array.from(putcharBuffer)));
+          putcharBuffer.length = 0;
+        } else {
+          putcharBuffer.push(char);
+        }
+
+        return char;
+      },
+    }
+  });
 
   if ('main' in instance.exports && typeof instance.exports['main'] === 'function') {
     return instance.exports['main'];
@@ -43,7 +62,7 @@ const getWasmMainFunc = async (source: string): Promise<Function> => {
   return panic('main function not found');
 };
 
-const run = async (source: string): Promise<boolean> => {
+const compile = async (source: string, target: 'wasm' | 'native'): Promise<boolean> => {
   const logErrors = (errors: Error[]) => {
     errors.forEach(err => {
       console.log('\x1b[31m%s\x1b[0m', Error.show(err));
@@ -92,16 +111,21 @@ const run = async (source: string): Promise<boolean> => {
   }
 
   const outDir = 'out';
-  const outFile = `${outDir}/main.wasm`;
-  const stdout = await compiler.compileIR(modules, outDir, outFile, 3);
+  const outFile = target === 'wasm' ? `${outDir}/main.wasm` : `${outDir}/main`;
+  const stdout = await compiler.compileIR(modules, target, outDir, outFile, 3);
 
   if (stdout.length > 0) {
     console.log(stdout);
   }
 
-  const mainFunc = await getWasmMainFunc(outFile);
-
-  console.log(mainFunc());
+  if (target === 'wasm') {
+    // run the program
+    (await getWasmMainFunc(outFile))();
+  } else {
+    const { execFileSync } = await import('child_process');
+    const stdout = execFileSync(outFile);
+    console.log(stdout.toString('utf-8'));
+  }
 
   return true;
 };
@@ -131,7 +155,7 @@ const [, , source, debugLvl] = process.argv;
     if (debugLvl) {
       debugLevel = parseInt(debugLvl);
     }
-    const allGood = await run(source);
+    const allGood = await compile(source, 'wasm');
     process.exit(allGood ? 0 : 1);
   } else {
     console.info('Usage: yo <source.yo>');

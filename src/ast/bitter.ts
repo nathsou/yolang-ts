@@ -144,38 +144,38 @@ export const Expr = {
         const newNameEnv = NameEnv.clone(nameEnv);
         return Expr.Block(statements.map(s => Stmt.from(s, newNameEnv, errors)), lastExpr.map(e => go(e, newNameEnv)), sweet);
       },
-      IfThenElse: ({ condition, then, elseifs, else_ }) => {
+      IfThenElse: ite => {
         const rewriteElseIfs = (
           cond: sweet.Expr,
-          body: sweet.Expr,
+          then: sweet.Expr,
           elifs: { cond: sweet.Expr, body: sweet.Expr }[],
           else_: Maybe<sweet.Expr>,
-        ): Maybe<Expr> => {
+        ): Expr => {
           if (elifs.length === 0) {
-            return some(Expr.IfThenElse(
-              go(condition),
+            return Expr.IfThenElse(
+              go(cond),
               go(then),
               else_.map(go),
               sweet
-            ));
+            );
           }
 
           const [head, ...tail] = elifs;
 
-          return some(Expr.IfThenElse(
+          return Expr.IfThenElse(
             go(cond),
-            go(body),
-            rewriteElseIfs(
+            go(then),
+            some(rewriteElseIfs(
               head.cond,
               head.body,
               tail,
               else_,
-            ),
+            )),
             sweet,
-          ));
+          );
         };
 
-        return rewriteElseIfs(condition, then, elseifs, else_).unwrap();
+        return rewriteElseIfs(ite.condition, ite.then, ite.elseifs, ite.else_);
       },
       Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs), sweet),
       FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field, sweet),

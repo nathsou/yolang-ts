@@ -16,7 +16,7 @@ export const keyword = map(
 
 const digits = map(oneOrMore(digit), digits => parseInt(digits.join(''), 10));
 
-const intKind = trie(['u32', 'u64', 'i32', 'i64']);
+const intKind = trie(['u32', 'u64', 'i32', 'u64', 'i64', 'u8', 'i8']);
 export const int = map(
   then(then(optional(str('-')), digits), optional(intKind)),
   ([[neg, n], kind]) => Token.Const(Const[kind.mapWithDefault(id, 'i32')](n * neg.match({ Some: () => -1, None: () => 1 })))

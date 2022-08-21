@@ -52,9 +52,11 @@ export const MonoTy = {
   i32: () => MonoTy.Const('i32'),
   u64: () => MonoTy.Const('u64'),
   i64: () => MonoTy.Const('i64'),
+  i8: () => MonoTy.Const('i8'),
+  u8: () => MonoTy.Const('u8'),
   bool: () => MonoTy.Const('bool'),
   unit: () => MonoTy.Const('()'),
-  primitiveTypes: new Set(['u32', 'i32', 'u64', 'i64', 'bool', '()', 'ptr']),
+  primitiveTypes: new Set(['u32', 'i32', 'u64', 'i64', 'i8', 'u8', 'bool', '()', 'ptr']),
   isPrimitive: (ty: MonoTy): boolean => ty.variant === 'Const' && MonoTy.primitiveTypes.has(ty.name),
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
     match(ty, {

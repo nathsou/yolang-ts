@@ -1,7 +1,13 @@
 import type LLVM from 'llvm-bindings';
 import { panic } from "../../utils/misc";
 
-export const meta = (name: string, f: LLVM.Function, builder: LLVM.IRBuilder): LLVM.Value => {
+export const meta = (
+  name: string,
+  f: LLVM.Function,
+  builder: LLVM.IRBuilder,
+  llvm: typeof LLVM,
+  context: LLVM.LLVMContext,
+): LLVM.Value => {
   switch (name) {
     case 'addU64':
     case 'addI64':
@@ -94,6 +100,10 @@ export const meta = (name: string, f: LLVM.Function, builder: LLVM.IRBuilder): L
 
       return builder.CreateLoad(elemTy, elemPtr);
     }
+    case 'u8_from_int':
+      return builder.CreateIntCast(f.getArg(0), llvm.Type.getInt8Ty(context), true);
+    case 'u8_from_uint':
+      return builder.CreateIntCast(f.getArg(0), llvm.Type.getInt8Ty(context), false);
     default:
       return panic(`Unknown meta attribute argument: '${name}'`);
   }
