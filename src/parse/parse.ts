@@ -383,12 +383,21 @@ const ifThenElse = alt(
       keyword('if'),
       expectOrDefault(expr, `Expected condition after 'if'`, Expr.Error),
       expectOrDefault(block, `Expected block after condidtion`, Expr.Block([])),
+      many(
+        map(seq(
+          keyword('else'), keyword('if'),
+          expectOrDefault(expr, `Expected condition after 'else if'`, Expr.Error),
+          expectOrDefault(block, `Expected block after condidtion`, Expr.Block([])),
+        ),
+          ([_e, _i, cond, body]) => ({ cond, body })
+        ),
+      ),
       optional(seq(
         keyword('else'),
         expectOrDefault(block, `Expected block after 'else'`, Expr.Block([])),
       ))
     ),
-    ([_, cond, then, else_]) => Expr.IfThenElse(cond, then, else_.map(snd))
+    ([_, cond, then, elseifs, else_]) => Expr.IfThenElse(cond, then, elseifs, else_.map(snd))
   ),
   binaryExpr
 );

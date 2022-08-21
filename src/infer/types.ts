@@ -2,7 +2,7 @@ import { DataType, match, matchMany } from "itsamatch";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
 import { Maybe } from "../utils/maybe";
-import { block, cond, panic, parenthesized, proj } from "../utils/misc";
+import { matchString, cond, panic, parenthesized, proj } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./structs";
@@ -227,13 +227,9 @@ export const MonoTy = {
     Param: ({ name }) => `?${name}`,
     Const: ({ name, args }) => cond(args.length === 0, {
       then: () => name,
-      else: () => block(() => {
-        switch (name) {
-          case 'Array':
-            return `${MonoTy.show(args[0])}[]`;
-          default:
-            return `${name}<${joinWith(args, MonoTy.show, ', ')}>`
-        }
+      else: () => matchString(name, {
+        '[]': () => `${MonoTy.show(args[0])}[]`,
+        _: () => `${name}<${joinWith(args, MonoTy.show, ', ')}>`,
       }),
     }),
     Fun: ({ args, ret }) => {

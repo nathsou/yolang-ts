@@ -8,12 +8,10 @@ fun get(a: i32[], index: u32): i32 {
 fun containsAux(a: i32[], elem: i32, index: u32) {
   if index == a.len {
     false
+  } else if a.get(index) == elem {
+    true
   } else {
-    if a.get(index) == elem {
-      true
-    } else {
-      containsAux(a, elem, index + 1u32)
-    }
+    containsAux(a, elem, index + 1u32)
   }
 }
 
