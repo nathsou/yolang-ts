@@ -2,11 +2,12 @@ import { DataType, match, matchMany } from "itsamatch";
 import { Context } from "../ast/context";
 import { gen, joinWith, zip } from "../utils/array";
 import { Maybe } from "../utils/maybe";
-import { matchString, cond, panic, parenthesized, proj } from "../utils/misc";
+import { cond, matchString, panic, parenthesized, proj } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./structs";
 import { Tuple } from "./tuples";
+import { TypeContext } from "./typeContext";
 
 export type TyVarId = number;
 export type TyVar = DataType<{
@@ -56,8 +57,8 @@ export const MonoTy = {
   u8: () => MonoTy.Const('u8'),
   bool: () => MonoTy.Const('bool'),
   str: () => MonoTy.Const('str'), // not primitive
-  unit: () => MonoTy.Const('()'),
-  primitiveTypes: new Set(['u32', 'i32', 'u64', 'i64', 'i8', 'u8', 'bool', '()', 'ptr']),
+  void: () => MonoTy.Const('void'),
+  primitiveTypes: new Set(['void', 'u32', 'i32', 'u64', 'i64', 'i8', 'u8', 'bool', 'ptr']),
   isPrimitive: (ty: MonoTy): boolean => ty.variant === 'Const' && MonoTy.primitiveTypes.has(ty.name),
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
     match(ty, {
@@ -237,8 +238,7 @@ export const MonoTy = {
     }),
     Fun: ({ args, ret }) => {
       const showParens = args.length !== 1 || (
-        args[0].variant === 'Struct' ||
-        args[0].variant === 'Const' && args[0].name === '()'
+        args[0].variant === 'Struct'
       );
 
       return `${parenthesized(joinWith(args, MonoTy.show, ', '), showParens)} -> ${MonoTy.show(ret)}`;
@@ -295,6 +295,27 @@ export const MonoTy = {
     _: () => false,
   }),
   isDetermined: (s: MonoTy): boolean => PolyTy.isDetermined([[], s]),
+  expand: (ty: MonoTy, ctx: TypeContext): MonoTy => {
+    const go = (t: MonoTy) => MonoTy.expand(t, ctx);
+    return match(ty, {
+      Const: ({ name, args }) => {
+        if (ctx.typeAliases.has(name)) {
+          return TypeContext.instantiateTypeAlias(ctx.typeAliases.get(name)!, args);
+        } else {
+          return MonoTy.Const(name, ...args.map(go));
+        }
+      },
+      Param: ({ name }) => MonoTy.Param(name),
+      Fun: ({ args, ret }) => MonoTy.Fun(args.map(go), go(ret)),
+      Struct: ({ name, params, row }) => MonoTy.Struct(
+        Row.fromFields(Row.fields(row).map(([name, t]) => [name, go(t)])),
+        name,
+        params
+      ),
+      Tuple: ({ tuple }) => MonoTy.Tuple(Tuple.fromArray(Tuple.toArray(tuple).map(go))),
+      Var: ({ value }) => MonoTy.Var(value),
+    });
+  },
 };
 
 export type PolyTy = [TyVarId[], MonoTy];

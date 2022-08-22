@@ -1,12 +1,10 @@
 import { match, VariantOf } from 'itsamatch';
 import type LLVM from 'llvm-bindings';
-import { ArrayInit, Decl, Expr, Module, Prog, Stmt } from '../../ast/bitter';
+import { Decl, Expr, Module, Prog, Stmt, ArrayInit } from '../../ast/core';
 import { VarName } from '../../ast/name';
-import * as sweet from '../../ast/sweet';
 import { Row } from '../../infer/structs';
 import { TypeContext } from '../../infer/typeContext';
-import { MonoTy, PolyTy } from '../../infer/types';
-import { Const } from '../../parse/token';
+import { MonoTy } from '../../infer/types';
 import { gen, last, zip } from '../../utils/array';
 import { Maybe } from '../../utils/maybe';
 import { assert, matchString, panic, proj } from '../../utils/misc';
@@ -41,8 +39,6 @@ export const createLLVMCompiler = async () => {
     mod.setSourceFileName(module.path);
     const builder = new llvm.IRBuilder(context);
     const scopes: LexicalScope[] = [];
-    const unit = Expr.Const(Const.unit(), sweet.Expr.Const(Const.unit()));
-    const unitTy = MonoTy.Const('()');
     const funcs = new Map<string, LLVM.Function>();
 
     type ResolvedVar =
@@ -85,6 +81,8 @@ export const createLLVMCompiler = async () => {
       }
     }
 
+    const voidIndicator = 'void' as unknown as LLVM.Value;
+
     function structFieldPtr(struct: VariantOf<MonoTy, 'Struct'>, structPtr: LLVM.Value, field: string): LLVM.Value {
       const index = Row.fields(struct.row).findIndex(([name]) => name === field);
       assert(index >= 0);
@@ -103,10 +101,6 @@ export const createLLVMCompiler = async () => {
         arrayPtr,
         [builder.getInt32(0), builder.getInt32(index)],
       );
-    }
-
-    function createUnit(): LLVM.Value {
-      return compileExpr(unit);
     }
 
     function resolveStruct(name: string, typeParams: MonoTy[]): Maybe<[struct: VariantOf<MonoTy, 'Struct'>, ty: LLVM.StructType]> {
@@ -189,21 +183,23 @@ export const createLLVMCompiler = async () => {
             return builder.CreateLoad(llvmTy(v.ty), v.ptr);
           }
         },
-        Block: ({ statements, lastExpr }) => {
+        Block: ({ stmts, ret }) => {
           return scoped(() => {
-            statements.forEach(stmt => {
+            stmts.forEach(stmt => {
               compileStmt(stmt);
             });
 
-            return compileExpr(lastExpr.orDefault(unit));
+            return ret.match({
+              Some: compileExpr,
+              None: () => voidIndicator,
+            });
           });
         },
         NamedFuncCall: ({ name, args }) => {
-          const funcName = name.unwrapRight('codegen: unresolved function name');
-          if (funcs.has(funcName.mangled)) {
-            return builder.CreateCall(funcs.get(funcName.mangled)!, args.map(arg => compileExpr(arg)));
+          if (funcs.has(name.mangled)) {
+            return builder.CreateCall(funcs.get(name.mangled)!, args.map(arg => compileExpr(arg)));
           } else {
-            return panic(`undeclared function in call: ${funcName.mangled}`);
+            return panic(`undeclared function in call: ${name.mangled}`);
           }
         },
         IfThenElse: ({ condition, then, else_, ty }) => {
@@ -211,92 +207,68 @@ export const createLLVMCompiler = async () => {
           const condValue = compileExpr(condition);
 
           let thenBB = llvm.BasicBlock.Create(context, 'then', parent);
-          let elseBB = llvm.BasicBlock.Create(context, 'else');
-          const mergeBB = llvm.BasicBlock.Create(context, 'if_then');
 
-          builder.CreateCondBr(condValue, thenBB, elseBB);
+          return else_.match({
+            Some: elseExpr => {
+              let elseBB = llvm.BasicBlock.Create(context, 'else');
+              const mergeBB = llvm.BasicBlock.Create(context, 'if_then');
 
-          // then branch
-          builder.SetInsertPoint(thenBB);
-          const thenValue = compileExpr(then);
-          builder.CreateBr(mergeBB);
-          // Codegen of 'then' can change the current block, update thenBB for the PHI. 
-          thenBB = builder.GetInsertBlock()!;
+              builder.CreateCondBr(condValue, thenBB, elseBB);
 
-          // else branch
-          parent.insertAfter(thenBB, elseBB);
-          builder.SetInsertPoint(elseBB);
-          builder.SetInsertPoint(elseBB);
-          const elseValue = compileExpr(else_.orDefault(unit));
-          builder.CreateBr(mergeBB);
-          elseBB = builder.GetInsertBlock()!;
+              // then branch
+              builder.SetInsertPoint(thenBB);
+              const thenValue = compileExpr(then);
+              builder.CreateBr(mergeBB);
+              // Codegen of 'then' can change the current block, update thenBB for the PHI. 
+              thenBB = builder.GetInsertBlock()!;
 
-          // merge
-          parent.insertAfter(elseBB, mergeBB);
-          builder.SetInsertPoint(mergeBB);
+              // else branch
+              parent.insertAfter(thenBB, elseBB);
+              builder.SetInsertPoint(elseBB);
+              builder.SetInsertPoint(elseBB);
+              const elseValue = compileExpr(elseExpr);
+              builder.CreateBr(mergeBB);
+              elseBB = builder.GetInsertBlock()!;
 
-          if (!MonoTy.eq(ty, unitTy)) {
-            const phiNode = builder.CreatePHI(llvmTy(ty), 2, 'if');
-            phiNode.addIncoming(thenValue, thenBB);
-            phiNode.addIncoming(elseValue, elseBB);
+              // merge
+              parent.insertAfter(elseBB, mergeBB);
+              builder.SetInsertPoint(mergeBB);
 
-            return phiNode;
-          } else {
-            return createUnit();
-          }
-        },
-        While: ({ condition, body }) => {
-          const parent = builder.GetInsertBlock()!.getParent()!;
-          const condValue = compileExpr(condition);
+              const phiNode = builder.CreatePHI(llvmTy(ty), 2, 'if');
+              phiNode.addIncoming(thenValue, thenBB);
+              phiNode.addIncoming(elseValue, elseBB);
 
-          const loopBB = llvm.BasicBlock.Create(context, 'loop', parent);
-          const loopEndBB = llvm.BasicBlock.Create(context, 'loop_end');
-
-          builder.CreateCondBr(condValue, loopBB, loopEndBB);
-
-          builder.SetInsertPoint(loopBB);
-          compileExpr(body);
-          const condValue2 = compileExpr(condition);
-          builder.CreateCondBr(condValue2, loopBB, loopEndBB);
-
-          parent.insertAfter(loopBB, loopEndBB);
-          builder.SetInsertPoint(loopEndBB);
-
-          return createUnit();
-        },
-        Assignment: ({ lhs, rhs }) => {
-          return match(lhs, {
-            Variable: ({ name }) => {
-              const v = resolveVar(name);
-              assert(v.kind === 'mut');
-              builder.CreateStore(compileExpr(rhs), v.ptr);
-              return createUnit();
+              return phiNode;
             },
-            FieldAccess: ({ lhs, field }) => {
-              const structTy = MonoTy.deref(lhs.ty);
-              assert(structTy.variant === 'Struct');
-              const structPtr = compileExpr(lhs);
-              const fieldPtr = structFieldPtr(structTy, structPtr, field);
-              const value = compileExpr(rhs);
+            None: () => {
+              const afterBB = llvm.BasicBlock.Create(context, 'after');
+              builder.CreateCondBr(condValue, thenBB, afterBB);
 
-              builder.CreateStore(value, fieldPtr);
-              return createUnit();
+              // then branch
+              builder.SetInsertPoint(thenBB);
+              compileExpr(then);
+              builder.CreateBr(afterBB);
+              // Codegen of 'then' can change the current block, update thenBB for the PHI. 
+              thenBB = builder.GetInsertBlock()!;
+
+              // after
+              parent.insertAfter(thenBB, afterBB);
+              builder.SetInsertPoint(afterBB);
+              return voidIndicator;
             },
-            _: () => panic('unhandled assignment target: ' + Expr.showSweet(lhs)),
           });
         },
-        Struct: ({ name, fields, typeParams }) => {
-          const [struct, structTy] = resolveStruct(name, typeParams).unwrap('resolveStruct');
-          const structPtr = builder.CreateAlloca(structTy, null, name);
+        Struct: ({ structTy, fields }) => {
+          const structPtr = builder.CreateAlloca(llvmTy(structTy).getPointerElementType());
 
           fields.forEach(({ name, value }) => {
-            const fieldPtr = structFieldPtr(struct, structPtr, name);
+            const fieldPtr = structFieldPtr(structTy, structPtr, name);
             builder.CreateStore(compileExpr(value), fieldPtr);
           });
 
           return structPtr;
         },
-        FieldAccess: ({ lhs, field, ty }) => {
+        StructAccess: ({ lhs, field, ty }) => {
           const structTy = MonoTy.deref(lhs.ty);
           assert(structTy.variant === 'Struct');
           const structPtr = compileExpr(lhs);
@@ -316,17 +288,10 @@ export const createLLVMCompiler = async () => {
             },
           });
 
-          if (!(
-            init.variant === 'fill' &&
-            init.value.variant === 'Const' &&
-            init.value.value.variant != 'unit' &&
-            init.value.value.value === 0)
-          ) {
-            elems.forEach((elem, index) => {
-              const elemPtr = arrayElementPtr(arrayTy, arrayData, index);
-              builder.CreateStore(elem, elemPtr);
-            });
-          }
+          elems.forEach((elem, index) => {
+            const elemPtr = arrayElementPtr(arrayTy, arrayData, index);
+            builder.CreateStore(elem, elemPtr);
+          });
 
           return arrayStructPtr;
         },
@@ -336,11 +301,39 @@ export const createLLVMCompiler = async () => {
 
     function compileStmt(stmt: Stmt): void {
       match(stmt, {
-        Expr: ({ expr }) => { compileExpr(expr); },
-        Let: ({ name, expr }) => {
-          declareVar(name, compileExpr(expr));
+        Let: ({ name, value }) => {
+          declareVar(name, compileExpr(value));
         },
-        Error: ({ }) => { },
+        VariableAssignment: ({ name, value }) => {
+          const v = resolveVar(name);
+          assert(v.kind === 'mut');
+          builder.CreateStore(compileExpr(value), v.ptr);
+        },
+        StructAssignment: ({ struct, structTy, field, value }) => {
+          const structPtr = compileExpr(value);
+          const fieldPtr = structFieldPtr(structTy, structPtr, field);
+          builder.CreateStore(compileExpr(struct), fieldPtr);
+        },
+        Expr: ({ expr }) => { compileExpr(expr); },
+        While: ({ condition, statements }) => {
+          const parent = builder.GetInsertBlock()!.getParent()!;
+          const condValue = compileExpr(condition);
+
+          const loopBB = llvm.BasicBlock.Create(context, 'loop', parent);
+          const loopEndBB = llvm.BasicBlock.Create(context, 'loop_end');
+
+          builder.CreateCondBr(condValue, loopBB, loopEndBB);
+
+          builder.SetInsertPoint(loopBB);
+          statements.forEach(stmt => {
+            compileStmt(stmt);
+          });
+          const condValue2 = compileExpr(condition);
+          builder.CreateCondBr(condValue2, loopBB, loopEndBB);
+
+          parent.insertAfter(loopBB, loopEndBB);
+          builder.SetInsertPoint(loopEndBB);
+        },
       });
     }
 
@@ -350,6 +343,7 @@ export const createLLVMCompiler = async () => {
     function llvmTy(ty: MonoTy): llvm.Type {
       return match(ty, {
         Const: c => matchString<string, llvm.Type>(c.name, {
+          'void': () => llvm.Type.getVoidTy(context),
           'int': () => llvm.Type.getInt32Ty(context),
           'u32': () => llvm.Type.getInt32Ty(context),
           'i32': () => llvm.Type.getInt32Ty(context),
@@ -358,7 +352,6 @@ export const createLLVMCompiler = async () => {
           'u8': () => llvm.Type.getInt8Ty(context),
           'i8': () => llvm.Type.getInt8Ty(context),
           'bool': () => llvm.Type.getInt1Ty(context),
-          '()': () => llvm.Type.getInt1Ty(context),
           '[]': () => llvm.Type.getInt8Ty(context),
           'ptr': () => llvm.PointerType.get(llvmTy(c.args[0]), 0),
           'str': () => strTy,
@@ -368,7 +361,7 @@ export const createLLVMCompiler = async () => {
               return llvmTy(t);
             });
 
-            return typeAlias.unwrap(`Unknown type representation for const type: ${c.name}, ${Object.values(module.typeContext.typeParamsEnv).map(MonoTy.show)}`);
+            return typeAlias.unwrap(`Unknown type representation for const type: ${c.name}`);
           },
         }),
         Var: v => match(v.value, {
@@ -404,7 +397,7 @@ export const createLLVMCompiler = async () => {
     }
 
     function declareFunc(f: VariantOf<Decl, 'Function'>): LLVM.Function {
-      const returnTy = llvmTy(f.returnTy.or(f.body.map(b => b.ty)).unwrap());
+      const returnTy = llvmTy(f.returnTy);
       const argTys = f.args.map(a => llvmTy(a.name.ty));
       const funcTy = llvm.FunctionType.get(returnTy, argTys, false);
       const isExternal =
@@ -421,29 +414,17 @@ export const createLLVMCompiler = async () => {
     function compileDecl(decl: Decl): void {
       match(decl, {
         Function: f => {
-          if (f.instances.length > 0) {
-            f.instances.forEach(g => {
-              compileDecl(g);
-            });
-
-            return;
-          }
-
-          if (PolyTy.isPolymorphic(f.funTy)) {
-            return;
-          }
-
-          const func = declareFunc(f);
+          const proto = declareFunc(f);
 
           if (f.attributes.some(attr => attr.name === 'extern')) {
             return;
           }
 
-          const entry = llvm.BasicBlock.Create(context, 'entry', func);
+          const entry = llvm.BasicBlock.Create(context, 'entry', proto);
           builder.SetInsertPoint(entry);
           const ret = scoped(() => {
             f.args.forEach((arg, index) => {
-              const llvmArg = func.getArg(index);
+              const llvmArg = proto.getArg(index);
               llvmArg.setName(arg.name.mangled);
               declareVar(arg.name, llvmArg);
             });
@@ -454,7 +435,7 @@ export const createLLVMCompiler = async () => {
                 if (f.attributes.some(attr => attr.name === 'meta')) {
                   return meta(
                     f.attributes.find(attr => attr.name === 'meta')!.args[0],
-                    func,
+                    proto,
                     builder,
                     llvm,
                     context,
@@ -466,9 +447,13 @@ export const createLLVMCompiler = async () => {
             });
           });
 
-          builder.CreateRet(ret);
+          if (ret === 'void') {
+            builder.CreateRetVoid();
+          } else {
+            builder.CreateRet(ret);
+          }
 
-          if (llvm.verifyFunction(func)) {
+          if (llvm.verifyFunction(proto)) {
             panic('function verification failed');
           }
         },
@@ -476,18 +461,11 @@ export const createLLVMCompiler = async () => {
         Import: ({ path, imports }) => {
           const importedMod = modules.get(path)!;
 
-          const declareImport = (decl: VariantOf<Decl, 'Function' | 'TypeAlias'>) => {
+          const declareImport = (decl: VariantOf<Decl, 'Function'>) => {
             match(decl, {
               Function: f => {
-                if (PolyTy.isPolymorphic(f.funTy)) {
-                  f.instances.forEach(inst => {
-                    declareFunc(inst);
-                  });
-                } else {
-                  declareFunc(f);
-                }
+                declareFunc(f);
               },
-              TypeAlias: () => { },
             });
           };
 

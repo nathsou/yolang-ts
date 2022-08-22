@@ -71,10 +71,6 @@ export type ArrayInit = DataType<{
 
 export const ArrayInit = {
   ...genConstructors<ArrayInit>(['elems', 'fill']),
-  len: (init: ArrayInit): number => match(init, {
-    elems: ({ elems }) => elems.length,
-    fill: ({ count }) => count,
-  }),
 };
 
 export type Expr = DataType<WithSweetRefAndType<{
@@ -86,14 +82,12 @@ export type Expr = DataType<WithSweetRefAndType<{
   Closure: { args: Argument[], body: Expr },
   Block: { statements: Stmt[], lastExpr: Maybe<Expr> },
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
-  Assignment: { lhs: Expr, rhs: Expr },
   FieldAccess: { lhs: Expr, field: string },
   Array: { init: ArrayInit, elemTy: MonoTy },
   Tuple: { elements: Expr[] },
   Match: { expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[] },
   Struct: { name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
-  While: { condition: Expr, body: Expr },
 }>>;
 
 const typed = <T extends {}>(obj: T, sweet: sweet.Expr): T & { ty: MonoTy, sweet: sweet.Expr } => ({
@@ -107,18 +101,16 @@ export const Expr = {
   Variable: (name: VarName, sweet: sweet.Expr): Expr => typed({ variant: 'Variable', name }, sweet),
   NamedFuncCall: (name: Either<string, FuncName>, typeParams: MonoTy[], args: Expr[], sweet: sweet.Expr): Expr => typed({ variant: 'NamedFuncCall', name, typeParams, args }, sweet),
   Call: (lhs: Expr, args: Expr[], sweet: sweet.Expr): Expr => typed({ variant: 'Call', lhs, args }, sweet),
-  Error: (message: string, sweet: sweet.Expr): Expr => ({ variant: 'Error', message, sweet, ty: MonoTy.unit() }),
+  Error: (message: string, sweet: sweet.Expr): Expr => ({ variant: 'Error', message, sweet, ty: MonoTy.void() }),
   Closure: (args: Argument[], body: Expr, sweet: sweet.Expr): Expr => typed({ variant: 'Closure', args, body }, sweet),
   Block: (statements: Stmt[], lastExpr: Maybe<Expr>, sweet: sweet.Expr): Expr => typed({ variant: 'Block', statements, lastExpr }, sweet),
   IfThenElse: (condition: Expr, then: Expr, else_: Maybe<Expr>, sweet: sweet.Expr): Expr => typed({ variant: 'IfThenElse', condition, then, else_ }, sweet),
-  Assignment: (lhs: Expr, rhs: Expr, sweet: sweet.Expr): Expr => typed({ variant: 'Assignment', lhs, rhs }, sweet),
   FieldAccess: (lhs: Expr, field: string, sweet: sweet.Expr): Expr => typed({ variant: 'FieldAccess', lhs, field }, sweet),
   Array: (init: ArrayInit, sweet: sweet.Expr): Expr => typed({ variant: 'Array', init, elemTy: MonoTy.fresh() }, sweet),
   Tuple: (elements: Expr[], sweet: sweet.Expr): Expr => typed({ variant: 'Tuple', elements }, sweet),
   Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[], sweet: sweet.Expr): Expr => typed({ variant: 'Match', expr, annotation, cases }, sweet),
   Struct: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], sweet: sweet.Expr): Expr => typed({ variant: 'Struct', name, typeParams, fields }, sweet),
   TupleIndexing: (lhs: Expr, index: number, sweet: sweet.Expr): Expr => typed({ variant: 'TupleIndexing', lhs, index }, sweet),
-  While: (condition: Expr, body: Expr, sweet: sweet.Expr): Expr => typed({ variant: 'While', condition, body }, sweet),
   from: (sweet: sweet.Expr, nameEnv: NameEnv, errors: Error[]): Expr => {
     const go = (expr: sweet.Expr, env = nameEnv) => Expr.from(expr, env, errors);
 
@@ -177,7 +169,6 @@ export const Expr = {
 
         return rewriteElseIfs(ite.condition, ite.then, ite.elseifs, ite.else_);
       },
-      Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs), sweet),
       FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field, sweet),
       Array: ({ init }) => Expr.Array(match(init, {
         elems: ({ elems }) => ArrayInit.elems({ elems: elems.map(e => go(e)) }),
@@ -209,7 +200,6 @@ export const Expr = {
           sweet
         );
       },
-      While: ({ condition, body }) => Expr.While(go(condition), go(body), sweet),
     });
   },
   showSweet: (expr: Expr): string => sweet.Expr.show(expr.sweet),
@@ -225,7 +215,6 @@ export const Expr = {
       Closure: ({ args, body }) => Expr.Closure(args.map(arg => ({ ...arg, name: NameEnv.resolveVar(nameEnv, arg.name.original) })), go(body), expr.sweet),
       Block: ({ statements, lastExpr }) => Expr.Block(statements.map(s => Stmt.rewrite(s, nameEnv, rewriteExpr)), lastExpr.map(e => go(e)), expr.sweet),
       IfThenElse: ({ condition, then, else_ }) => Expr.IfThenElse(go(condition), go(then), else_.map(go), expr.sweet),
-      Assignment: ({ lhs, rhs }) => Expr.Assignment(go(lhs), go(rhs), expr.sweet),
       FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field, expr.sweet),
       Array: ({ init }) => Expr.Array(match(init, {
         elems: ({ elems }) => ArrayInit.elems({ elems: elems.map(e => go(e)) }),
@@ -235,7 +224,6 @@ export const Expr = {
       Match: ({ expr, annotation, cases }) => Expr.Match(go(expr), annotation, cases.map(c => ({ ...c, body: go(c.body) })), expr.sweet),
       Struct: ({ name, typeParams, fields }) => Expr.Struct(name, typeParams, fields.map(f => ({ ...f, value: go(f.value) })), expr.sweet),
       TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index, expr.sweet),
-      While: ({ condition, body }) => Expr.While(go(condition), go(body), expr.sweet),
     }));
   },
   isMutable: (expr: Expr): boolean => match(expr, {
@@ -249,13 +237,17 @@ export const Expr = {
 
 export type Stmt = DataType<{
   Let: { name: VarName, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy> },
+  Assignment: { lhs: Expr, rhs: Expr },
   Expr: { expr: Expr },
+  While: { condition: Expr, statements: Stmt[] },
   Error: { message: string },
 }>;
 
 export const Stmt = {
   Let: (name: VarName, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
+  Assignment: (lhs: Expr, rhs: Expr): Stmt => ({ variant: 'Assignment', lhs, rhs }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
+  While: (condition: Expr, statements: Stmt[]): Stmt => ({ variant: 'While', condition, statements }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
   from: (sweet: sweet.Stmt, nameEnv: NameEnv, errors: Error[]): Stmt => {
     return match(sweet, {
@@ -265,7 +257,9 @@ export const Stmt = {
         mutable,
         annotation
       ),
+      Assignment: ({ lhs, rhs }) => Stmt.Assignment(Expr.from(lhs, nameEnv, errors), Expr.from(rhs, nameEnv, errors)),
       Expr: ({ expr }) => Stmt.Expr(Expr.from(expr, nameEnv, errors)),
+      While: ({ condition, statements }) => Stmt.While(Expr.from(condition, nameEnv, errors), statements.map(s => Stmt.from(s, nameEnv, errors))),
       Error: ({ message }) => Stmt.Error(message),
     });
   },
@@ -277,7 +271,9 @@ export const Stmt = {
         mutable,
         annotation
       ),
+      Assignment: ({ lhs, rhs }) => Stmt.Assignment(Expr.rewrite(lhs, nameEnv, f), Expr.rewrite(rhs, nameEnv, f)),
       Expr: ({ expr }) => Stmt.Expr(Expr.rewrite(expr, nameEnv, f)),
+      While: ({ condition, statements }) => Stmt.While(Expr.rewrite(condition, nameEnv, f), statements.map(s => Stmt.rewrite(s, nameEnv, f))),
       Error: ({ message }) => Stmt.Error(message),
     });
   },

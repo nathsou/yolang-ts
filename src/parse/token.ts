@@ -77,7 +77,7 @@ const keywords = [
   'let', 'mut', 'in', 'if', 'else', 'fun', 'while',
   'return', 'as', 'unsafe', 'impl',
   'module', 'match', 'type', 'trait', 'for',
-  'import', 'export', 'sugar', 'pub',
+  'import', 'export', 'sugar', 'pub', 'void',
 ] as const;
 
 export type Keyword = (typeof keywords)[number];
@@ -98,11 +98,10 @@ export type Const = DataType<{
   u8: { value: number },
   bool: { value: boolean },
   str: { value: string },
-  unit: {},
 }>;
 
-const { u32, i32, u64, i64, i8, u8, bool, str, unit } = genConstructors<Const>([
-  'u32', 'i32', 'u64', 'i64', 'i8', 'u8', 'bool', 'str', 'unit',
+const { u32, i32, u64, i64, i8, u8, bool, str } = genConstructors<Const>([
+  'u32', 'i32', 'u64', 'i64', 'i8', 'u8', 'bool', 'str',
 ]);
 
 export const Const = {
@@ -114,7 +113,6 @@ export const Const = {
   u8: (value: number) => u8({ value }),
   bool: (value: boolean) => bool({ value }),
   str: (value: string) => str({ value }),
-  unit: () => unit({}),
   show: (c: Const) => match(c, {
     u32: ({ value }) => `${value}`,
     i32: ({ value }) => `${value}`,
@@ -135,7 +133,6 @@ export const Const = {
     'u8 u8': (a, b) => a.value === b.value,
     'bool bool': (a, b) => a.value === b.value,
     'str str': (a, b) => a.value === b.value,
-    'unit unit': () => true,
     _: () => false,
   }),
   type: (c: Const): MonoTy => match(c, {
@@ -147,7 +144,6 @@ export const Const = {
     i8: MonoTy.i8,
     bool: MonoTy.bool,
     str: MonoTy.str,
-    unit: MonoTy.unit,
   }),
   isInt: (c: Const) => match(c, {
     'unit': () => false,

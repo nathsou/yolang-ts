@@ -1,0 +1,256 @@
+import { DataType, genConstructors, match, VariantOf } from "itsamatch";
+import { Row } from "../infer/structs";
+import { TypeContext } from "../infer/typeContext";
+import { MonoTy, PolyTy } from "../infer/types";
+import { Const } from "../parse/token";
+import { zip } from "../utils/array";
+import { Maybe } from "../utils/maybe";
+import { assert, panic, proj, pushMap } from "../utils/misc";
+import * as bitter from './bitter';
+import { FuncName, VarName } from "./name";
+import * as sweet from './sweet';
+
+type Typed<T> = {
+  [K in keyof T]: T[K] & { ty: MonoTy }
+};
+
+export type ArrayInit = DataType<{
+  elems: { elems: Expr[] },
+  fill: { value: Expr, count: number },
+}>;
+
+export const ArrayInit = {
+  ...genConstructors<ArrayInit>(['elems', 'fill']),
+  len: (init: ArrayInit): number => match(init, {
+    elems: ({ elems }) => elems.length,
+    fill: ({ count }) => count,
+  }),
+};
+
+export type Expr = DataType<Typed<{
+  Const: { value: Const },
+  Variable: { name: VarName },
+  NamedFuncCall: { name: FuncName, args: Expr[] },
+  IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
+  StructAccess: { struct: VariantOf<MonoTy, 'Struct'>, lhs: Expr, field: string },
+  Struct: { structTy: VariantOf<MonoTy, 'Struct'>, fields: { name: string, value: Expr }[] },
+  Block: { stmts: Stmt[], ret: Maybe<Expr> },
+  // TODO: replace with core structs, assignments and loops
+  Array: { init: ArrayInit, elemTy: MonoTy },
+}>>;
+
+function resolveNamedStruct(name: string, typeParams: MonoTy[], ctx: TypeContext): Maybe<VariantOf<MonoTy, 'Struct'>> {
+  const ta = TypeContext.resolveTypeAlias(ctx, name);
+
+  return ta.map(({ ty, params }) => {
+    assert(ty.variant === 'Struct');
+    const subst = new Map(zip(params.map(proj('name')), typeParams));
+    const struct = MonoTy.substituteTyParams(ty, subst) as VariantOf<MonoTy, 'Struct'>;
+    assert(struct.variant === 'Struct');
+
+    return struct;
+  });
+}
+
+function resolveAnonymousStruct(ty: VariantOf<MonoTy, 'Struct'>, ctx: TypeContext): VariantOf<MonoTy, 'Struct'> {
+  if (ty.name != null) {
+    return ty;
+  }
+
+  const candidates: { name: string, ty: VariantOf<MonoTy, 'Struct'> }[] = [];
+
+  for (const [name, ta] of ctx.typeAliases) {
+    if (ta.ty.variant === 'Struct' && Row.strictEq(ta.ty.row, ty.row)) {
+      ta.ty.name = name;
+      candidates.push({ name, ty: ta.ty });
+    }
+  }
+
+  assert(candidates.length !== 0, () => `unknown struct type: ${MonoTy.show(ty)}`);
+  assert(candidates.length < 2, () => `ambiguous struct type: ${MonoTy.show(ty)}`);
+
+  return candidates[0].ty;
+}
+
+export const Expr = {
+  ...genConstructors<Expr>([
+    'Const', 'Variable', 'NamedFuncCall', 'IfThenElse',
+    'StructAccess', 'Struct', 'Block', 'Array',
+  ]),
+  from: (expr: bitter.Expr, ctx: TypeContext): Expr => {
+    const go = (expr: bitter.Expr) => Expr.from(expr, ctx);
+    return match(expr, {
+      Const: ({ value, ty }) => Expr.Const({ value, ty }),
+      Variable: ({ name, ty }) => Expr.Variable({ name, ty }),
+      NamedFuncCall: ({ name, args, ty }) => Expr.NamedFuncCall({
+        name: name.unwrapRight('core.Expr.from: NamedFuncCall'),
+        args: args.map(go),
+        ty,
+      }),
+      Block: ({ statements, lastExpr, ty }) => Expr.Block({
+        stmts: statements.map(s => Stmt.from(s, ctx)),
+        ret: lastExpr.map(go),
+        ty
+      }),
+      IfThenElse: ({ condition, then, else_, ty }) => Expr.IfThenElse({
+        condition: go(condition),
+        then: go(then),
+        else_: else_.map(go),
+        ty
+      }),
+      Struct: ({ name, typeParams, fields, ty }) => Expr.Struct({
+        structTy: resolveNamedStruct(name, typeParams, ctx).unwrap('resolveStruct'),
+        fields: fields.map(({ name, value }) =>
+          ({ name, value: go(value) })),
+        ty
+      }),
+      FieldAccess: ({ lhs, field, ty }) => {
+        const structTy = MonoTy.deref(lhs.ty);
+        assert(structTy.variant === 'Struct');
+        return Expr.StructAccess({
+          lhs: go(lhs),
+          struct: resolveAnonymousStruct(structTy, ctx),
+          field,
+          ty,
+        });
+      },
+      Array: ({ elemTy, init, ty }) => Expr.Array({
+        elemTy,
+        init: match(init, {
+          elems: ({ elems }) => ArrayInit.elems({ elems: elems.map(go) }),
+          fill: ({ count, value }) => ArrayInit.fill({ count, value: go(value) }),
+        }),
+        ty
+      }),
+      _: () => panic('Unsupported core expression'),
+    });
+  },
+};
+
+export type Stmt = DataType<{
+  Let: { mut: boolean, name: VarName, value: Expr },
+  VariableAssignment: { name: VarName, value: Expr },
+  StructAssignment: { struct: Expr, structTy: VariantOf<MonoTy, 'Struct'>, field: string, value: Expr },
+  Expr: { expr: Expr },
+  While: { condition: Expr, statements: Stmt[] },
+}>;
+
+export const Stmt = {
+  ...genConstructors<Stmt>(['Let', 'VariableAssignment', 'StructAssignment', 'Expr', 'While']),
+  from: (stmt: bitter.Stmt, ctx: TypeContext): Stmt => match(stmt, {
+    Let: ({ mutable, name, expr }) => Stmt.Let({ mut: mutable, name, value: Expr.from(expr, ctx) }),
+    Expr: ({ expr }) => Stmt.Expr({ expr: Expr.from(expr, ctx) }),
+    While: ({ condition, statements }) => Stmt.While({
+      condition: Expr.from(condition, ctx),
+      statements: statements.map(s => Stmt.from(s, ctx))
+    }),
+    Assignment: ({ lhs, rhs }) => match(lhs, {
+      Variable: ({ name }) => Stmt.VariableAssignment({ name, value: Expr.from(rhs, ctx) }),
+      FieldAccess: ({ lhs, field }) => {
+        const structTy = MonoTy.deref(lhs.ty);
+        assert(structTy.variant === 'Struct');
+        return Stmt.StructAssignment({ struct: Expr.from(lhs, ctx), structTy, field, value: Expr.from(rhs, ctx) });
+      },
+      _: () => panic('Unsupported assignment target: ' + lhs.variant),
+    }),
+    _: () => panic('Unhandled core statement: ' + stmt.variant),
+  }),
+};
+
+export type Decl = DataType<{
+  Function: {
+    attributes: sweet.Attribute[],
+    pub: boolean,
+    name: FuncName,
+    args: { mut: boolean, name: VarName }[],
+    ty: VariantOf<MonoTy, 'Fun'>,
+    body: Maybe<Expr>,
+    returnTy: MonoTy,
+  },
+  Import: { path: string, imports: sweet.Imports },
+}>;
+
+export const Decl = {
+  ...genConstructors<Decl>(['Function', 'Import']),
+  from: (decl: bitter.Decl, ctx: TypeContext): Decl[] => match(decl, {
+    Function: ({ attributes, pub, name, args, body, funTy, instances }) => {
+      if (instances.length > 0) {
+        return instances.flatMap(inst => Decl.from(inst, ctx));
+      }
+
+      if (PolyTy.isPolymorphic(funTy)) {
+        return [];
+      }
+
+      const ty = MonoTy.deref(funTy[1]);
+      assert(ty.variant === 'Fun');
+
+      return [Decl.Function({
+        attributes,
+        pub,
+        name,
+        args: args.map(({ mutable, name }) => ({ mut: mutable, name })),
+        ty,
+        body: body.map(e => Expr.from(e, ctx)),
+        returnTy: MonoTy.deref(ty.ret),
+      })];
+    },
+    TypeAlias: () => [],
+    Import: ({ path, imports }) => [Decl.Import({ path, imports })],
+    _: () => panic('Unhandled core declaration: ' + decl.variant),
+  }),
+};
+
+export type Module = {
+  name: string,
+  path: string,
+  decls: Decl[],
+  members: Map<string, VariantOf<Decl, 'Function'>[]>,
+  imports: Map<string, Set<string>>,
+  typeContext: TypeContext,
+};
+
+export const Module = {
+  from: (mod: bitter.Module): Module => {
+    const decls = mod.decls.flatMap(d => Decl.from(d, mod.typeContext));
+    const coreMod: Module = {
+      name: mod.name,
+      path: mod.path,
+      decls,
+      imports: mod.imports,
+      members: new Map(),
+      typeContext: mod.typeContext,
+    };
+
+    for (const decl of decls) {
+      match(decl, {
+        Function: f => {
+          pushMap(coreMod.members, f.name.original, f);
+        },
+        _: () => { },
+      });
+    }
+
+    return coreMod;
+  }
+};
+
+export type Prog = {
+  modules: Map<string, Module>,
+  entry: Module,
+};
+
+export const Prog = {
+  from: (prog: bitter.Prog): Prog => {
+    const coreModules = new Map<string, Module>();
+
+    for (const [path, mod] of prog.modules) {
+      coreModules.set(path, Module.from(mod));
+    }
+
+    return {
+      modules: coreModules,
+      entry: coreModules.get(prog.entry.path)!,
+    };
+  },
+};

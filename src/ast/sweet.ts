@@ -67,7 +67,6 @@ export type Expr = DataType<{
   Closure: { args: Argument[], body: Expr },
   Block: { statements: Stmt[], lastExpr: Maybe<Expr> },
   IfThenElse: { condition: Expr, then: Expr, elseifs: { cond: Expr, body: Expr }[], else_: Maybe<Expr> },
-  Assignment: { lhs: Expr, rhs: Expr },
   FieldAccess: { lhs: Expr, field: string },
   Tuple: { elements: Expr[] },
   Array: { init: ArrayInit },
@@ -76,7 +75,6 @@ export type Expr = DataType<{
   Struct: { name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
   LetIn: { pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr },
-  While: { condition: Expr, body: Expr },
 }>;
 
 export const Expr = {
@@ -87,7 +85,6 @@ export const Expr = {
   Closure: (args: Argument[], body: Expr): Expr => ({ variant: 'Closure', args, body }),
   Block: (statements: Stmt[], lastExpr?: Maybe<Expr>): Expr => ({ variant: 'Block', statements, lastExpr: lastExpr ?? none }),
   IfThenElse: (condition: Expr, then: Expr, elseifs: { cond: Expr, body: Expr }[], else_: Maybe<Expr>): Expr => ({ variant: 'IfThenElse', condition, then, elseifs, else_ }),
-  Assignment: (lhs: Expr, rhs: Expr): Expr => ({ variant: 'Assignment', lhs, rhs }),
   FieldAccess: (lhs: Expr, field: string): Expr => ({ variant: 'FieldAccess', lhs, field }),
   Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
   Array: (init: ArrayInit): Expr => ({ variant: 'Array', init }),
@@ -95,7 +92,7 @@ export const Expr = {
   Parenthesized: (expr: Expr): Expr => ({ variant: 'Parenthesized', expr }),
   Struct: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[]): Expr => ({ variant: 'Struct', name, typeParams, fields }),
   TupleIndexing: (lhs: Expr, index: number): Expr => ({ variant: 'TupleIndexing', lhs, index }),
-  LetIn: (pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr): Expr => ({ variant: 'LetIn', pattern, annotation, value, body }), While: (condition: Expr, body: Expr): Expr => ({ variant: 'While', condition, body }),
+  LetIn: (pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr): Expr => ({ variant: 'LetIn', pattern, annotation, value, body }),
   show: (expr: Expr): string => match(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
@@ -116,14 +113,13 @@ export const Expr = {
         }
       }
 
-      const params = `${typeParams.length > 0 ? `<${joinWith(typeParams, MonoTy.show)}>` : ''}`;
+      const params: string = `${typeParams.length > 0 ? `<${joinWith(typeParams, MonoTy.show)}>` : ''}`;
       return `${Expr.show(lhs)}${params}(${joinWith(args, Expr.show, ', ')})`;
     },
     Error: ({ message }) => `<Error: ${message}>`,
     Closure: ({ args, body }) => `${ArgumentList.show(args)} -> ${Expr.show(body)}`,
     Block: ({ statements, lastExpr }) => `{\n${joinWith([...statements, ...lastExpr.mapWithDefault(e => [Stmt.Expr(e)], [])], s => '  ' + Stmt.show(s), '\n')}\n}`,
     IfThenElse: ({ condition, then, elseifs, else_ }) => `if ${Expr.show(condition)} ${Expr.show(then)}${elseifs.map(({ cond, body }) => ` else if ${Expr.show(cond)} ${Expr.show(body)}`).join('\n')}${else_.map(e => ` else ${Expr.show(e)}`).orDefault('')}`,
-    Assignment: ({ lhs, rhs }) => `${Expr.show(lhs)} = ${Expr.show(rhs)}`,
     FieldAccess: ({ lhs, field }) => `${Expr.show(lhs)}.${field}`,
     Tuple: ({ elements }) => `(${joinWith(elements, Expr.show, ', ')})`,
     Array: ({ init }) => ArrayInit.show(init),
@@ -132,7 +128,6 @@ export const Expr = {
     Struct: ({ name, typeParams, fields }) => `${name} <${joinWith(typeParams, MonoTy.show, ', ')}> {\n${joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, ', ')}\n}`,
     TupleIndexing: ({ lhs, index }) => `${Expr.show(lhs)}.${index}`,
     LetIn: ({ pattern, value, body }) => `let ${Pattern.show(pattern)} = ${Expr.show(value)} in ${Expr.show(body)}`,
-    While: ({ condition, body }) => `while ${Expr.show(condition)} ${Expr.show(body)}`,
   }),
 };
 
@@ -173,17 +168,23 @@ export type Stmt = DataType<{
     mutable: boolean,
     annotation: Maybe<MonoTy>
   },
+  Assignment: { lhs: Expr, rhs: Expr },
   Expr: { expr: Expr },
+  While: { condition: Expr, statements: Stmt[] },
   Error: { message: string },
 }>;
 
 export const Stmt = {
   Let: (name: string, expr: Expr, mutable: boolean, annotation: Maybe<MonoTy>): Stmt => ({ variant: 'Let', name, expr, mutable, annotation }),
+  Assignment: (lhs: Expr, rhs: Expr): Stmt => ({ variant: 'Assignment', lhs, rhs }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
+  While: (condition: Expr, statements: Stmt[]): Stmt => ({ variant: 'While', condition, statements }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
   show: (stmt: Stmt): string => match(stmt, {
     Let: ({ name, expr, mutable, annotation }) => `${mutable ? 'mut' : 'let'} ${name}${annotation.mapWithDefault(ty => ': ' + MonoTy.show(ty), '')} = ${Expr.show(expr)}`,
+    Assignment: ({ lhs, rhs }) => `${Expr.show(lhs)} = ${Expr.show(rhs)}`,
     Expr: ({ expr }) => Expr.show(expr),
+    While: ({ condition, statements }) => `while ${Expr.show(condition)} {\n${statements.map(Stmt.show).join('\n')}\n}`,
     Error: ({ message }) => `<Error: ${message}>`,
   })
 };

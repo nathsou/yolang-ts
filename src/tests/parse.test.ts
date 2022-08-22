@@ -67,7 +67,6 @@ describe('Parser', () => {
   describe('tuples', () => {
     it('should not parse parenthesized expressions as tuples', () => {
       expectExpr(tuple, '(1)', Expr.Parenthesized(Expr.Const(Const.i32(1))));
-      expectExpr(tuple, '(())', Expr.Parenthesized(Expr.Const(Const.unit())));
     });
 
     it('should accept tuples with primary expressions', () => {
@@ -81,11 +80,6 @@ describe('Parser', () => {
         Expr.Const(Const.i32(7)),
       ]));
 
-      expectExpr(tuple, '((), ())', Expr.Tuple([
-        Expr.Const(Const.unit()),
-        Expr.Const(Const.unit()),
-      ]));
-
       expectExpr(tuple, '(true, false, true)', Expr.Tuple([
         Expr.Const(Const.bool(true)),
         Expr.Const(Const.bool(false)),
@@ -97,13 +91,12 @@ describe('Parser', () => {
         Expr.Const(Const.bool(true)),
       ]));
 
-      expectExpr(tuple, '(a, 2, b, c, false, ())', Expr.Tuple([
+      expectExpr(tuple, '(a, 2, b, c, false)', Expr.Tuple([
         Expr.Variable('a'),
         Expr.Const(Const.i32(2)),
         Expr.Variable('b'),
         Expr.Variable('c'),
         Expr.Const(Const.bool(false)),
-        Expr.Const(Const.unit()),
       ]));
     });
 
@@ -120,11 +113,11 @@ describe('Parser', () => {
         )
       ]));
 
-      expectExpr(tuple, '(f(), g(1, ())))', Expr.Tuple([
+      expectExpr(tuple, '(f(), g(1, 2)))', Expr.Tuple([
         Expr.Call(Expr.Variable('f'), [], []),
         Expr.Call(Expr.Variable('g'), [], [
           Expr.Const(Const.i32(1)),
-          Expr.Const(Const.unit()),
+          Expr.Const(Const.i32(2)),
         ]),
       ]));
     });
@@ -161,7 +154,7 @@ describe('Parser', () => {
 
   describe('closures', () => {
     it('should parse closures with no parameters', () => {
-      expectExpr(expr, '() -> ()', Expr.Closure([], Expr.Const(Const.unit())));
+      expectExpr(expr, '() -> 1', Expr.Closure([], Expr.Const(Const.i32(1))));
     });
 
     it('should parse closures with one parameter', () => {

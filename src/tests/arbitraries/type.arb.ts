@@ -5,7 +5,7 @@ import { MonoTy } from '../../infer/types';
 import { uniq } from '../../utils/array';
 import { lowerIdent } from './common.arb';
 
-const unitTy = fc.constant(MonoTy.unit());
+const voidTy = fc.constant(MonoTy.void());
 const i32Ty = fc.constant(MonoTy.i32());
 const boolTy = fc.constant(MonoTy.bool());
 const varTy = fc.integer({ min: 0, max: 10 }).map(n => MonoTy.Var({ kind: 'Unbound', id: n }));
@@ -15,7 +15,7 @@ export const ty = (maxDepth = 3) => fc.letrec(tie => ({
     { maxDepth },
     { arbitrary: i32Ty, weight: 4 },
     { arbitrary: boolTy, weight: 2 },
-    { arbitrary: unitTy, weight: 1 },
+    { arbitrary: voidTy, weight: 1 },
   ),
   primary: fc.frequency(
     { maxDepth },

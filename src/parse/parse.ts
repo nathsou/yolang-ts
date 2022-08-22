@@ -83,7 +83,7 @@ const angleBrackets = <T>(p: Parser<T>) => map(
 // TYPES
 export const monoTy = uninitialized<MonoTy>();
 const parenthesizedTy = map(parens(monoTy), ty => ty);
-const unitTy = map(seq(symbol('('), symbol(')')), MonoTy.unit);
+const voidTy = map(keyword('void'), MonoTy.void);
 const boolTy = map(ident2('bool'), MonoTy.bool);
 const u32Ty = map(ident2('u32'), MonoTy.u32);
 const i32Ty = map(ident2('i32'), MonoTy.i32);
@@ -92,7 +92,7 @@ const i64Ty = map(ident2('i64'), MonoTy.i64);
 const u8Ty = map(ident2('u8'), MonoTy.u8);
 const i8Ty = map(ident2('i8'), MonoTy.i8);
 const strTy = map(seq(ident2('str')), MonoTy.str);
-const constTy = alt(unitTy, boolTy, u32Ty, i32Ty, u64Ty, i64Ty, u8Ty, i8Ty, strTy);
+const constTy = alt(voidTy, boolTy, u32Ty, i32Ty, u64Ty, i64Ty, u8Ty, i8Ty, strTy);
 const namedTy = map(
   seq(
     alt(upperIdent, string('ptr')),
@@ -201,16 +201,11 @@ const boolConst = satisfyBy<Const>(token =>
     none
 );
 
-const unitConst: Parser<Const> = map(
-  seq(symbol('('), symbol(')')),
-  Const.unit
-);
-
 const stringConst = satisfyBy<Const>(token =>
   token.variant === 'Const' && token.value.variant === 'str' ? some(token.value) : none
 );
 
-const constVal: Parser<Const> = alt(integerConst, boolConst, unitConst, stringConst);
+const constVal: Parser<Const> = alt(integerConst, boolConst, stringConst);
 
 const variable = map(ident, Expr.Variable);
 
@@ -272,7 +267,7 @@ export const tuple = alt(
       }),
       expr,
       symbol(','),
-      expectOrDefault(commas(expr), `Expected expression in tuple after ','`, [Expr.Const(Const.unit())]),
+      expect(commas(expr), `Expected expression in tuple after ','`),
     )),
     ([_l, h, _, tl]) => Expr.Tuple([h, ...tl])
   ),
@@ -411,18 +406,6 @@ const ifThenElse = alt(
   binaryExpr
 );
 
-const whileExpr = alt(
-  map(
-    seq(
-      keyword('while'),
-      expectOrDefault(expr, `Expected condition after 'while'`, Expr.Error),
-      expectOrDefault(block, `Expected block after condidtion`, Expr.Block([])),
-    ),
-    ([_, cond, body]) => Expr.While(cond, body)
-  ),
-  ifThenElse
-);
-
 const letIn = alt(
   map(seq(
     keyword('let'),
@@ -435,30 +418,7 @@ const letIn = alt(
   ),
     ([_let, pattern, ann, _eq, val, _in, body]) => Expr.LetIn(pattern, ann, val, body)
   ),
-  whileExpr
-);
-
-const assignment = alt(
-  map(
-    seq(
-      ifThenElse,
-      alt(
-        string(
-          '=', '+=', '-=', '*=', '/=',
-          'mod=', 'and=', 'or=', 'nand=', 'nor=', 'xor=', 'xnor='
-        ),
-      ),
-      expectOrDefault(expr, `Expected expression after assignment operator`, Expr.Error),
-    ),
-    ([lhs, op, rhs]) => {
-      if (op === '=') {
-        return Expr.Assignment(lhs, rhs);
-      } else {
-        return Expr.Assignment(lhs, Expr.Call(Expr.Variable(op.slice(0, -1)), [], [lhs, rhs]));
-      }
-    }
-  ),
-  letIn
+  ifThenElse
 );
 
 const matchCase: Parser<{ pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }> = map(
@@ -482,7 +442,7 @@ const matchExpr = alt(
     ),
     ([_, expr, ann, cases]) => Expr.Match(expr, ann, cases)
   ),
-  assignment
+  letIn
 );
 
 const closure = alt(
@@ -564,16 +524,51 @@ const letStmt = map(seq(
   ([kw, name, ann, _, expr]) => Stmt.Let(name, expr, Token.eq(kw, Token.Keyword('mut')), ann)
 );
 
+const whileStmt = alt(
+  map(
+    seq(
+      keyword('while'),
+      expectOrDefault(expr, `Expected condition after 'while'`, Expr.Error),
+      expectOrDefault(curlyBrackets(many(stmt)), `Expected block after condidtion`, []),
+    ),
+    ([_, cond, stmts]) => Stmt.While(cond, stmts)
+  ),
+  letStmt
+);
+
 const exprStmt = alt(
   map(expr, Stmt.Expr),
-  letStmt
+  whileStmt
+);
+
+const assignmentStmt = alt(
+  map(
+    seq(
+      ifThenElse,
+      alt(
+        string(
+          '=', '+=', '-=', '*=', '/=',
+          'mod=', 'and=', 'or=', 'nand=', 'nor=', 'xor=', 'xnor='
+        ),
+      ),
+      expectOrDefault(expr, `Expected expression after assignment operator`, Expr.Error),
+    ),
+    ([lhs, op, rhs]) => {
+      if (op === '=') {
+        return Stmt.Assignment(lhs, rhs);
+      } else {
+        return Stmt.Assignment(lhs, Expr.Call(Expr.Variable(op.slice(0, -1)), [], [lhs, rhs]));
+      }
+    }
+  ),
+  exprStmt
 );
 
 initParser(
   stmt,
   map(
     // seq(exprStmt, expectOrDefault(symbol(';'), 'Expected semicolon after statement', Token.symbol(';'))),
-    seq(exprStmt, optional(symbol(';'))),
+    seq(assignmentStmt, optional(symbol(';'))),
     ([stmt]) => stmt
   )
 );

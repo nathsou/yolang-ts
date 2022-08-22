@@ -7,7 +7,7 @@ export const meta = (
   builder: LLVM.IRBuilder,
   llvm: typeof LLVM,
   context: LLVM.LLVMContext,
-): LLVM.Value => {
+): LLVM.Value | 'void' => {
   switch (name) {
     case 'addU64':
     case 'addI64':
@@ -112,7 +112,7 @@ export const meta = (
       );
 
       builder.CreateStore(valueArg, elemPtr);
-      return llvm.UndefValue.get(llvm.Type.getInt1Ty(context));
+      return 'void';
     }
     case 'u8_from_int':
       return builder.CreateIntCast(f.getArg(0), llvm.Type.getInt8Ty(context), true);

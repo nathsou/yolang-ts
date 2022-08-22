@@ -224,7 +224,7 @@ const inferExpr = (
         inferExpr(expr, newCtx, errors);
       });
 
-      const retTy = lastExpr.mapWithDefault(proj('ty'), MonoTy.unit());
+      const retTy = lastExpr.mapWithDefault(proj('ty'), MonoTy.void());
       unify(tau, retTy);
     },
     IfThenElse: ({ condition, then, else_ }) => {
@@ -237,23 +237,9 @@ const inferExpr = (
       const condTy = condition.ty;
       unify(condTy, MonoTy.bool());
       const thenTy = then.ty;
-      const elseTy = else_.mapWithDefault(proj('ty'), MonoTy.unit());
+      const elseTy = else_.mapWithDefault(proj('ty'), MonoTy.void());
       unify(thenTy, tau);
       unify(elseTy, tau);
-    },
-    Assignment: ({ lhs, rhs }) => {
-      inferExpr(lhs, ctx, errors);
-      inferExpr(rhs, ctx, errors);
-      const lhsTy = lhs.ty;
-      const rhsTy = rhs.ty;
-      unify(lhsTy, rhsTy);
-      unify(tau, MonoTy.unit());
-
-      if (!ASSIGNABLE_EXPRESSIONS.has(lhs.variant)) {
-        errors.push(Error.Typing({ type: 'UnassignableExpression', expr: lhs }));
-      } else if (!Expr.isMutable(lhs)) { // mutability check
-        errors.push(Error.Typing({ type: 'ImmutableValue', expr: lhs }));
-      }
     },
     Closure: ({ args, body }) => {
       const bodyCtx = TypeContext.clone(ctx);
@@ -310,7 +296,7 @@ const inferExpr = (
       inferExpr(expr, ctx, errors);
 
       if (cases.length === 0) {
-        unify(retTy, MonoTy.unit());
+        unify(retTy, MonoTy.void());
       } else {
         for (const { pattern, annotation, body } of cases) {
           const patternTy = Pattern.type(pattern);
@@ -368,7 +354,8 @@ const inferExpr = (
 
               const expectedTy = MonoTy.Const(name, ...typeParams);
               const actualTy = MonoTy.Struct(
-                Row.fromFields(fields.map(f => [f.name, f.value.ty]))
+                Row.fromFields(fields.map(f => [f.name, f.value.ty])),
+                name,
               );
 
               unify(expectedTy, actualTy);
@@ -393,12 +380,6 @@ const inferExpr = (
         unify(expectedLhsTy, actualLhsTy);
         unify(tau, elemsTys[index]);
       }
-    },
-    While: ({ condition, body }) => {
-      inferExpr(condition, ctx, errors);
-      unify(condition.ty, MonoTy.bool());
-      inferExpr(body, ctx, errors);
-      unify(tau, MonoTy.unit());
     },
     Error: ({ message }) => {
       errors.push(Error.Typing({ type: 'ParsingError', message }));
@@ -429,8 +410,28 @@ const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): void => {
       unifyMut(name.ty, expr.ty, ctx);
       Env.addPolyVar(ctx.env, name, genTy);
     },
+    Assignment: ({ lhs, rhs }) => {
+      inferExpr(lhs, ctx, errors);
+      inferExpr(rhs, ctx, errors);
+      const lhsTy = lhs.ty;
+      const rhsTy = rhs.ty;
+      unifyMut(lhsTy, rhsTy, ctx);
+
+      if (!ASSIGNABLE_EXPRESSIONS.has(lhs.variant)) {
+        errors.push(Error.Typing({ type: 'UnassignableExpression', expr: lhs }));
+      } else if (!Expr.isMutable(lhs)) { // mutability check
+        errors.push(Error.Typing({ type: 'ImmutableValue', expr: lhs }));
+      }
+    },
     Expr: ({ expr }) => {
       inferExpr(expr, ctx, errors);
+    },
+    While: ({ condition, statements }) => {
+      inferExpr(condition, ctx, errors);
+      unifyMut(condition.ty, MonoTy.bool(), ctx);
+      statements.forEach(s => {
+        inferStmt(s, ctx, errors)
+      });
     },
     Error: ({ message }) => {
       errors.push(Error.Typing({ type: 'ParsingError', message }));

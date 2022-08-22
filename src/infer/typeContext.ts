@@ -34,8 +34,13 @@ export const TypeContext = {
     alias: MonoTy
   ): void => {
     TypeContext.declareTypeParams(ctx, ...typeParams);
+    const fullTy = MonoTy.expand(alias, ctx);
+    if (fullTy.variant === 'Struct') {
+      fullTy.name = name;
+    }
+
     ctx.typeAliases.set(name, {
-      ty: alias,
+      ty: fullTy,
       params: typeParams,
     });
   },

@@ -1,5 +1,5 @@
 import { DataType } from "itsamatch";
-import { zip } from "../utils/array";
+import { reverse, zip } from "../utils/array";
 import { Maybe, none, some } from "../utils/maybe";
 import { MonoTy } from "./types";
 
@@ -21,10 +21,10 @@ export const Row = {
       return Row.empty();
     }
 
-    const [[firstField, firstTy], ...tail] = fields;
+    const [[firstField, firstTy], ...tail] = reverse(fields);
     let row = Row.extend(firstField, firstTy, extensible ? MonoTy.fresh() : MonoTy.Struct(Row.empty()));
 
-    for (let [field, ty] of tail) {
+    for (const [field, ty] of tail) {
       row = Row.extend(field, ty, MonoTy.Struct(row));
     }
 

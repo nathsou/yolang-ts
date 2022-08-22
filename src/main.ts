@@ -2,6 +2,7 @@ import { match as matchVariant } from "itsamatch";
 import * as bitter from "./ast/bitter";
 import { Context } from './ast/context';
 import * as sweet from "./ast/sweet";
+import * as core from "./ast/core";
 import { createLLVMCompiler } from "./codegen/llvm/codegen";
 import { Error } from './errors/errors';
 import { infer } from "./infer/infer";
@@ -82,14 +83,14 @@ const compile = async (source: string, target: 'wasm' | 'native'): Promise<boole
     console.log(sweet.Prog.show(sweetProg) + '\n');
   }
 
-  const [prog, errs2] = bitter.Prog.from(sweetProg);
+  const [bitterProg, errs2] = bitter.Prog.from(sweetProg);
 
   if (errs2.length > 0) {
     logErrors(errs2);
     return false;
   }
 
-  const errs3 = typeCheck(prog);
+  const errs3 = typeCheck(bitterProg);
 
   if (errs3.length > 0) {
     logErrors(errs3);
@@ -98,11 +99,12 @@ const compile = async (source: string, target: 'wasm' | 'native'): Promise<boole
 
   if (debugLevel >= DebugLvl.types) {
     console.log('--- types ---');
-    console.log(showTypes(prog.entry.decls).join('\n\n') + '\n');
+    console.log(showTypes(bitterProg.entry.decls).join('\n\n') + '\n');
   }
 
+  const coreProg = core.Prog.from(bitterProg);
   const compiler = await createLLVMCompiler();
-  const modules = compiler.compile(prog);
+  const modules = compiler.compile(coreProg);
 
   if (debugLevel >= DebugLvl.sections) {
     modules.forEach(m => {
@@ -161,7 +163,7 @@ const [, , source, debugLvl] = process.argv;
     if (debugLvl) {
       debugLevel = parseInt(debugLvl);
     }
-    const allGood = await compile(source, 'native');
+    const allGood = await compile(source, 'wasm');
     process.exit(allGood ? 0 : 1);
   } else {
     console.info('Usage: yo <source.yo>');

@@ -21,13 +21,11 @@ fun contains(a: i32[], elem: i32): bool {
 }
 
 fun main() {
-  mut s = "Yolo!!! 😊"
-  s.data.setUnchecked(3u32, 97u8)
-  s.data.setUnchecked(4u32, 110u8)
-  s.data.setUnchecked(5u32, 103u8)
-  log(s)
+  log("Yo Yolang! 😊")
+  log("")
 
   let primes = [2, 3, 5, 7, 11, 13, 17, 23]
+  log("is 23 prime?")
   log(primes.contains(23))
   
   0 // unix exit code
