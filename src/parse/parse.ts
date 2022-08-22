@@ -5,7 +5,7 @@ import { Tuple } from '../infer/tuples';
 import { MonoTy, TypeParam } from '../infer/types';
 import { deconsLast, last } from '../utils/array';
 import { Maybe, none, some } from '../utils/maybe';
-import { compose, ref, snd } from '../utils/misc';
+import { compose, proj, ref, snd } from '../utils/misc';
 import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
@@ -14,6 +14,7 @@ import { Const, Token, TokenWithPos } from './token';
 
 export const expr = uninitialized<Expr>();
 const stmt = uninitialized<Stmt>();
+const stmt2 = uninitialized<{ stmt: Stmt, discarded: boolean }>();
 const decl = uninitialized<Decl>();
 const pattern = uninitialized<Pattern>();
 
@@ -210,13 +211,13 @@ const constVal: Parser<Const> = alt(integerConst, boolConst, stringConst);
 const variable = map(ident, Expr.Variable);
 
 const block: Parser<Expr> = map(
-  curlyBrackets(many(stmt)),
+  curlyBrackets(many(stmt2)),
   stmts => {
-    if (stmts.length > 0 && last(stmts).variant === 'Expr') {
-      const [front, last] = deconsLast(stmts);
+    if (stmts.length > 0 && last(stmts).stmt.variant === 'Expr' && !last(stmts).discarded) {
+      const [front, last] = deconsLast(stmts.map(proj('stmt')));
       return Expr.Block(front, some((last as VariantOf<Stmt, 'Expr'>).expr));
     } else {
-      return Expr.Block(stmts, none);
+      return Expr.Block(stmts.map(proj('stmt')), none);
     }
   }
 );
@@ -570,6 +571,15 @@ initParser(
     // seq(exprStmt, expectOrDefault(symbol(';'), 'Expected semicolon after statement', Token.symbol(';'))),
     seq(assignmentStmt, optional(symbol(';'))),
     ([stmt]) => stmt
+  )
+);
+
+initParser(
+  stmt2,
+  map(
+    // seq(exprStmt, expectOrDefault(symbol(';'), 'Expected semicolon after statement', Token.symbol(';'))),
+    seq(assignmentStmt, optional(symbol(';'))),
+    ([stmt, semicolon]) => ({ stmt, discarded: semicolon.isSome() })
   )
 );
 

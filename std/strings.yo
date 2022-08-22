@@ -6,6 +6,10 @@ pub type str = u8[]
 #extern
 fun putchar(char: u8): u32
 
+pub fun newline() {
+  putchar(10u8)
+}
+
 pub fun log(msg: str) {
   mut index = 0u32
   while index < msg.len {
@@ -13,7 +17,7 @@ pub fun log(msg: str) {
     index += 1u32
   }
 
-  putchar(10u8) // newline
+  newline()
 }
 
 pub fun log(b: bool) {
@@ -22,5 +26,44 @@ pub fun log(b: bool) {
 
 pub fun log(ch: u8) {
   putchar(ch)
-  putchar(10u8)
+  newline()
+}
+
+pub fun reverse(mut buf: str, start: u32, end: u32): void {
+  mut i = start
+  mut j = end
+
+  while i < j {
+    let tmp = buf.data.getUnchecked(i)
+    let back = buf.data.getUnchecked(j)
+    buf.data.setUnchecked(i, back)
+    buf.data.setUnchecked(j, tmp)
+    i += 1u32
+    j -= 1u32
+  }
+}
+
+// does not work with the most negative i32
+// i.e -2147483648
+pub fun log(n: i32) {
+  mut r = abs(n)
+  mut buf = [0u8; 11]
+  mut index = 0u32
+
+  while r != 0 {
+    let ch = u8(48 + r mod 10)
+    buf.data.setUnchecked(index, ch)
+    r /= 10
+    index += 1u32
+  }
+
+  if n < 0 {
+    // append '-'
+    buf.data.setUnchecked(index, 45u8)
+    index += 1u32
+  }
+
+  buf.reverse(0u32, index)
+
+  log(buf)
 }

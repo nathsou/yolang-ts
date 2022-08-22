@@ -22,11 +22,15 @@ fun contains(a: i32[], elem: i32): bool {
 
 fun main() {
   log("Yo Yolang! 😊")
-  log("")
+  newline()
 
-  let primes = [2, 3, 5, 7, 11, 13, 17, 23]
+  let primes = [2, 3, 5, 7, 11, 13, 17, 19, 23]
   log("is 23 prime?")
   log(primes.contains(23))
+  newline()
+
+  log("7 ** 11 =")
+  log(7.pow(11))
   
   0 // unix exit code
 }

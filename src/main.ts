@@ -163,7 +163,7 @@ const [, , source, debugLvl] = process.argv;
     if (debugLvl) {
       debugLevel = parseInt(debugLvl);
     }
-    const allGood = await compile(source, 'wasm');
+    const allGood = await compile(source, 'native');
     process.exit(allGood ? 0 : 1);
   } else {
     console.info('Usage: yo <source.yo>');
