@@ -120,14 +120,20 @@ const compile = async (source: string, target: 'wasm' | 'native'): Promise<boole
 
   if (target === 'wasm') {
     // run the program
-    (await getWasmMainFunc(outFile))();
+    const exitCode = (await getWasmMainFunc(outFile))();
+    return exitCode === 0;
   } else {
     const { execFileSync } = await import('child_process');
     const stdout = execFileSync(outFile);
-    console.log(stdout.toString('utf-8'));
+    // remove trailing newline
+    try {
+      const filteredStdout = stdout.at(-1) === 10 ? stdout.slice(0, -1) : stdout;
+      console.log(filteredStdout.toString('utf-8'));
+      return true;
+    } catch {
+      return false;
+    }
   }
-
-  return true;
 };
 
 const showTypes = (decls: bitter.Decl[]): string[] => {
@@ -155,7 +161,7 @@ const [, , source, debugLvl] = process.argv;
     if (debugLvl) {
       debugLevel = parseInt(debugLvl);
     }
-    const allGood = await compile(source, 'wasm');
+    const allGood = await compile(source, 'native');
     process.exit(allGood ? 0 : 1);
   } else {
     console.info('Usage: yo <source.yo>');

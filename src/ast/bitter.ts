@@ -8,7 +8,7 @@ import { Const } from "../parse/token";
 import { zip } from "../utils/array";
 import { Either } from "../utils/either";
 import { Maybe, none, some } from "../utils/maybe";
-import { mapMap, proj, pushMap } from "../utils/misc";
+import { pushMap } from "../utils/misc";
 import { Context } from "./context";
 import { FuncName, NameEnv, VarName } from "./name";
 import * as sweet from "./sweet";

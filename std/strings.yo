@@ -1,0 +1,26 @@
+import std/ops
+import std/arrays
+
+pub type str = u8[]
+
+#extern
+fun putchar(char: u8): u32
+
+pub fun log(msg: str) {
+  mut index = 0u32
+  while index < msg.len {
+    putchar(msg.data.getUnchecked(index))
+    index += 1u32
+  }
+
+  putchar(10u8) // newline
+}
+
+pub fun log(b: bool) {
+  log(if b { "true" } else { "false" })
+}
+
+pub fun log(ch: u8) {
+  putchar(ch)
+  putchar(10u8)
+}

@@ -124,6 +124,43 @@ export const createLLVMCompiler = async () => {
       });
     }
 
+    function allocateArray(elemTy: MonoTy, len: number) {
+      const llvmElemTy = llvmTy(elemTy);
+      const arrayTy = llvm.ArrayType.get(llvmElemTy, len);
+      const arrayData = builder.CreateAlloca(arrayTy, null);
+      const arrayDataPtr = builder.CreateBitCast(arrayData, llvm.PointerType.get(llvmElemTy, 0));
+      const [arrayStruct, arrayStructTy] = resolveStruct('[]', [elemTy]).unwrap('resolveStruct array');
+      const arrayStructPtr = builder.CreateAlloca(arrayStructTy, null);
+      const dataFieldPtr = structFieldPtr(arrayStruct, arrayStructPtr, 'data');
+      const lenFieldPtr = structFieldPtr(arrayStruct, arrayStructPtr, 'len');
+
+      builder.CreateStore(arrayDataPtr, dataFieldPtr);
+      builder.CreateStore(llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), len), lenFieldPtr);
+
+      return {
+        arrayTy,
+        arrayData,
+        llvmElemTy,
+        arrayStruct,
+        lenFieldPtr,
+        arrayDataPtr,
+        dataFieldPtr,
+        arrayStructTy,
+        arrayStructPtr,
+      };
+    }
+
+    function createArray(elemTy: MonoTy, elems: LLVM.Value[]): LLVM.AllocaInst {
+      const { arrayTy, arrayData, arrayStructPtr } = allocateArray(elemTy, elems.length);
+
+      elems.forEach((elem, index) => {
+        const elemPtr = arrayElementPtr(arrayTy, arrayData, index);
+        builder.CreateStore(elem, elemPtr);
+      });
+
+      return arrayStructPtr;
+    }
+
     function compileExpr(expr: Expr): llvm.Value {
       return match(expr, {
         Const: ({ value: c }) => match(c, {
@@ -135,6 +172,13 @@ export const createLLVMCompiler = async () => {
           i8: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt8Ty(context), value),
           u8: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt8Ty(context), value),
           unit: () => llvm.UndefValue.get(llvm.Type.getInt1Ty(context)),
+          str: ({ value }) => {
+            const buffer = new TextEncoder().encode(value);
+            const int8Ty = llvm.Type.getInt8Ty(context);
+            const bytes = Array.from(buffer).map(b => llvm.ConstantInt.get(int8Ty, b));
+
+            return createArray(MonoTy.u8(), bytes);
+          },
         }),
         Variable: ({ name }) => {
           const v = resolveVar(name);
@@ -261,18 +305,7 @@ export const createLLVMCompiler = async () => {
           return builder.CreateLoad(llvmTy(ty), fieldPtr)
         },
         Array: ({ init, elemTy }) => {
-          const elemTyLlvm = llvmTy(elemTy);
-          const len = ArrayInit.len(init);
-          const arrayTy = llvm.ArrayType.get(elemTyLlvm, ArrayInit.len(init));
-          const arrayData = builder.CreateAlloca(arrayTy, null);
-          const arrayDataPtr = builder.CreateBitCast(arrayData, llvm.PointerType.get(elemTyLlvm, 0));
-          const [arrayStruct, arrayStructTy] = resolveStruct('[]', [elemTy]).unwrap('resolveStruct array');
-          const arrayStructPtr = builder.CreateAlloca(arrayStructTy, null);
-          const dataFieldPtr = structFieldPtr(arrayStruct, arrayStructPtr, 'data');
-          const lenFieldPtr = structFieldPtr(arrayStruct, arrayStructPtr, 'len');
-
-          builder.CreateStore(arrayDataPtr, dataFieldPtr);
-          builder.CreateStore(llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), len), lenFieldPtr);
+          const { arrayStructPtr, arrayTy, arrayData } = allocateArray(elemTy, ArrayInit.len(init));
 
           // TODO: use a loop when len is large
           const elems = match(init, {
@@ -312,6 +345,7 @@ export const createLLVMCompiler = async () => {
     }
 
     const structInstances: { row: Row, ty: LLVM.StructType }[] = [];
+    const strTy = llvmTy(MonoTy.Array(MonoTy.u8()));
 
     function llvmTy(ty: MonoTy): llvm.Type {
       return match(ty, {
@@ -325,7 +359,9 @@ export const createLLVMCompiler = async () => {
           'i8': () => llvm.Type.getInt8Ty(context),
           'bool': () => llvm.Type.getInt1Ty(context),
           '()': () => llvm.Type.getInt1Ty(context),
+          '[]': () => llvm.Type.getInt8Ty(context),
           'ptr': () => llvm.PointerType.get(llvmTy(c.args[0]), 0),
+          'str': () => strTy,
           _: () => {
             const typeAlias = TypeContext.resolveTypeAlias(module.typeContext, c.name).map(ta => {
               const t = TypeContext.instantiateTypeAlias(ta, c.args);

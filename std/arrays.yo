@@ -6,3 +6,6 @@ pub type []<T> = {
 
 #meta(getUnchecked)
 pub fun getUnchecked<T>(elems: ptr<T>, index: u32): T
+
+#meta(setUnchecked)
+pub fun setUnchecked<T>(mut elems: ptr<T>, index: u32, value: T): ()

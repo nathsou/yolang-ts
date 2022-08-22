@@ -26,7 +26,7 @@ const ident = satisfyBy<string>(token => match(token, {
 
 const ident2 = (name: string) => satisfy(token => token.variant === 'Identifier' && token.name === name);
 
-const stringIn = <S extends string>(...names: S[]) => map(
+const string = <S extends string>(...names: S[]) => map(
   satisfy(token => token.variant === 'Identifier' && names.includes(token.name as S)),
   token => (token as VariantOf<Token, 'Identifier'>).name as S
 );
@@ -83,18 +83,19 @@ const angleBrackets = <T>(p: Parser<T>) => map(
 // TYPES
 export const monoTy = uninitialized<MonoTy>();
 const parenthesizedTy = map(parens(monoTy), ty => ty);
-const unitTy = map(seq(symbol('('), symbol(')')), () => MonoTy.Const('()'));
-const boolTy = map(ident2('bool'), () => MonoTy.Const('bool'));
-const u32Ty = map(ident2('u32'), () => MonoTy.u32());
-const i32Ty = map(ident2('i32'), () => MonoTy.i32());
-const u64Ty = map(ident2('u64'), () => MonoTy.u64());
-const i64Ty = map(ident2('i64'), () => MonoTy.i64());
-const u8Ty = map(ident2('u8'), () => MonoTy.u8());
-const i8Ty = map(ident2('i8'), () => MonoTy.i8());
-const constTy = alt(unitTy, boolTy, u32Ty, i32Ty, u64Ty, i64Ty, u8Ty, i8Ty);
+const unitTy = map(seq(symbol('('), symbol(')')), MonoTy.unit);
+const boolTy = map(ident2('bool'), MonoTy.bool);
+const u32Ty = map(ident2('u32'), MonoTy.u32);
+const i32Ty = map(ident2('i32'), MonoTy.i32);
+const u64Ty = map(ident2('u64'), MonoTy.u64);
+const i64Ty = map(ident2('i64'), MonoTy.i64);
+const u8Ty = map(ident2('u8'), MonoTy.u8);
+const i8Ty = map(ident2('i8'), MonoTy.i8);
+const strTy = map(seq(ident2('str')), MonoTy.str);
+const constTy = alt(unitTy, boolTy, u32Ty, i32Ty, u64Ty, i64Ty, u8Ty, i8Ty, strTy);
 const namedTy = map(
   seq(
-    alt(upperIdent, stringIn('ptr')),
+    alt(upperIdent, string('ptr')),
     optionalOrDefault(angleBrackets(commas(monoTy)), []),
   ),
   ([name, args]) => MonoTy.Const(name, ...args),
@@ -137,7 +138,7 @@ const funTy = map(seq(
   ([args, _, ret]) => MonoTy.Fun(args, ret)
 );
 
-initParser(monoTy, map(
+const arrayTy = map(
   seq(
     alt(
       funTy,
@@ -148,7 +149,9 @@ initParser(monoTy, map(
     Some: () => MonoTy.Array(ty),
     None: () => ty,
   }),
-));
+);
+
+initParser(monoTy, arrayTy);
 
 const typeParams: Parser<TypeParam[]> = map(
   angleBrackets(commas(upperIdent)),
@@ -187,8 +190,8 @@ const argumentList = map(parens(optional(commas(argument))), args => args.orDefa
 
 // EXPRESSIONS
 
-const integerConst = satisfyBy<VariantOf<Const, 'u32' | 'u64' | 'i32' | 'i64'>>(token =>
-  token.variant === 'Const' ? some(token.value) : none
+const integerConst = satisfyBy<Const & { value: number }>(token =>
+  token.variant === 'Const' && Const.isInt(token.value) ? some(token.value) : none
 );
 
 const boolConst = satisfyBy<Const>(token =>
@@ -203,7 +206,11 @@ const unitConst: Parser<Const> = map(
   Const.unit
 );
 
-const constVal: Parser<Const> = alt(integerConst, boolConst, unitConst);
+const stringConst = satisfyBy<Const>(token =>
+  token.variant === 'Const' && token.value.variant === 'str' ? some(token.value) : none
+);
+
+const constVal: Parser<Const> = alt(integerConst, boolConst, unitConst, stringConst);
 
 const variable = map(ident, Expr.Variable);
 
@@ -329,7 +336,7 @@ const factor = fieldAccess;
 
 export const unary = alt(
   map(seq(
-    stringIn('-', 'not'),
+    string('-', 'not'),
     expectOrDefault(factor, `Expected expression after unary operator`, Expr.Error)
   ), ([op, expr]) => Expr.Call(Expr.Variable(op), [], [expr])),
   factor
@@ -337,42 +344,42 @@ export const unary = alt(
 
 const multiplicative = chainLeft(
   unary,
-  stringIn('*', '/', 'mod'),
+  string('*', '/', 'mod'),
   expect(unary, 'Expected expression after multiplicative operator'),
   (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b])
 );
 
 const additive = chainLeft(
   multiplicative,
-  stringIn('+', '-'),
+  string('+', '-'),
   expect(multiplicative, 'Expected expression after additive operator'),
   (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b])
 );
 
 const comparison = chainLeft(
   additive,
-  stringIn('<=', '>=', '<', '>'),
+  string('<=', '>=', '<', '>'),
   expect(additive, 'Expected expression after relational operator'),
   (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b])
 );
 
 const and = chainLeft(
   comparison,
-  stringIn('and', 'nand'),
+  string('and', 'nand'),
   expect(comparison, 'Expected expression after logical operator'),
   (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b]),
 );
 
 const or = chainLeft(
   and,
-  stringIn('or', 'nor', 'xor', 'xnor'),
+  string('or', 'nor', 'xor', 'xnor'),
   expect(and, 'Expected expression after logical operator'),
   (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b]),
 );
 
 const equality = chainLeft(
   or,
-  stringIn('==', '!='),
+  string('==', '!='),
   expect(or, 'Expected expression after equality operator'),
   (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b])
 );
@@ -436,7 +443,7 @@ const assignment = alt(
     seq(
       ifThenElse,
       alt(
-        stringIn(
+        string(
           '=', '+=', '-=', '*=', '/=',
           'mod=', 'and=', 'or=', 'nand=', 'nor=', 'xor=', 'xnor='
         ),
@@ -620,6 +627,7 @@ const typeAliasDecl: Parser<Decl> = map(seq(
   keyword('type'),
   expectOrDefault(alt(
     upperIdent,
+    string('str'),
     map(seq(symbol('['), symbol(']')), () => '[]')
   ),
     `Expected identifier after 'type' keyword`, '<?>'

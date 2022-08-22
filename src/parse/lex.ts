@@ -1,7 +1,7 @@
 import { block, id } from "../utils/misc";
 import { Slice } from "../utils/slice";
 import { isAlpha } from "../utils/strings";
-import { alphaNum, alphaNumUnderscore, alt, digit, letter, many, map, not, oneOrMore, optional, spaces, str, then, trie, validIdentChar } from "./lexerCombinators";
+import { alphaNum, alphaNumUnderscore, alt, char, digit, letter, many, map, not, oneOrMore, optional, spaces, str, then, trie } from "./lexerCombinators";
 import { Const, Keyword, operators, Position, Space, Spaces, Symbol, Token, TokenWithPos, withPos } from "./token";
 
 export const symbol = map(trie(Symbol.values), s => Token.Symbol(s as Symbol));
@@ -33,7 +33,14 @@ export const ident = block(() => {
   );
 });
 
-export const token = alt(int, bool, keyword, symbol, ident);
+const string = map(
+  then(char('"'), then(many(not(char('"'))), char('"'))),
+  ([_, [s]]) => Token.Const(Const.str(s.join(''))),
+);
+
+const constant = alt(int, bool, string);
+
+export const token = alt(constant, keyword, symbol, ident);
 
 const invalid = map(oneOrMore(not(token)), chars => Token.Invalid(chars.join('').trim()));
 

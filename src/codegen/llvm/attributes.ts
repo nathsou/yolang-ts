@@ -100,6 +100,20 @@ export const meta = (
 
       return builder.CreateLoad(elemTy, elemPtr);
     }
+    case 'setUnchecked': {
+      const arrayArg = f.getArg(0);
+      const indexArg = f.getArg(1);
+      const valueArg = f.getArg(2);
+
+      const elemPtr = builder.CreateGEP(
+        valueArg.getType(),
+        arrayArg,
+        [indexArg],
+      );
+
+      builder.CreateStore(valueArg, elemPtr);
+      return llvm.UndefValue.get(llvm.Type.getInt1Ty(context));
+    }
     case 'u8_from_int':
       return builder.CreateIntCast(f.getArg(0), llvm.Type.getInt8Ty(context), true);
     case 'u8_from_uint':

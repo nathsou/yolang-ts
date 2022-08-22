@@ -97,11 +97,12 @@ export type Const = DataType<{
   i8: { value: number },
   u8: { value: number },
   bool: { value: boolean },
+  str: { value: string },
   unit: {},
 }>;
 
-const { u32, i32, u64, i64, i8, u8, bool, unit } = genConstructors<Const>([
-  'u32', 'i32', 'u64', 'i64', 'i8', 'u8', 'bool', 'unit'
+const { u32, i32, u64, i64, i8, u8, bool, str, unit } = genConstructors<Const>([
+  'u32', 'i32', 'u64', 'i64', 'i8', 'u8', 'bool', 'str', 'unit',
 ]);
 
 export const Const = {
@@ -112,6 +113,7 @@ export const Const = {
   i8: (value: number) => i8({ value }),
   u8: (value: number) => u8({ value }),
   bool: (value: boolean) => bool({ value }),
+  str: (value: string) => str({ value }),
   unit: () => unit({}),
   show: (c: Const) => match(c, {
     u32: ({ value }) => `${value}`,
@@ -121,6 +123,7 @@ export const Const = {
     i8: ({ value }) => `${value}`,
     u8: ({ value }) => `${value}`,
     bool: ({ value }) => `${value}`,
+    str: ({ value }) => `"${value}"`,
     unit: () => '()',
   }),
   eq: (a: Const, b: Const) => matchMany([a, b], {
@@ -131,18 +134,26 @@ export const Const = {
     'i8 i8': (a, b) => a.value === b.value,
     'u8 u8': (a, b) => a.value === b.value,
     'bool bool': (a, b) => a.value === b.value,
+    'str str': (a, b) => a.value === b.value,
     'unit unit': () => true,
     _: () => false,
   }),
   type: (c: Const): MonoTy => match(c, {
-    u32: () => MonoTy.Const('u32'),
-    i32: () => MonoTy.Const('i32'),
-    u64: () => MonoTy.Const('u64'),
-    i64: () => MonoTy.Const('i64'),
-    i8: () => MonoTy.Const('i8'),
-    u8: () => MonoTy.Const('u8'),
+    u32: MonoTy.u32,
+    i32: MonoTy.i32,
+    u64: MonoTy.u64,
+    i64: MonoTy.i64,
+    u8: MonoTy.u8,
+    i8: MonoTy.i8,
     bool: MonoTy.bool,
+    str: MonoTy.str,
     unit: MonoTy.unit,
+  }),
+  isInt: (c: Const) => match(c, {
+    'unit': () => false,
+    'bool': () => false,
+    'str': () => false,
+    _: () => true,
   }),
 };
 

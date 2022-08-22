@@ -205,3 +205,6 @@ pub fun pow(a: i32, n: i32): i32 {
     }
   }
 }
+
+#meta(u8_from_int)
+pub fun u8(n: i32): u8

@@ -24,8 +24,8 @@ export const Env = {
     pushRecord(env.funcs, f.name.original, f);
 
     const overloadsCount = Env.lookupFuncs(env, f.name.original).length;
-    if (overloadsCount > 1 && !f.name.mangled.includes(':')) {
-      f.name.mangled += `:${overloadsCount}`;
+    if (overloadsCount > 1 && !f.name.mangled.includes('[')) {
+      f.name.mangled += `[${PolyTy.show(f.funTy)}]`;
     }
   },
   addMonoVar: (env: Env, name: VarName, ty: MonoTy): void => {

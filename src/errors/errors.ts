@@ -49,7 +49,7 @@ export const Error = {
       MissingStructFields: ({ name, fields }) => `Missing fields in struct constructor expression for '${name}': ${fields.join(', ')}`,
       ExtraneoussStructFields: ({ name, fields }) => `Extraneous fields in struct constructor expression for '${name}': ${fields.join(', ')}`,
       CannotUseImmutableValueForImmutableFuncArg: ({ func, arg }) => `Cannot use an immutable value in place of an immutable argument: '${arg}' in function '${func}'`,
-      MissingFuncPrototypeReturnTy: ({ name }) => `Missing return type in function prototype for ${name}`,
+      MissingFuncPrototypeReturnTy: ({ name }) => `Missing return type in function prototype for '${name}'`,
     }, 'type'),
     Resolution: ({ err }) => matchVariant(err, {
       ModuleNotFound: ({ name }) => `Module '${name}' not found`,
