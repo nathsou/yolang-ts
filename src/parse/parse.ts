@@ -288,7 +288,7 @@ const array = alt(
 const structField = map(seq(
   expectOrDefault(ident, `Expected field name`, '<?>'),
   expectOrDefault(symbol(':'), `Expected ':' after field name`, Token.Symbol(':')),
-  expectOrDefault(expr, `Expected expression after ':'`, Expr.Error),
+  expect(expr, `Expected expression after ':'`),
 ),
   ([name, _, value]) => ({ name, value })
 );
@@ -565,11 +565,19 @@ const assignmentStmt = alt(
   exprStmt
 );
 
+const returnStmt = alt(
+  map(
+    seq(keyword('return'), optional(expr)),
+    ([_, expr]) => Stmt.Return(expr),
+  ),
+  assignmentStmt
+);
+
 initParser(
   stmt,
   map(
     // seq(exprStmt, expectOrDefault(symbol(';'), 'Expected semicolon after statement', Token.symbol(';'))),
-    seq(assignmentStmt, optional(symbol(';'))),
+    seq(returnStmt, optional(symbol(';'))),
     ([stmt]) => stmt
   )
 );
@@ -577,8 +585,7 @@ initParser(
 initParser(
   stmt2,
   map(
-    // seq(exprStmt, expectOrDefault(symbol(';'), 'Expected semicolon after statement', Token.symbol(';'))),
-    seq(assignmentStmt, optional(symbol(';'))),
+    seq(returnStmt, optional(symbol(';'))),
     ([stmt, semicolon]) => ({ stmt, discarded: semicolon.isSome() })
   )
 );

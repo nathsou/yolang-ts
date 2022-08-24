@@ -1,13 +1,13 @@
 import { match, VariantOf } from 'itsamatch';
 import type LLVM from 'llvm-bindings';
-import { Decl, Expr, Module, Prog, Stmt, ArrayInit } from '../../ast/core';
+import { ArrayInit, Decl, Expr, Module, Prog, Stmt } from '../../ast/core';
 import { VarName } from '../../ast/name';
 import { Row } from '../../infer/structs';
 import { TypeContext } from '../../infer/typeContext';
 import { MonoTy } from '../../infer/types';
 import { gen, last, zip } from '../../utils/array';
 import { Maybe } from '../../utils/maybe';
-import { assert, matchString, panic, proj } from '../../utils/misc';
+import { array, assert, block, matchString, panic, proj } from '../../utils/misc';
 import { meta } from './attributes';
 
 type LocalVar =
@@ -40,6 +40,20 @@ export const createLLVMCompiler = async () => {
     const builder = new llvm.IRBuilder(context);
     const scopes: LexicalScope[] = [];
     const funcs = new Map<string, LLVM.Function>();
+    const stacks = {
+      func: array<{ returnVal?: llvm.AllocaInst, exitBB: llvm.BasicBlock }>(),
+      controlFlow: array<{ exitBB: llvm.BasicBlock }>(),
+    };
+
+    // if a return statement is used inside a if then else or while branch
+    // then we need to change the target branch to the return's exit basic block
+    function setTargetControlFlowBranch<T>(targetBB: llvm.BasicBlock, action: () => T): [llvm.BasicBlock, T] {
+      stacks.controlFlow.push({ exitBB: targetBB });
+      const ret = action();
+      const { exitBB } = stacks.controlFlow.pop()!;
+
+      return [exitBB, ret];
+    }
 
     type ResolvedVar =
       | { kind: 'immut', value: LLVM.Value, ty: MonoTy }
@@ -71,9 +85,7 @@ export const createLLVMCompiler = async () => {
 
     function declareVar(name: VarName, value: LLVM.Value): void {
       if (name.mutable) {
-        const parent = builder.GetInsertBlock()!.getParent()!;
-        const tmpBuilder = new llvm.IRBuilder(parent.getEntryBlock());
-        const alloca = tmpBuilder.CreateAlloca(llvmTy(name.ty), tmpBuilder.getInt32(1), name.mangled);
+        const alloca = builder.CreateAlloca(llvmTy(name.ty), builder.getInt32(1), name.mangled);
         LexicalScope.declareMutableVar(currentScope(), name.mangled, alloca, name.ty);
         builder.CreateStore(value, alloca);
       } else {
@@ -205,13 +217,12 @@ export const createLLVMCompiler = async () => {
         IfThenElse: ({ condition, then, else_, ty }) => {
           const parent = builder.GetInsertBlock()!.getParent()!;
           const condValue = compileExpr(condition);
-
           let thenBB = llvm.BasicBlock.Create(context, 'then', parent);
 
           return else_.match({
             Some: elseExpr => {
               let elseBB = llvm.BasicBlock.Create(context, 'else');
-              const mergeBB = llvm.BasicBlock.Create(context, 'if_then');
+              const mergeBB = llvm.BasicBlock.Create(context, 'merge');
 
               builder.CreateCondBr(condValue, thenBB, elseBB);
 
@@ -225,9 +236,8 @@ export const createLLVMCompiler = async () => {
               // else branch
               parent.insertAfter(thenBB, elseBB);
               builder.SetInsertPoint(elseBB);
-              builder.SetInsertPoint(elseBB);
-              const elseValue = compileExpr(elseExpr);
-              builder.CreateBr(mergeBB);
+              const [exitBB, elseValue] = setTargetControlFlowBranch(mergeBB, () => compileExpr(elseExpr));
+              builder.CreateBr(exitBB);
               elseBB = builder.GetInsertBlock()!;
 
               // merge
@@ -243,16 +253,16 @@ export const createLLVMCompiler = async () => {
             None: () => {
               const afterBB = llvm.BasicBlock.Create(context, 'after');
               builder.CreateCondBr(condValue, thenBB, afterBB);
+              parent.insertAfter(thenBB, afterBB);
 
               // then branch
               builder.SetInsertPoint(thenBB);
-              compileExpr(then);
-              builder.CreateBr(afterBB);
+              const [exitBB] = setTargetControlFlowBranch(afterBB, () => compileExpr(then));
+              builder.CreateBr(exitBB);
               // Codegen of 'then' can change the current block, update thenBB for the PHI. 
               thenBB = builder.GetInsertBlock()!;
 
               // after
-              parent.insertAfter(thenBB, afterBB);
               builder.SetInsertPoint(afterBB);
               return voidIndicator;
             },
@@ -295,7 +305,6 @@ export const createLLVMCompiler = async () => {
 
           return arrayStructPtr;
         },
-        _: () => panic(expr.variant + ' not implemented'),
       });
     }
 
@@ -317,22 +326,48 @@ export const createLLVMCompiler = async () => {
         Expr: ({ expr }) => { compileExpr(expr); },
         While: ({ condition, statements }) => {
           const parent = builder.GetInsertBlock()!.getParent()!;
-          const condValue = compileExpr(condition);
 
-          const loopBB = llvm.BasicBlock.Create(context, 'loop', parent);
+          const loopCondBB = llvm.BasicBlock.Create(context, 'loop_cond', parent);
+          const loopBodyBB = llvm.BasicBlock.Create(context, 'loop_body');
           const loopEndBB = llvm.BasicBlock.Create(context, 'loop_end');
 
-          builder.CreateCondBr(condValue, loopBB, loopEndBB);
+          builder.CreateBr(loopCondBB);
 
-          builder.SetInsertPoint(loopBB);
-          statements.forEach(stmt => {
-            compileStmt(stmt);
+          // loop condition
+          builder.SetInsertPoint(loopCondBB);
+          const condValue = compileExpr(condition);
+          builder.CreateCondBr(condValue, loopBodyBB, loopEndBB);
+
+          // loop body
+          parent.insertAfter(loopCondBB, loopBodyBB);
+          builder.SetInsertPoint(loopBodyBB);
+          const [loopExitBB] = setTargetControlFlowBranch(loopCondBB, () => {
+            statements.forEach(stmt => {
+              compileStmt(stmt);
+            });
           });
-          const condValue2 = compileExpr(condition);
-          builder.CreateCondBr(condValue2, loopBB, loopEndBB);
+          builder.CreateBr(loopExitBB);
 
-          parent.insertAfter(loopBB, loopEndBB);
+          // loop end
+          parent.insertAfter(loopBodyBB, loopEndBB);
           builder.SetInsertPoint(loopEndBB);
+        },
+        Return: ({ expr }) => {
+          assert(stacks.func.length > 0, 'empty func stack');
+          const func = last(stacks.func);
+
+          expr.do(expr => {
+            const val = compileExpr(expr);
+            if (func.returnVal != null) {
+              builder.CreateStore(val, func.returnVal);
+            }
+          });
+
+          if (stacks.controlFlow.length > 0) {
+            last(stacks.controlFlow).exitBB = func.exitBB;
+          } else {
+            builder.CreateBr(func.exitBB);
+          }
         },
       });
     }
@@ -420,9 +455,12 @@ export const createLLVMCompiler = async () => {
             return;
           }
 
+          const returnsVoid = MonoTy.eq(f.returnTy, MonoTy.void());
           const entry = llvm.BasicBlock.Create(context, 'entry', proto);
+          const parent = entry.getParent()!;
           builder.SetInsertPoint(entry);
-          const ret = scoped(() => {
+
+          scoped(() => {
             f.args.forEach((arg, index) => {
               const llvmArg = proto.getArg(index);
               llvmArg.setName(arg.name.mangled);
@@ -430,28 +468,68 @@ export const createLLVMCompiler = async () => {
             });
 
             return f.body.match({
-              Some: body => compileExpr(body),
+              Some: body => {
+                const retTy = llvmTy(f.returnTy);
+                // if f contains at least one early return statement
+                // then allocate the space for the return value 
+                const returnVal = block(() => {
+                  if (f.canReturnEarly && !returnsVoid) {
+                    return builder.CreateAlloca(retTy, null, 'return_val');
+                  }
+                });
+
+                const exitBB = llvm.BasicBlock.Create(context, 'exit');
+
+                stacks.func.push({ returnVal, exitBB });
+                const ret = compileExpr(body);
+                if (f.canReturnEarly && returnVal != null) {
+                  builder.CreateStore(ret, returnVal);
+                }
+                stacks.func.pop();
+
+                if (f.canReturnEarly) {
+                  builder.CreateBr(exitBB);
+                  parent.insertAfter(entry, exitBB);
+                  builder.SetInsertPoint(exitBB);
+
+                  if (returnsVoid) {
+                    builder.CreateRetVoid();
+                  } else {
+                    assert(returnVal != null, 'returnVal == null');
+                    builder.CreateRet(builder.CreateLoad(retTy, returnVal));
+                  }
+                } else {
+                  if (returnsVoid) {
+                    builder.CreateRetVoid();
+                  } else {
+                    builder.CreateRet(ret);
+                  }
+                }
+
+                return ret;
+              },
               None: () => {
                 if (f.attributes.some(attr => attr.name === 'meta')) {
-                  return meta(
+                  const ret = meta(
                     f.attributes.find(attr => attr.name === 'meta')!.args[0],
                     proto,
                     builder,
                     llvm,
                     context,
                   );
-                }
 
-                return panic(`Function prototype for '${f.name.original}' is missing a meta or extern attribute`);
+                  assert(ret === 'void' ? returnsVoid : !returnsVoid);
+                  if (ret === 'void') {
+                    builder.CreateRetVoid();
+                  } else {
+                    builder.CreateRet(ret);
+                  }
+                } else {
+                  return panic(`Function prototype for '${f.name.original}' is missing a meta or extern attribute`);
+                }
               },
             });
           });
-
-          if (ret === 'void') {
-            builder.CreateRetVoid();
-          } else {
-            builder.CreateRet(ret);
-          }
 
           if (llvm.verifyFunction(proto)) {
             panic('function verification failed');

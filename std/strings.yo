@@ -63,6 +63,10 @@ pub fun log(n: i32) {
     index += 1u32
   }
 
+  if n == 0 {
+    buf.data.setUnchecked(0u32, 48u8)
+  }
+
   buf.reverse(0u32, index)
 
   log(buf)

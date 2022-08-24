@@ -81,3 +81,5 @@ export function assert(test: boolean, message: (string | (() => string)) = ''): 
 }
 
 export const block = <T>(f: () => T): T => f();
+
+export const array = <T>(): T[] => [];

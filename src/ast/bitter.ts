@@ -5,10 +5,10 @@ import { Tuple } from "../infer/tuples";
 import { TypeContext } from "../infer/typeContext";
 import { MonoTy, PolyTy, TypeParam, TyVar } from "../infer/types";
 import { Const } from "../parse/token";
-import { zip } from "../utils/array";
+import { zip, last } from "../utils/array";
 import { Either } from "../utils/either";
 import { Maybe, none, some } from "../utils/maybe";
-import { pushMap } from "../utils/misc";
+import { pushMap, assert } from "../utils/misc";
 import { Context } from "./context";
 import { FuncName, NameEnv, VarName } from "./name";
 import * as sweet from "./sweet";
@@ -240,6 +240,7 @@ export type Stmt = DataType<{
   Assignment: { lhs: Expr, rhs: Expr },
   Expr: { expr: Expr },
   While: { condition: Expr, statements: Stmt[] },
+  Return: { expr: Maybe<Expr> },
   Error: { message: string },
 }>;
 
@@ -248,6 +249,7 @@ export const Stmt = {
   Assignment: (lhs: Expr, rhs: Expr): Stmt => ({ variant: 'Assignment', lhs, rhs }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
   While: (condition: Expr, statements: Stmt[]): Stmt => ({ variant: 'While', condition, statements }),
+  Return: (expr: Maybe<Expr>): Stmt => ({ variant: 'Return', expr }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
   from: (sweet: sweet.Stmt, nameEnv: NameEnv, errors: Error[]): Stmt => {
     return match(sweet, {
@@ -260,6 +262,7 @@ export const Stmt = {
       Assignment: ({ lhs, rhs }) => Stmt.Assignment(Expr.from(lhs, nameEnv, errors), Expr.from(rhs, nameEnv, errors)),
       Expr: ({ expr }) => Stmt.Expr(Expr.from(expr, nameEnv, errors)),
       While: ({ condition, statements }) => Stmt.While(Expr.from(condition, nameEnv, errors), statements.map(s => Stmt.from(s, nameEnv, errors))),
+      Return: ({ expr }) => Stmt.Return(expr.map(expr => Expr.from(expr, nameEnv, errors))),
       Error: ({ message }) => Stmt.Error(message),
     });
   },
@@ -274,6 +277,7 @@ export const Stmt = {
       Assignment: ({ lhs, rhs }) => Stmt.Assignment(Expr.rewrite(lhs, nameEnv, f), Expr.rewrite(rhs, nameEnv, f)),
       Expr: ({ expr }) => Stmt.Expr(Expr.rewrite(expr, nameEnv, f)),
       While: ({ condition, statements }) => Stmt.While(Expr.rewrite(condition, nameEnv, f), statements.map(s => Stmt.rewrite(s, nameEnv, f))),
+      Return: ({ expr }) => Stmt.Return(expr.map(expr => Expr.rewrite(expr, nameEnv, f))),
       Error: ({ message }) => Stmt.Error(message),
     });
   },
@@ -332,7 +336,17 @@ export const Decl = {
       name,
       typeParams: newParams,
       args,
-      body,
+      body: body.map(body => {
+        assert(body.variant === 'Block');
+        // if the last statement is a return statement
+        // then put it in the lastExpr field instead
+        const lastStmt = last(body.statements);
+        if (body.lastExpr.isNone() && lastStmt?.variant === 'Return') {
+          return Expr.Block(body.statements.slice(0, -1), lastStmt.expr, body.sweet);
+        }
+
+        return body;
+      }),
       returnTy,
       funTy,
       instances: [],

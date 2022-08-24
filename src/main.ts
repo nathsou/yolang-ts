@@ -63,7 +63,7 @@ const getWasmMainFunc = async (source: string): Promise<Function> => {
   return panic('main function not found');
 };
 
-const compile = async (source: string, target: 'wasm' | 'native'): Promise<boolean> => {
+const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2 | 3): Promise<boolean> => {
   const logErrors = (errors: Error[]) => {
     errors.forEach(err => {
       console.log('\x1b[31m%s\x1b[0m', Error.show(err));
@@ -114,7 +114,7 @@ const compile = async (source: string, target: 'wasm' | 'native'): Promise<boole
 
   const outDir = 'out';
   const outFile = target === 'wasm' ? `${outDir}/main.wasm` : `${outDir}/main`;
-  const stdout = await compiler.compileIR(modules, target, outDir, outFile, 3);
+  const stdout = await compiler.compileIR(modules, target, outDir, outFile, opt);
 
   if (stdout.length > 0) {
     console.log(stdout);
@@ -163,7 +163,7 @@ const [, , source, debugLvl] = process.argv;
     if (debugLvl) {
       debugLevel = parseInt(debugLvl);
     }
-    const allGood = await compile(source, 'native');
+    const allGood = await compile(source, 'wasm', 3);
     process.exit(allGood ? 0 : 1);
   } else {
     console.info('Usage: yo <source.yo>');

@@ -146,7 +146,6 @@ export const Const = {
     str: MonoTy.str,
   }),
   isInt: (c: Const) => match(c, {
-    'unit': () => false,
     'bool': () => false,
     'str': () => false,
     _: () => true,

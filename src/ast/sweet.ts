@@ -171,6 +171,7 @@ export type Stmt = DataType<{
   Assignment: { lhs: Expr, rhs: Expr },
   Expr: { expr: Expr },
   While: { condition: Expr, statements: Stmt[] },
+  Return: { expr: Maybe<Expr> },
   Error: { message: string },
 }>;
 
@@ -179,12 +180,14 @@ export const Stmt = {
   Assignment: (lhs: Expr, rhs: Expr): Stmt => ({ variant: 'Assignment', lhs, rhs }),
   Expr: (expr: Expr): Stmt => ({ variant: 'Expr', expr }),
   While: (condition: Expr, statements: Stmt[]): Stmt => ({ variant: 'While', condition, statements }),
+  Return: (expr: Maybe<Expr>): Stmt => ({ variant: 'Return', expr }),
   Error: (message: string): Stmt => ({ variant: 'Error', message }),
   show: (stmt: Stmt): string => match(stmt, {
     Let: ({ name, expr, mutable, annotation }) => `${mutable ? 'mut' : 'let'} ${name}${annotation.mapWithDefault(ty => ': ' + MonoTy.show(ty), '')} = ${Expr.show(expr)}`,
     Assignment: ({ lhs, rhs }) => `${Expr.show(lhs)} = ${Expr.show(rhs)}`,
     Expr: ({ expr }) => Expr.show(expr),
     While: ({ condition, statements }) => `while ${Expr.show(condition)} {\n${statements.map(Stmt.show).join('\n')}\n}`,
+    Return: ({ expr }) => `return ${expr.mapWithDefault(Expr.show, '')}`,
     Error: ({ message }) => `<Error: ${message}>`,
   })
 };
@@ -211,7 +214,7 @@ export type Decl = DataType<{
     typeParams: TypeParam[],
     args: Argument[],
     returnTy: Maybe<MonoTy>,
-    body: Maybe<Expr>
+    body: Maybe<Expr>,
   },
   TypeAlias: {
     pub: boolean, name: string, typeParams: TypeParam[], alias: MonoTy
@@ -223,13 +226,16 @@ export type Decl = DataType<{
 export const Decl = {
   ...genConstructors<Decl>(['Function', 'TypeAlias', 'Import', 'Error']),
   show: (decl: Decl): string => match(decl, {
-    Function: ({ attributes, name, typeParams, args, body }) => {
-      const fun = `fun ${name}${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')}) ${body.mapWithDefault(Expr.show, '')}`;
-      return attributes.length > 0 ? `${Attribute.showMany(attributes)}\n${fun}` : fun;
+    Function: ({ attributes, name, typeParams, args, returnTy, body }) => {
+      const attrsFmt = attributes.length > 0 ? Attribute.showMany(attributes) + '\n' : '';
+      const argsFmt = `${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')})`;
+      const retTyFmt = returnTy.mapWithDefault(ty => ': ' + MonoTy.show(ty), '');
+      const bodyFmt = body.mapWithDefault(Expr.show, '');
+      return `${attrsFmt}fun ${name}${argsFmt}${retTyFmt}${bodyFmt}`;
     },
-    TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)}`,
-    Import: ({ path, imports }) => `import ${path}${Imports.show(imports)}`,
-    Error: ({ message }) => `<Error: ${message}> `,
+    TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)} `,
+    Import: ({ path, imports }) => `import ${path}${Imports.show(imports)} `,
+    Error: ({ message }) => `< Error: ${message}> `,
   }),
 };
 

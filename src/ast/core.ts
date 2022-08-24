@@ -4,7 +4,7 @@ import { TypeContext } from "../infer/typeContext";
 import { MonoTy, PolyTy } from "../infer/types";
 import { Const } from "../parse/token";
 import { zip } from "../utils/array";
-import { Maybe } from "../utils/maybe";
+import { Maybe, none } from "../utils/maybe";
 import { assert, panic, proj, pushMap } from "../utils/misc";
 import * as bitter from './bitter';
 import { FuncName, VarName } from "./name";
@@ -26,18 +26,6 @@ export const ArrayInit = {
     fill: ({ count }) => count,
   }),
 };
-
-export type Expr = DataType<Typed<{
-  Const: { value: Const },
-  Variable: { name: VarName },
-  NamedFuncCall: { name: FuncName, args: Expr[] },
-  IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
-  StructAccess: { struct: VariantOf<MonoTy, 'Struct'>, lhs: Expr, field: string },
-  Struct: { structTy: VariantOf<MonoTy, 'Struct'>, fields: { name: string, value: Expr }[] },
-  Block: { stmts: Stmt[], ret: Maybe<Expr> },
-  // TODO: replace with core structs, assignments and loops
-  Array: { init: ArrayInit, elemTy: MonoTy },
-}>>;
 
 function resolveNamedStruct(name: string, typeParams: MonoTy[], ctx: TypeContext): Maybe<VariantOf<MonoTy, 'Struct'>> {
   const ta = TypeContext.resolveTypeAlias(ctx, name);
@@ -72,13 +60,25 @@ function resolveAnonymousStruct(ty: VariantOf<MonoTy, 'Struct'>, ctx: TypeContex
   return candidates[0].ty;
 }
 
+export type Expr = DataType<Typed<{
+  Const: { value: Const },
+  Variable: { name: VarName },
+  NamedFuncCall: { name: FuncName, args: Expr[] },
+  IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
+  StructAccess: { struct: VariantOf<MonoTy, 'Struct'>, lhs: Expr, field: string },
+  Struct: { structTy: VariantOf<MonoTy, 'Struct'>, fields: { name: string, value: Expr }[] },
+  Block: { stmts: Stmt[], ret: Maybe<Expr> },
+  // TODO: replace with core structs, assignments and loops
+  Array: { init: ArrayInit, elemTy: MonoTy },
+}>>;
+
 export const Expr = {
   ...genConstructors<Expr>([
     'Const', 'Variable', 'NamedFuncCall', 'IfThenElse',
     'StructAccess', 'Struct', 'Block', 'Array',
   ]),
-  from: (expr: bitter.Expr, ctx: TypeContext): Expr => {
-    const go = (expr: bitter.Expr) => Expr.from(expr, ctx);
+  from: (expr: bitter.Expr, f: VariantOf<Decl, 'Function'>, ctx: TypeContext): Expr => {
+    const go = (expr: bitter.Expr) => Expr.from(expr, f, ctx);
     return match(expr, {
       Const: ({ value, ty }) => Expr.Const({ value, ty }),
       Variable: ({ name, ty }) => Expr.Variable({ name, ty }),
@@ -88,9 +88,9 @@ export const Expr = {
         ty,
       }),
       Block: ({ statements, lastExpr, ty }) => Expr.Block({
-        stmts: statements.map(s => Stmt.from(s, ctx)),
+        stmts: statements.map(stmt => Stmt.from(stmt, f, ctx)),
         ret: lastExpr.map(go),
-        ty
+        ty,
       }),
       IfThenElse: ({ condition, then, else_, ty }) => Expr.IfThenElse({
         condition: go(condition),
@@ -122,7 +122,7 @@ export const Expr = {
         }),
         ty
       }),
-      _: () => panic('Unsupported core expression'),
+      _: () => panic('Unsupported core expression: ' + expr.variant),
     });
   },
 };
@@ -133,26 +133,31 @@ export type Stmt = DataType<{
   StructAssignment: { struct: Expr, structTy: VariantOf<MonoTy, 'Struct'>, field: string, value: Expr },
   Expr: { expr: Expr },
   While: { condition: Expr, statements: Stmt[] },
+  Return: { expr: Maybe<Expr> },
 }>;
 
 export const Stmt = {
-  ...genConstructors<Stmt>(['Let', 'VariableAssignment', 'StructAssignment', 'Expr', 'While']),
-  from: (stmt: bitter.Stmt, ctx: TypeContext): Stmt => match(stmt, {
-    Let: ({ mutable, name, expr }) => Stmt.Let({ mut: mutable, name, value: Expr.from(expr, ctx) }),
-    Expr: ({ expr }) => Stmt.Expr({ expr: Expr.from(expr, ctx) }),
+  ...genConstructors<Stmt>(['Let', 'VariableAssignment', 'StructAssignment', 'Expr', 'While', 'Return']),
+  from: (stmt: bitter.Stmt, f: VariantOf<Decl, 'Function'>, ctx: TypeContext): Stmt => match(stmt, {
+    Let: ({ mutable, name, expr }) => Stmt.Let({ mut: mutable, name, value: Expr.from(expr, f, ctx) }),
+    Expr: ({ expr }) => Stmt.Expr({ expr: Expr.from(expr, f, ctx) }),
     While: ({ condition, statements }) => Stmt.While({
-      condition: Expr.from(condition, ctx),
-      statements: statements.map(s => Stmt.from(s, ctx))
+      condition: Expr.from(condition, f, ctx),
+      statements: statements.map(stmt => Stmt.from(stmt, f, ctx))
     }),
     Assignment: ({ lhs, rhs }) => match(lhs, {
-      Variable: ({ name }) => Stmt.VariableAssignment({ name, value: Expr.from(rhs, ctx) }),
+      Variable: ({ name }) => Stmt.VariableAssignment({ name, value: Expr.from(rhs, f, ctx) }),
       FieldAccess: ({ lhs, field }) => {
         const structTy = MonoTy.deref(lhs.ty);
         assert(structTy.variant === 'Struct');
-        return Stmt.StructAssignment({ struct: Expr.from(lhs, ctx), structTy, field, value: Expr.from(rhs, ctx) });
+        return Stmt.StructAssignment({ struct: Expr.from(lhs, f, ctx), structTy, field, value: Expr.from(rhs, f, ctx) });
       },
       _: () => panic('Unsupported assignment target: ' + lhs.variant),
     }),
+    Return: ({ expr }) => {
+      f.canReturnEarly ||= true;
+      return Stmt.Return({ expr: expr.map(e => Expr.from(e, f, ctx)) });
+    },
     _: () => panic('Unhandled core statement: ' + stmt.variant),
   }),
 };
@@ -166,6 +171,7 @@ export type Decl = DataType<{
     ty: VariantOf<MonoTy, 'Fun'>,
     body: Maybe<Expr>,
     returnTy: MonoTy,
+    canReturnEarly: boolean, // the function body contains at least one early return statement
   },
   Import: { path: string, imports: sweet.Imports },
 }>;
@@ -185,15 +191,20 @@ export const Decl = {
       const ty = MonoTy.deref(funTy[1]);
       assert(ty.variant === 'Fun');
 
-      return [Decl.Function({
+      const f = Decl.Function({
         attributes,
         pub,
         name,
         args: args.map(({ mutable, name }) => ({ mut: mutable, name })),
         ty,
-        body: body.map(e => Expr.from(e, ctx)),
+        body: none,
         returnTy: MonoTy.deref(ty.ret),
-      })];
+        canReturnEarly: false,
+      });
+
+      f.body = body.map(e => Expr.from(e, f, ctx));
+
+      return [f];
     },
     TypeAlias: () => [],
     Import: ({ path, imports }) => [Decl.Import({ path, imports })],

@@ -18,9 +18,7 @@ export type TypingError = DataType<{
   UnboundVariable: { name: string },
   UnknownFunction: { name: string },
   ImmutableValue: { expr: Expr },
-  CannotUseImmutableValueForImmutableFuncArg: {
-    func: string, arg: string
-  },
+  CannotUseImmutableValueForImmutableFuncArg: { func: string, arg: string },
   UnassignableExpression: { expr: Expr },
   TupleIndexTooBig: { index: number },
   ParsingError: { message: string },
@@ -30,6 +28,7 @@ export type TypingError = DataType<{
   MissingStructFields: { name: string, fields: string[] },
   ExtraneoussStructFields: { name: string, fields: string[] },
   MissingFuncPrototypeReturnTy: { name: string },
+  ReturnUsedOutsideFunctionBody: {},
 }, 'type'>;
 
 const ASSIGNABLE_EXPRESSIONS = new Set<Expr['variant']>(['Variable', 'FieldAccess']);
@@ -433,6 +432,20 @@ const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): void => {
         inferStmt(s, ctx, errors)
       });
     },
+    Return: ({ expr }) => {
+      TypeContext.getCurrentFunc(ctx).match({
+        Some: ({ returnTy }) => {
+          const expectedRetTy = expr.mapWithDefault(proj('ty'), MonoTy.void());
+          expr.do(expr => {
+            inferExpr(expr, ctx, errors);
+          });
+          unifyMut(expectedRetTy, returnTy, ctx);
+        },
+        None: () => {
+          errors.push(Error.Typing({ type: 'ReturnUsedOutsideFunctionBody' }));
+        },
+      });
+    },
     Error: ({ message }) => {
       errors.push(Error.Typing({ type: 'ParsingError', message }));
     },
@@ -466,7 +479,9 @@ const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void => {
       });
 
       body.do(body => {
+        bodyCtx.funcStack.push({ returnTy: body.ty });
         inferExpr(body, bodyCtx, errors);
+        bodyCtx.funcStack.pop();
 
         returnTy.do(retTy => {
           unify(body.ty, retTy, bodyCtx);
