@@ -45,6 +45,18 @@ export const createLLVMCompiler = async () => {
       controlFlow: array<{ exitBB: llvm.BasicBlock }>(),
     };
 
+    function declareImports() {
+      for (const imp of module.imports.values()) {
+        for (const [name, { sourceMod: sourceModPath, isExport }] of imp) {
+          const sourceMod = modules.get(sourceModPath)!;
+          const decls = sourceMod.members.get(name);
+          decls?.forEach(d => {
+            declareFunc(d, true);
+          });
+        }
+      }
+    }
+
     // if a return statement is used inside a if then else or while branch
     // then we need to change the target branch to the return's exit basic block
     function setTargetControlFlowBranch<T>(targetBB: llvm.BasicBlock, action: () => T): [llvm.BasicBlock, T] {
@@ -427,15 +439,16 @@ export const createLLVMCompiler = async () => {
       return ret;
     }
 
-    function declareFunc(f: VariantOf<Decl, 'Function'>): LLVM.Function {
+    function declareFunc(f: VariantOf<Decl, 'Function'>, isExternal?: boolean): LLVM.Function {
       const returnTy = llvmTy(f.returnTy);
       const argTys = f.args.map(a => llvmTy(a.name.ty));
       const funcTy = llvm.FunctionType.get(returnTy, argTys, false);
-      const isExternal =
+      const ext = isExternal ?? (
         f.pub ||
         f.name.original === 'main' ||
-        f.attributes.some(attr => attr.name === 'extern');
-      const linkage = llvm.Function.LinkageTypes[isExternal ? 'ExternalLinkage' : 'PrivateLinkage'];
+        f.attributes.some(attr => attr.name === 'extern')
+      );
+      const linkage = llvm.Function.LinkageTypes[ext ? 'ExternalLinkage' : 'PrivateLinkage'];
       const func = llvm.Function.Create(funcTy, linkage, f.name.mangled, mod);
       funcs.set(f.name.mangled, func);
 
@@ -532,35 +545,12 @@ export const createLLVMCompiler = async () => {
           }
         },
         TypeAlias: () => { },
-        Import: ({ path, imports }) => {
-          const importedMod = modules.get(path)!;
-
-          const declareImport = (decl: VariantOf<Decl, 'Function'>) => {
-            match(decl, {
-              Function: f => {
-                declareFunc(f);
-              },
-            });
-          };
-
-          match(imports, {
-            names: ({ names }) => {
-              names.forEach(name => {
-                const decls = importedMod.members.get(name)!;
-                decls.forEach(declareImport);
-              });
-            },
-            all: () => {
-              importedMod.members.forEach(decls => {
-                decls.forEach(declareImport);
-              });
-            },
-          });
-        },
+        Import: () => { },
         _: () => { },
       });
     }
 
+    declareImports();
     module.decls.forEach(decl => { compileDecl(decl); });
 
     if (llvm.verifyModule(mod)) {

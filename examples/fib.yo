@@ -1,5 +1,4 @@
-import std/ops
-import std/strings
+import std/foundations
 
 fun fact(n: i32, acc: i32): i32 {
   if n <= 1 { acc } else { fact(n - 1, n * acc) }

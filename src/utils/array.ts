@@ -43,6 +43,26 @@ export function* indexed<T>(elems: Iterable<T>): IterableIterator<[T, number]> {
   }
 }
 
+export const any = <T>(elems: Iterable<T>, pred: (elem: T) => boolean): boolean => {
+  for (const elem of elems) {
+    if (pred(elem)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+export const find = <T>(elems: Iterable<T>, pred: (elem: T) => boolean): Maybe<T> => {
+  for (const elem of elems) {
+    if (pred(elem)) {
+      return some(elem);
+    }
+  }
+
+  return none;
+};
+
 export const takeWhile = <T>(elems: Iterable<T>, pred: (elem: T) => boolean): T[] => {
   const result: T[] = [];
 

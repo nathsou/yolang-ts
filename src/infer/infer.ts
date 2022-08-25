@@ -5,7 +5,7 @@ import { Error } from '../errors/errors';
 import { gen, zip } from '../utils/array';
 import { Either } from '../utils/either';
 import { Maybe, none, some } from '../utils/maybe';
-import { id, panic, proj } from '../utils/misc';
+import { assert, id, panic, proj } from '../utils/misc';
 import { diffSet } from '../utils/set';
 import { Env, FuncDecl } from './env';
 import { Row } from './structs';
@@ -501,40 +501,7 @@ const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void => {
     TypeAlias: ({ name, typeParams, alias }) => {
       TypeContext.declareTypeAlias(ctx, name, typeParams, alias);
     },
-    Import: ({ path, imports }) => {
-      const mod = ctx.modules.get(path)!;
-      if (!mod.typeChecked) {
-        inferModule(mod, errors);
-        mod.typeChecked = true;
-      }
-
-      const declareImport = (d: VariantOf<Decl, 'Function' | 'TypeAlias'>) => {
-        if (d.pub) {
-          match(d, {
-            Function: f => {
-              Env.declareFunc(ctx.env, f);
-            },
-            TypeAlias: ({ name, typeParams, alias }) => {
-              TypeContext.declareTypeAlias(ctx, name, typeParams, alias);
-            },
-          });
-        }
-      };
-
-      match(imports, {
-        names: ({ names }) => {
-          names.forEach(name => {
-            const decl = mod.members.get(name)!;
-            decl.forEach(declareImport);
-          });
-        },
-        all: () => {
-          mod.members.forEach(decls => {
-            decls.forEach(declareImport);
-          });
-        },
-      });
-    },
+    Import: ({ }) => { },
     Error: ({ message }) => {
       errors.push(Error.Typing({ type: 'ParsingError', message }));
     },
@@ -543,12 +510,48 @@ const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void => {
 
 const inferModule = (mod: Module, errors: Error[]): void => {
   if (!mod.typeChecked) {
+    declareImports(mod, errors);
+
     mod.decls.forEach(decl => {
       inferDecl(decl, mod.typeContext, errors);
     });
 
     mod.typeChecked = true;
   }
+};
+
+const declareImports = (mod: Module, errors: Error[]): void => {
+  const typeCheckMod = (path: string) => {
+    const m = mod.typeContext.modules.get(path)!;
+    if (!m.typeChecked) {
+      inferModule(m, errors);
+      m.typeChecked = true;
+    }
+
+    return m;
+  };
+
+  const declareImport = (d: VariantOf<Decl, 'Function' | 'TypeAlias'>) => {
+    if (d.pub) {
+      match(d, {
+        Function: f => {
+          Env.declareFunc(mod.typeContext.env, f);
+        },
+        TypeAlias: ({ name, typeParams, alias }) => {
+          TypeContext.declareTypeAlias(mod.typeContext, name, typeParams, alias);
+        },
+      });
+    }
+  };
+
+  mod.imports.forEach(imp => {
+    for (const [name, { sourceMod: sourceModPath }] of imp) {
+      const sourceMod = typeCheckMod(sourceModPath);
+      assert(sourceMod.members.has(name), 'infer: unresolved import');
+      const decls = sourceMod.members.get(name)!;
+      decls.forEach(declareImport);
+    }
+  });
 };
 
 export const infer = (prog: Prog): Error[] => {

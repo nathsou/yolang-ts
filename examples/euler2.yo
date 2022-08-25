@@ -1,5 +1,4 @@
-import std/ops
-import std/strings
+import std/foundations
 
 fun fib(n) {
   mut a = 1

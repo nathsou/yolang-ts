@@ -5,10 +5,10 @@ import { Tuple } from "../infer/tuples";
 import { TypeContext } from "../infer/typeContext";
 import { MonoTy, PolyTy, TypeParam, TyVar } from "../infer/types";
 import { Const } from "../parse/token";
-import { zip, last } from "../utils/array";
+import { last, zip } from "../utils/array";
 import { Either } from "../utils/either";
 import { Maybe, none, some } from "../utils/maybe";
-import { pushMap, assert } from "../utils/misc";
+import { assert, pushMap } from "../utils/misc";
 import { Context } from "./context";
 import { FuncName, NameEnv, VarName } from "./name";
 import * as sweet from "./sweet";
@@ -303,11 +303,10 @@ export type Decl = DataType<{
     typeParams: TypeParam[],
     alias: MonoTy,
   },
-  Import: { path: string, imports: sweet.Imports },
   Error: { message: string },
 }>;
 
-const { TypeAlias, Import } = genConstructors<Decl>(['TypeAlias', 'Import']);
+const { TypeAlias } = genConstructors<Decl>(['TypeAlias']);
 
 type FuncConstructorParams = {
   attributes: sweet.Attribute[],
@@ -353,15 +352,14 @@ export const Decl = {
     };
   },
   TypeAlias,
-  Import,
   Error: (message: string): Decl => ({ variant: 'Error', message }),
-  from: (decl: sweet.Decl, nameEnv: NameEnv, errors: Error[]): Decl =>
+  from: (decl: sweet.Decl, nameEnv: NameEnv, errors: Error[]): Decl[] =>
     match(decl, {
       Function: ({ attributes, pub, name, typeParams, args, returnTy, body }) => {
         const nameRef = NameEnv.declareFunc(nameEnv, name);
         const withoutPatterns = rewriteFuncArgsPatternMatching(args, body.orDefault(sweet.Expr.Block([], none)), nameEnv, errors);
 
-        return Decl.Function({
+        return [Decl.Function({
           attributes,
           pub,
           name: nameRef,
@@ -372,11 +370,11 @@ export const Decl = {
             Some: () => some(withoutPatterns.body),
             None: () => none,
           }),
-        });
+        })];
       },
-      TypeAlias: ({ pub, name, typeParams, alias }) => Decl.TypeAlias({ pub, name, typeParams, alias }),
-      Import: ({ resolvedPath, imports }) => Decl.Import({ path: resolvedPath, imports }),
-      Error: ({ message }) => Decl.Error(message),
+      TypeAlias: ({ pub, name, typeParams, alias }) => [Decl.TypeAlias({ pub, name, typeParams, alias })],
+      Import: ({ resolvedPath, imports }) => [],
+      Error: ({ message }) => [Decl.Error(message)],
     }),
   rewrite: (decl: Decl, nameEnv: NameEnv, rewriteExpr: (expr: Expr) => Expr): Decl => {
     return match(decl, {
@@ -398,7 +396,6 @@ export const Decl = {
         typeParams,
         alias,
       }),
-      Import: ({ path, imports }) => Decl.Import({ path, imports }),
       Error: ({ message }) => Decl.Error(message),
     });
   },
@@ -413,14 +410,14 @@ export type Module = {
   path: string,
   decls: Decl[],
   members: Map<string, VariantOf<Decl, 'Function' | 'TypeAlias'>[]>,
-  imports: Map<string, Set<string>>,
+  imports: Map<string, Map<string, { sourceMod: string, isExport: boolean }>>,
   typeContext: TypeContext,
   typeChecked: boolean,
 };
 
 const Module = {
   from: (mod: sweet.Module, modules: Map<string, Module>, nameEnv: NameEnv, errors: Error[]): Module => {
-    const decls = mod.decls.map(d => Decl.from(d, nameEnv, errors));
+    const decls = mod.decls.flatMap(d => Decl.from(d, nameEnv, errors));
     const bitterMod: Module = {
       name: mod.name,
       path: mod.path,

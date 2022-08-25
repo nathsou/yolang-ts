@@ -1,6 +1,4 @@
-import std/ops
-import std/strings
-import std/arrays
+import std/foundations
 
 fun isPrime(n) {
   if n == 2 { return true }

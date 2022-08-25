@@ -3,7 +3,7 @@ import { Module, Prog } from "../ast/sweet";
 import { Error } from "../errors/errors";
 import { lex } from '../parse/lex';
 import { parse } from '../parse/parse';
-import { groupBy, last } from '../utils/array';
+import { any, find, groupBy, last } from '../utils/array';
 import { block, pushMap } from '../utils/misc';
 import { Slice } from '../utils/slice';
 import { FileSystem } from "./fileSystem";
@@ -72,33 +72,52 @@ export const resolve = async (path: string, fs: FileSystem): Promise<[Prog, Erro
           const fullPath = fullImportPath(importPath, fs.parentDir(path), fs);
           imp.resolvedPath = fullPath;
           const importedMod = await aux(fullPath);
-          const importedMembers = new Set<string>();
+          const importedMembers = new Map<string, { sourceMod: string, isExport: boolean }>();
           mod.imports.set(fullPath, importedMembers);
+
+          const resolveImport = (name: string): void => {
+            if (importedMod.members.has(name)) {
+              const members = importedMod.members.get(name)!;
+              for (const member of members) {
+                if (!member.pub) {
+                  errors.push(Error.Resolution(MemberIsNotPublic({ modulePath: fullPath, member: name })));
+                } else {
+                  importedMembers.set(name, {
+                    sourceMod: importedMod.path,
+                    isExport: imp.isExport
+                  });
+                }
+              }
+            } else if (any(importedMod.imports.values(), exp => exp.has(name) && exp.get(name)!.isExport)) {
+              const [_, [_2, { sourceMod }]] = find(importedMod.imports.values(), exp => exp.has(name)).unwrap();
+              importedMembers.set(name, { sourceMod, isExport: imp.isExport });
+            } else {
+              errors.push(Error.Resolution(UnknownMember({ modulePath: fullPath, member: name })));
+            }
+          };
 
           match(imports, {
             all: () => {
               for (const [name, decls] of importedMod.members) {
                 decls.forEach(decl => {
                   if (decl.pub) {
-                    importedMembers.add(name);
+                    importedMembers.set(name, { sourceMod: importedMod.path, isExport: imp.isExport });
+                    resolveImport(name);
                   }
                 });
+              }
+
+              for (const imports of importedMod.imports.values()) {
+                for (const [name, { sourceMod, isExport }] of imports) {
+                  if (isExport) {
+                    importedMembers.set(name, { sourceMod, isExport: imp.isExport });
+                  }
+                }
               }
             },
             names: ({ names }) => {
               names.forEach(name => {
-                if (!importedMod.members.has(name)) {
-                  errors.push(Error.Resolution(UnknownMember({ modulePath: fullPath, member: name })));
-                } else {
-                  const members = importedMod.members.get(name)!;
-                  members.forEach(member => {
-                    if (!member.pub) {
-                      errors.push(Error.Resolution(MemberIsNotPublic({ modulePath: fullPath, member: name })));
-                    } else {
-                      importedMembers.add(name);
-                    }
-                  });
-                }
+                resolveImport(name);
               });
             },
           });

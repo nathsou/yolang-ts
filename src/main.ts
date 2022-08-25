@@ -1,8 +1,8 @@
 import { match as matchVariant } from "itsamatch";
 import * as bitter from "./ast/bitter";
 import { Context } from './ast/context';
-import * as sweet from "./ast/sweet";
 import * as core from "./ast/core";
+import * as sweet from "./ast/sweet";
 import { createLLVMCompiler } from "./codegen/llvm/codegen";
 import { Error } from './errors/errors';
 import { infer } from "./infer/infer";
@@ -17,7 +17,8 @@ enum DebugLvl {
   types = 2,
   sweet = 3,
   llvm = 4,
-  all = 5,
+  time = 5,
+  all = 6,
 }
 
 let debugLevel = DebugLvl.nothing;
@@ -64,7 +65,7 @@ const getWasmMainFunc = async (source: string): Promise<Function> => {
   return panic('main function not found');
 };
 
-const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2 | 3): Promise<boolean> => {
+const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2 | 3): Promise<number> => {
   const logErrors = (errors: Error[]) => {
     errors.forEach(err => {
       console.log('\x1b[31m%s\x1b[0m', Error.show(err));
@@ -76,7 +77,7 @@ const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2
 
   if (errs1.length > 0) {
     logErrors(errs1);
-    return false;
+    return 1;
   }
 
   if (debugLevel >= DebugLvl.sweet) {
@@ -88,14 +89,14 @@ const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2
 
   if (errs2.length > 0) {
     logErrors(errs2);
-    return false;
+    return 1;
   }
 
   const errs3 = typeCheck(bitterProg);
 
   if (errs3.length > 0) {
     logErrors(errs3);
-    return false;
+    return 1;
   }
 
   if (debugLevel >= DebugLvl.types) {
@@ -121,22 +122,34 @@ const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2
     console.log(stdout);
   }
 
+  let t1, t2 = 0;
+  let exitCode = 0;
   if (target === 'wasm') {
     // run the program
-    const exitCode = (await getWasmMainFunc(outFile))();
-    return exitCode === 0;
+    const mainFunc = await getWasmMainFunc(outFile);
+    t1 = Date.now();
+    exitCode = mainFunc();
+    t2 = Date.now();
   } else {
     const { execFileSync } = await import('child_process');
+    t1 = Date.now();
     const stdout = execFileSync(outFile);
+    t2 = Date.now();
     // remove trailing newline
     try {
       const filteredStdout = stdout.at(-1) === 10 ? stdout.slice(0, -1) : stdout;
       console.log(filteredStdout.toString('utf-8'));
-      return true;
-    } catch {
-      return false;
+      exitCode = 0;
+    } catch (err: any) {
+      exitCode = err.status;
     }
   }
+
+  if (debugLevel >= DebugLvl.time) {
+    console.log(`took ${t2 - t1}ms`);
+  }
+
+  return exitCode;
 };
 
 const showTypes = (decls: bitter.Decl[]): string[] => {
@@ -164,8 +177,8 @@ const [, , source, debugLvl] = process.argv;
     if (debugLvl) {
       debugLevel = parseInt(debugLvl);
     }
-    const allGood = await compile(source, 'native', 3);
-    process.exit(allGood ? 0 : 1);
+    const exitCode = await compile(source, 'wasm', 3);
+    process.exit(exitCode);
   } else {
     console.info('Usage: yo <source.yo>');
     process.exit(0);

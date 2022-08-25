@@ -1,4 +1,4 @@
-import std/strings
+import std/foundations
 
 fun id(x) { x }
       

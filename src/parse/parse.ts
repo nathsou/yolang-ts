@@ -698,15 +698,18 @@ const importPath = map(
 
 const importDecl = map(
   seq(
-    keyword('import'),
+    alt(
+      map(keyword('import'), () => false),
+      map(keyword('export'), () => true),
+    ),
     expect(importPath, `Expected module path after 'import' keyword`),
     optionalOrDefault(
-      map(squareBrackets(commas(alt(upperIdent, ident))), Imports.names),
+      map(squareBrackets(commas(alt(upperIdent, ident), true)), Imports.names),
       Imports.all(),
     ),
     optional(symbol(';')),
   ),
-  ([_, path, imports]) => Decl.Import({ path, resolvedPath: '', imports })
+  ([isExport, path, imports]) => Decl.Import({ isExport, path, resolvedPath: '', imports })
 );
 
 initParser(decl, alt(

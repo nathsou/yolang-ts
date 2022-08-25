@@ -173,11 +173,10 @@ export type Decl = DataType<{
     returnTy: MonoTy,
     canReturnEarly: boolean, // the function body contains at least one early return statement
   },
-  Import: { path: string, imports: sweet.Imports },
 }>;
 
 export const Decl = {
-  ...genConstructors<Decl>(['Function', 'Import']),
+  ...genConstructors<Decl>(['Function']),
   from: (decl: bitter.Decl, ctx: TypeContext): Decl[] => match(decl, {
     Function: ({ attributes, pub, name, args, body, funTy, instances }) => {
       if (instances.length > 0) {
@@ -207,7 +206,7 @@ export const Decl = {
       return [f];
     },
     TypeAlias: () => [],
-    Import: ({ path, imports }) => [Decl.Import({ path, imports })],
+    Import: () => [],
     _: () => panic('Unhandled core declaration: ' + decl.variant),
   }),
 };
@@ -217,7 +216,7 @@ export type Module = {
   path: string,
   decls: Decl[],
   members: Map<string, VariantOf<Decl, 'Function'>[]>,
-  imports: Map<string, Set<string>>,
+  imports: Map<string, Map<string, { sourceMod: string, isExport: boolean }>>,
   typeContext: TypeContext,
 };
 
