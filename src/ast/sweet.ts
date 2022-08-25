@@ -1,7 +1,7 @@
 import { DataType, genConstructors, match, VariantOf } from 'itsamatch';
 import { MonoTy, TypeParam, TypeParams } from '../infer/types';
 import { Const, operators } from '../parse/token';
-import { joinWith } from '../utils/array';
+import { joinWith, last } from '../utils/array';
 import { Maybe, none } from '../utils/maybe';
 import { parenthesized } from '../utils/misc';
 
@@ -113,6 +113,14 @@ export const Expr = {
         }
       }
 
+      if (lhs.variant === 'Variable' && lhs.name === '[]') {
+        return `${Expr.show(args[0])}[${joinWith(args.slice(1), Expr.show)}]`;
+      }
+
+      if (lhs.variant === 'Variable' && lhs.name === '[]=') {
+        return `${Expr.show(args[0])}[${joinWith(args.slice(1, -1), Expr.show)}] = ${Expr.show(last(args))}`;
+      }
+
       const params: string = `${typeParams.length > 0 ? `<${joinWith(typeParams, MonoTy.show)}>` : ''}`;
       return `${Expr.show(lhs)}${params}(${joinWith(args, Expr.show, ', ')})`;
     },
@@ -125,7 +133,13 @@ export const Expr = {
     Array: ({ init }) => ArrayInit.show(init),
     Match: ({ expr, cases }) => `match ${Expr.show(expr)} {\n${joinWith(cases, ({ pattern, body }) => `  ${Pattern.show(pattern)} => ${Expr.show(body)}\n`, '\n')}\n}`,
     Parenthesized: ({ expr }) => `(${Expr.show(expr)})`,
-    Struct: ({ name, typeParams, fields }) => `${name} <${joinWith(typeParams, MonoTy.show, ', ')}> {\n${joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, ', ')}\n}`,
+    Struct: ({ name, typeParams, fields }) => {
+      const tyParamsFmt = typeParams.length > 0 ? `<${joinWith(typeParams, MonoTy.show, ', ')}>` : '';
+      const inline = fields.length <= 2;
+      let fieldsFmt = joinWith(fields, ({ name, value }) => `${name}: ${Expr.show(value)}`, inline ? ', ' : ',\n');
+      fieldsFmt = inline ? `{ ${fieldsFmt} }` : `{\n${fieldsFmt}\n}`;
+      return `${name}${tyParamsFmt} ${fieldsFmt}`;
+    },
     TupleIndexing: ({ lhs, index }) => `${Expr.show(lhs)}.${index}`,
     LetIn: ({ pattern, value, body }) => `let ${Pattern.show(pattern)} = ${Expr.show(value)} in ${Expr.show(body)}`,
   }),

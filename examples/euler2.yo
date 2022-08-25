@@ -1,4 +1,5 @@
 import std/ops
+import std/strings
 
 fun fib(n) {
   mut a = 1
@@ -33,5 +34,6 @@ fun euler2() {
 }
 
 fun main() {
-  euler2()
+  log(euler2())
+  return 0
 }

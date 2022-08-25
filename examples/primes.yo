@@ -1,0 +1,40 @@
+import std/ops
+import std/strings
+import std/arrays
+
+fun isPrime(n) {
+  if n == 2 { return true }
+  if n.even() or n < 2 { return false }
+
+  mut i = 3
+  while i * i <= n {
+    if n mod i == 0 {
+      return false
+    }
+
+    i += 2
+  }
+
+  return true
+}
+
+fun countPrimes(upTo) {
+  mut i = 2
+  mut count = 0
+  while i <= upTo {
+    if i.isPrime() {
+      count += 1
+    }
+
+    i += 1
+  }
+
+  count
+}
+
+fun main() {
+  log("Number of primes <= 10000000:")
+  log(countPrimes(10000000))
+
+  0 // unix exit code
+}

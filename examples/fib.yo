@@ -1,4 +1,5 @@
 import std/ops
+import std/strings
 
 fun fact(n: i32, acc: i32): i32 {
   if n <= 1 { acc } else { fact(n - 1, n * acc) }
@@ -25,5 +26,7 @@ fun fibIter(n: i32): i32 {
 
 fun main() {
   let n = fact(4, 1) * 2 - 6
-  fibIter(n) == fibRec(n)
+  log(fibIter(n) == fibRec(n))
+
+  return 0
 }

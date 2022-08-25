@@ -373,13 +373,11 @@ export const createLLVMCompiler = async () => {
     }
 
     const structInstances: { row: Row, ty: LLVM.StructType }[] = [];
-    const strTy = llvmTy(MonoTy.Array(MonoTy.u8()));
 
     function llvmTy(ty: MonoTy): llvm.Type {
       return match(ty, {
         Const: c => matchString<string, llvm.Type>(c.name, {
           'void': () => llvm.Type.getVoidTy(context),
-          'int': () => llvm.Type.getInt32Ty(context),
           'u32': () => llvm.Type.getInt32Ty(context),
           'i32': () => llvm.Type.getInt32Ty(context),
           'u64': () => llvm.Type.getInt64Ty(context),
@@ -387,9 +385,7 @@ export const createLLVMCompiler = async () => {
           'u8': () => llvm.Type.getInt8Ty(context),
           'i8': () => llvm.Type.getInt8Ty(context),
           'bool': () => llvm.Type.getInt1Ty(context),
-          '[]': () => llvm.Type.getInt8Ty(context),
           'ptr': () => llvm.PointerType.get(llvmTy(c.args[0]), 0),
-          'str': () => strTy,
           _: () => {
             const typeAlias = TypeContext.resolveTypeAlias(module.typeContext, c.name).map(ta => {
               const t = TypeContext.instantiateTypeAlias(ta, c.args);

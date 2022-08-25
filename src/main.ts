@@ -16,7 +16,8 @@ enum DebugLvl {
   sections = 1,
   types = 2,
   sweet = 3,
-  all = 4,
+  llvm = 4,
+  all = 5,
 }
 
 let debugLevel = DebugLvl.nothing;
@@ -106,7 +107,7 @@ const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2
   const compiler = await createLLVMCompiler();
   const modules = compiler.compile(coreProg);
 
-  if (debugLevel >= DebugLvl.sections) {
+  if (debugLevel >= DebugLvl.llvm) {
     modules.forEach(m => {
       console.log(m.print());
     });
@@ -163,7 +164,7 @@ const [, , source, debugLvl] = process.argv;
     if (debugLvl) {
       debugLevel = parseInt(debugLvl);
     }
-    const allGood = await compile(source, 'wasm', 3);
+    const allGood = await compile(source, 'native', 3);
     process.exit(allGood ? 0 : 1);
   } else {
     console.info('Usage: yo <source.yo>');

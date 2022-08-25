@@ -328,7 +328,25 @@ const fieldAccess = chainLeft(
   })
 );
 
-const factor = fieldAccess;
+const indexing = alt(
+  map(
+    seq(
+      fieldAccess,
+      squareBrackets(commas(expr, true)),
+      optional(seq(
+        ident2('='),
+        expr,
+      )),
+    ),
+    ([lhs, args, rhs]) => rhs.match({
+      None: () => Expr.Call(Expr.Variable('[]'), [], [lhs, ...args]),
+      Some: ([_, val]) => Expr.Call(Expr.Variable('[]='), [], [lhs, ...args, val]),
+    }),
+  ),
+  fieldAccess
+);
+
+const factor = indexing;
 
 export const unary = alt(
   map(seq(
@@ -613,7 +631,17 @@ const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
   optionalOrDefault(attributeList, []),
   memberVisibility,
   keyword('fun'),
-  expectOrDefault(ident, `Expected identifier after 'fun' keyword`, '<?>'),
+  expectOrDefault(
+    alt(
+      ident,
+      map(
+        seq(symbol('['), symbol(']'), optional(ident2('='))),
+        ([_1, _2, eq]) => eq.isNone() ? '[]' : '[]='
+      )
+    ),
+    `Expected identifier after 'fun' keyword`,
+    '<?>'
+  ),
   scopedTypeParams(seq(
     expectOrDefault(argumentList, 'Expected arguments after function name', []),
     optional(seq(

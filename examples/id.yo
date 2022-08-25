@@ -1,6 +1,9 @@
+import std/strings
 
 fun id(x) { x }
       
 fun main() {
-  if id(false) { id(1) } else { id(3) }
+  log(if id(false) { id(1) } else { id(3) })
+
+  return 0
 }
