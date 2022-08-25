@@ -319,9 +319,9 @@ export const createLLVMCompiler = async () => {
           builder.CreateStore(compileExpr(value), v.ptr);
         },
         StructAssignment: ({ struct, structTy, field, value }) => {
-          const structPtr = compileExpr(value);
+          const structPtr = compileExpr(struct);
           const fieldPtr = structFieldPtr(structTy, structPtr, field);
-          builder.CreateStore(compileExpr(struct), fieldPtr);
+          builder.CreateStore(compileExpr(value), fieldPtr);
         },
         Expr: ({ expr }) => { compileExpr(expr); },
         While: ({ condition, statements }) => {

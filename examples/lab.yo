@@ -2,8 +2,6 @@ import std/ops
 import std/strings
 import std/arrays
 
-type T = { c: i32 }
-
 type S = {
   a: i32,
   b: bool,
