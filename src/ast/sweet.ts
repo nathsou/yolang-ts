@@ -258,7 +258,7 @@ export type Module = {
   path: string,
   decls: Decl[],
   members: Map<string, VariantOf<Decl, 'Function' | 'TypeAlias'>[]>,
-  imports: Map<string, Map<string, { sourceMod: string, isExport: boolean }>>,
+  imports: Map<string, { sourceMod: string, isExport: boolean }>,
 };
 
 export type Prog = {

@@ -46,14 +46,12 @@ export const createLLVMCompiler = async () => {
     };
 
     function declareImports() {
-      for (const imp of module.imports.values()) {
-        for (const [name, { sourceMod: sourceModPath, isExport }] of imp) {
-          const sourceMod = modules.get(sourceModPath)!;
-          const decls = sourceMod.members.get(name);
-          decls?.forEach(d => {
-            declareFunc(d, true);
-          });
-        }
+      for (const [name, { sourceMod: sourceModPath, isExport }] of module.imports) {
+        const sourceMod = modules.get(sourceModPath)!;
+        const decls = sourceMod.members.get(name);
+        decls?.forEach(d => {
+          declareFunc(d, true);
+        });
       }
     }
 

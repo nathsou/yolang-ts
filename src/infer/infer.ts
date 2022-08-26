@@ -2,7 +2,7 @@ import { DataType, match, VariantOf } from 'itsamatch';
 import { Decl, Expr, Module, Pattern, Prog, Stmt } from '../ast/bitter';
 import { FuncName, NameEnv, VarName } from '../ast/name';
 import { Error } from '../errors/errors';
-import { gen, zip } from '../utils/array';
+import { gen, groupBy, zip } from '../utils/array';
 import { Either } from '../utils/either';
 import { Maybe, none, some } from '../utils/maybe';
 import { assert, id, panic, proj } from '../utils/misc';
@@ -544,14 +544,15 @@ const declareImports = (mod: Module, errors: Error[]): void => {
     }
   };
 
-  mod.imports.forEach(imp => {
-    for (const [name, { sourceMod: sourceModPath }] of imp) {
-      const sourceMod = typeCheckMod(sourceModPath);
+  const importsBySourceMod = groupBy([...mod.imports.keys()], name => mod.imports.get(name)!.sourceMod);
+  for (const [sourceModPath, names] of Object.entries(importsBySourceMod)) {
+    const sourceMod = typeCheckMod(sourceModPath);
+    for (const name of names) {
       assert(sourceMod.members.has(name), 'infer: unresolved import');
       const decls = sourceMod.members.get(name)!;
       decls.forEach(declareImport);
     }
-  });
+  }
 };
 
 export const infer = (prog: Prog): Error[] => {
