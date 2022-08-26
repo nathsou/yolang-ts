@@ -1,6 +1,6 @@
 import { DataType, genConstructors, match, VariantOf } from "itsamatch";
 import { Error } from "../errors/errors";
-import { FuncDecl } from "../infer/env";
+import { FunDecl } from "../infer/env";
 import { Tuple } from "../infer/tuples";
 import { TypeContext } from "../infer/typeContext";
 import { MonoTy, PolyTy, TypeParam, TyVar } from "../infer/types";
@@ -295,7 +295,7 @@ export type Decl = DataType<{
     returnTy: Maybe<MonoTy>,
     body: Maybe<Expr>,
     funTy: PolyTy,
-    instances: FuncDecl[],
+    instances: Map<string, MonoTy[]>,
   },
   TypeAlias: {
     pub: boolean,
@@ -348,7 +348,7 @@ export const Decl = {
       }),
       returnTy,
       funTy,
-      instances: [],
+      instances: new Map(),
     };
   },
   TypeAlias,
@@ -373,7 +373,7 @@ export const Decl = {
         })];
       },
       TypeAlias: ({ pub, name, typeParams, alias }) => [Decl.TypeAlias({ pub, name, typeParams, alias })],
-      Import: ({ resolvedPath, imports }) => [],
+      Import: () => [],
       Error: ({ message }) => [Decl.Error(message)],
     }),
   rewrite: (decl: Decl, nameEnv: NameEnv, rewriteExpr: (expr: Expr) => Expr): Decl => {

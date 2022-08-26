@@ -15,7 +15,7 @@ fun []=(mut a: i32[], index: u32, value: i32): void {
 }
 
 fun main() {
-  mut s = S { a: 11, b: true, c: [1, 2, 3] }
+  let s = S { a: 11, b: true, c: [1, 2, 3] }
 
   log(s.a)
   log(s.b)

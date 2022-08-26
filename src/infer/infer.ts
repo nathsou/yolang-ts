@@ -1,17 +1,17 @@
 import { DataType, match, VariantOf } from 'itsamatch';
 import { Decl, Expr, Module, Pattern, Prog, Stmt } from '../ast/bitter';
-import { FuncName, NameEnv, VarName } from '../ast/name';
+import { FuncName, VarName } from '../ast/name';
 import { Error } from '../errors/errors';
 import { gen, groupBy, zip } from '../utils/array';
 import { Either } from '../utils/either';
 import { Maybe, none, some } from '../utils/maybe';
-import { assert, id, panic, proj } from '../utils/misc';
+import { assert, block, proj } from '../utils/misc';
 import { diffSet } from '../utils/set';
-import { Env, FuncDecl } from './env';
+import { Env, FunDecl } from './env';
 import { Row } from './structs';
 import { MAX_TUPLE_INDEX, Tuple } from './tuples';
 import { TypeContext } from './typeContext';
-import { MonoTy, PolyTy, showTyVarId } from './types';
+import { MonoTy, PolyTy, TypeParams } from './types';
 import { unifyMut, unifyPure } from './unification';
 
 export type TypingError = DataType<{
@@ -36,9 +36,9 @@ const ASSIGNABLE_EXPRESSIONS = new Set<Expr['variant']>(['Variable', 'FieldAcces
 const resolveOverloading = (
   name: string,
   f: MonoTy,
-  candidates: FuncDecl[],
+  candidates: FunDecl[],
   ctx: TypeContext
-): Either<FuncDecl, TypingError> => {
+): Either<FunDecl, TypingError> => {
   const matches = candidates.map(func => {
     const gInst = PolyTy.instantiate(func.funTy);
     const score = unifyPure(f, gInst.ty, ctx).match({
@@ -60,48 +60,6 @@ const resolveOverloading = (
   }
 
   return Either.right({ type: 'AmbiguousOverload', name, funTy: MonoTy.show(f), matches: bestMatches.map(f => f.func.funTy) });
-};
-
-const monomorphizeFunc = (
-  ctx: TypeContext,
-  f: FuncDecl,
-  typeParams: MonoTy[],
-  instanceTy: VariantOf<MonoTy, 'Fun'>,
-  errors: Error[]
-): FuncDecl => {
-  // check if an instance for these args already exists
-  {
-    const inst = f.instances.find(inst => unifyPure(inst.funTy[1], instanceTy, ctx).isOk());
-
-    if (inst != null) {
-      return inst;
-    }
-  }
-
-  const newCtx = TypeContext.clone(ctx);
-  const nameEnv = NameEnv.make();
-  const inst = Decl.rewrite(f, nameEnv, id) as FuncDecl;
-  inst.args = zip(inst.args, instanceTy.args).map(([a, ty]) => ({ name: a.name, mutable: a.mutable, annotation: some(ty) }));
-  inst.returnTy = some(instanceTy.ret);
-  inst.typeParams = [];
-
-  if (typeParams.length > inst.typeParams.length) {
-    return panic(`Too many type parameters for '${f.name.mangled}', got ${typeParams.length}, expected ${inst.typeParams.length}`);
-  }
-
-  typeParams.forEach((p, index) => {
-    inst.typeParams[index] = {
-      name: inst.typeParams[index]?.name ?? showTyVarId(index),
-      ty: some(p)
-    };
-  });
-
-  TypeContext.declareTypeParams(newCtx, ...inst.typeParams);
-  inst.funTy = MonoTy.toPoly(PolyTy.instantiate(f.funTy).ty);
-  inferDecl(inst, newCtx, errors);
-  f.instances.push(inst);
-
-  return inst;
 };
 
 const inferExpr = (
@@ -132,7 +90,7 @@ const inferExpr = (
     });
   };
 
-  const resolveFuncs = (name: Either<string, FuncName>): Maybe<FuncDecl[]> => {
+  const resolveFuncs = (name: Either<string, FuncName>): Maybe<FunDecl[]> => {
     const funcName = name.match({
       left: name => name,
       right: name => name.original,
@@ -185,16 +143,24 @@ const inferExpr = (
             });
 
             call.name = Either.right(resolvedFunc.name);
-            let funTy = resolvedFunc.funTy[1];
-
-            if (PolyTy.isPolymorphic(resolvedFunc.funTy)) {
-              const inst = monomorphizeFunc(ctx, resolvedFunc, typeParams, actualFunTy, errors);
-
-              funTy = inst.funTy[1];
-              call.name = Either.right(inst.name);
-            }
+            const [funTy, paramsInst] = block(() => {
+              if (PolyTy.isPolymorphic(resolvedFunc.funTy)) {
+                const inst = PolyTy.instantiate(resolvedFunc.funTy);
+                return [inst.ty, [...inst.subst.values()]];
+              } else {
+                return [resolvedFunc.funTy[1], []];
+              }
+            });
 
             unify(funTy, actualFunTy);
+            call.typeParams = paramsInst;
+
+            if (paramsInst.length > 0 && paramsInst.every(MonoTy.isDetermined)) {
+              resolvedFunc.instances.set(
+                TypeParams.hash(paramsInst),
+                paramsInst.map(MonoTy.deref)
+              );
+            }
           },
           right: err => {
             errors.push(Error.Typing(err));
@@ -452,7 +418,7 @@ const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): void => {
   });
 };
 
-const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void => {
+export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void => {
   const unify = (s: MonoTy, t: MonoTy, context = ctx): void => {
     errors.push(...unifyMut(s, t, context));
   };

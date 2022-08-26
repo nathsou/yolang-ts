@@ -1,12 +1,14 @@
 import { DataType, genConstructors, match, VariantOf } from "itsamatch";
+import { Error } from "../errors/errors";
 import { Row } from "../infer/structs";
 import { TypeContext } from "../infer/typeContext";
-import { MonoTy, PolyTy } from "../infer/types";
+import { MonoTy, PolyTy, TypeParams } from "../infer/types";
 import { Const } from "../parse/token";
 import { zip } from "../utils/array";
 import { Maybe, none } from "../utils/maybe";
-import { assert, panic, proj, pushMap } from "../utils/misc";
+import { assert, block, panic, proj, pushMap } from "../utils/misc";
 import * as bitter from './bitter';
+import { MonoContext, MonoInstances, monomorphize } from "./monomorphize";
 import { FuncName, VarName } from "./name";
 import * as sweet from './sweet';
 
@@ -77,16 +79,31 @@ export const Expr = {
     'Const', 'Variable', 'NamedFuncCall', 'IfThenElse',
     'StructAccess', 'Struct', 'Block', 'Array',
   ]),
-  from: (expr: bitter.Expr, f: VariantOf<Decl, 'Function'>, ctx: TypeContext): Expr => {
+  from: (expr: bitter.Expr, f: VariantOf<Decl, 'Function'>, ctx: MonoContext): Expr => {
     const go = (expr: bitter.Expr) => Expr.from(expr, f, ctx);
     return match(expr, {
       Const: ({ value, ty }) => Expr.Const({ value, ty }),
       Variable: ({ name, ty }) => Expr.Variable({ name, ty }),
-      NamedFuncCall: ({ name, args, ty }) => Expr.NamedFuncCall({
-        name: name.unwrapRight('core.Expr.from: NamedFuncCall'),
-        args: args.map(go),
-        ty,
-      }),
+      NamedFuncCall: ({ name, typeParams, args, ty }) => {
+        const resolvedName = block<FuncName>(() => {
+          const overloadName = name.unwrapRight('core.Expr.from: NamedFuncCall');
+          if (typeParams.length > 0) {
+            const key = TypeParams.hash(typeParams);
+            assert(ctx.instances.has(overloadName.mangled), () => `missing instance '${overloadName.mangled}'`);
+            const instances = ctx.instances.get(overloadName.mangled)!;
+            assert(instances.has(key), () => `missing instance '${overloadName.mangled}${key}'`);
+            return instances.get(key)!.name;
+          } else {
+            return overloadName;
+          }
+        });
+
+        return Expr.NamedFuncCall({
+          name: resolvedName,
+          args: args.map(go),
+          ty,
+        });
+      },
       Block: ({ statements, lastExpr, ty }) => Expr.Block({
         stmts: statements.map(stmt => Stmt.from(stmt, f, ctx)),
         ret: lastExpr.map(go),
@@ -99,7 +116,7 @@ export const Expr = {
         ty
       }),
       Struct: ({ name, typeParams, fields, ty }) => Expr.Struct({
-        structTy: resolveNamedStruct(name, typeParams, ctx).unwrap('resolveStruct'),
+        structTy: resolveNamedStruct(name, typeParams, ctx.types).unwrap('resolveStruct'),
         fields: fields.map(({ name, value }) =>
           ({ name, value: go(value) })),
         ty
@@ -109,7 +126,7 @@ export const Expr = {
         assert(structTy.variant === 'Struct');
         return Expr.StructAccess({
           lhs: go(lhs),
-          struct: resolveAnonymousStruct(structTy, ctx),
+          struct: resolveAnonymousStruct(structTy, ctx.types),
           field,
           ty,
         });
@@ -138,7 +155,7 @@ export type Stmt = DataType<{
 
 export const Stmt = {
   ...genConstructors<Stmt>(['Let', 'VariableAssignment', 'StructAssignment', 'Expr', 'While', 'Return']),
-  from: (stmt: bitter.Stmt, f: VariantOf<Decl, 'Function'>, ctx: TypeContext): Stmt => match(stmt, {
+  from: (stmt: bitter.Stmt, f: VariantOf<Decl, 'Function'>, ctx: MonoContext): Stmt => match(stmt, {
     Let: ({ mutable, name, expr }) => Stmt.Let({ mut: mutable, name, value: Expr.from(expr, f, ctx) }),
     Expr: ({ expr }) => Stmt.Expr({ expr: Expr.from(expr, f, ctx) }),
     While: ({ condition, statements }) => Stmt.While({
@@ -177,14 +194,15 @@ export type Decl = DataType<{
 
 export const Decl = {
   ...genConstructors<Decl>(['Function']),
-  from: (decl: bitter.Decl, ctx: TypeContext): Decl[] => match(decl, {
-    Function: ({ attributes, pub, name, args, body, funTy, instances }) => {
-      if (instances.length > 0) {
-        return instances.flatMap(inst => Decl.from(inst, ctx));
-      }
+  from: (decl: bitter.Decl, ctx: MonoContext, errors: Error[]): Decl[] => match(decl, {
+    Function: func => {
+      const { attributes, pub, name, args, body, funTy, instances } = func;
 
       if (PolyTy.isPolymorphic(funTy)) {
-        return [];
+        return [...instances.values()].flatMap(params => {
+          const instance = monomorphize(ctx, func, params, errors);
+          return Decl.from(instance, ctx, errors);
+        });
       }
 
       const ty = MonoTy.deref(funTy[1]);
@@ -221,8 +239,9 @@ export type Module = {
 };
 
 export const Module = {
-  from: (mod: bitter.Module): Module => {
-    const decls = mod.decls.flatMap(d => Decl.from(d, mod.typeContext));
+  from: (mod: bitter.Module, instances: MonoInstances, errors: Error[]): Module => {
+    const ctx: MonoContext = { types: mod.typeContext, instances };
+    const decls = mod.decls.flatMap(d => Decl.from(d, ctx, errors));
     const coreMod: Module = {
       name: mod.name,
       path: mod.path,
@@ -251,16 +270,18 @@ export type Prog = {
 };
 
 export const Prog = {
-  from: (prog: bitter.Prog): Prog => {
+  from: (prog: bitter.Prog): [Prog, Error[]] => {
+    const errors: Error[] = [];
     const coreModules = new Map<string, Module>();
+    const instances: MonoInstances = new Map();
 
     for (const [path, mod] of prog.modules) {
-      coreModules.set(path, Module.from(mod));
+      coreModules.set(path, Module.from(mod, instances, errors));
     }
 
-    return {
+    return [{
       modules: coreModules,
       entry: coreModules.get(prog.entry.path)!,
-    };
+    }, errors];
   },
 };

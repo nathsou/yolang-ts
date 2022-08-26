@@ -391,7 +391,8 @@ export const PolyTy = {
 export type TypeParam = { name: string, ty: Maybe<MonoTy> };
 
 export const TypeParams = {
-  show: (params: TypeParam[]) => params.length > 0 ? `<${params.map(proj('name')).join(', ')}>` : '',
+  show: (params: TypeParam[]) => params.length > 0 ? `<${joinWith(params, proj('name'))}>` : '',
+  hash: (params: MonoTy[]) => `<${joinWith(params, MonoTy.show)}>`,
 };
 
 export type TypeParamsContext = {

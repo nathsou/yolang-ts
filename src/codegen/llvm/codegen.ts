@@ -254,11 +254,15 @@ export const createLLVMCompiler = async () => {
               parent.insertAfter(elseBB, mergeBB);
               builder.SetInsertPoint(mergeBB);
 
-              const phiNode = builder.CreatePHI(llvmTy(ty), 2, 'if');
-              phiNode.addIncoming(thenValue, thenBB);
-              phiNode.addIncoming(elseValue, elseBB);
+              if (MonoTy.eq(ty, MonoTy.void())) {
+                return voidIndicator;
+              } else {
+                const phiNode = builder.CreatePHI(llvmTy(ty), 2, 'if');
+                phiNode.addIncoming(thenValue, thenBB);
+                phiNode.addIncoming(elseValue, elseBB);
 
-              return phiNode;
+                return phiNode;
+              }
             },
             None: () => {
               const afterBB = llvm.BasicBlock.Create(context, 'after');

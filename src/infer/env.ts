@@ -7,11 +7,11 @@ import { pushRecord } from "../utils/misc";
 import { addSet } from "../utils/set";
 import { MonoTy, PolyTy, TyVarId } from "./types";
 
-export type FuncDecl = VariantOf<Decl, 'Function'>;
+export type FunDecl = VariantOf<Decl, 'Function'>;
 
 export type Env = {
   vars: Record<string, { name: VarName, ty: PolyTy }>,
-  funcs: Record<string, FuncDecl[]>,
+  funcs: Record<string, FunDecl[]>,
 };
 
 export const Env = {
@@ -20,7 +20,7 @@ export const Env = {
   addPolyVar: (env: Env, name: VarName, ty: PolyTy): void => {
     env.vars[name.original] = { name, ty };
   },
-  declareFunc: (env: Env, f: FuncDecl): void => {
+  declareFunc: (env: Env, f: FunDecl): void => {
     pushRecord(env.funcs, f.name.original, f);
 
     const overloadsCount = Env.lookupFuncs(env, f.name.original).length;
@@ -38,7 +38,7 @@ export const Env = {
 
     return none;
   },
-  lookupFuncs: (env: Env, name: string): FuncDecl[] => {
+  lookupFuncs: (env: Env, name: string): FunDecl[] => {
     if (name in env.funcs) {
       return env.funcs[name];
     }

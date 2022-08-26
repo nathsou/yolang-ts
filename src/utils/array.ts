@@ -63,6 +63,14 @@ export const find = <T>(elems: Iterable<T>, pred: (elem: T) => boolean): Maybe<T
   return none;
 };
 
+export function* filter<T>(elems: Iterable<T>, pred: (elem: T) => boolean): IterableIterator<T> {
+  for (const elem of elems) {
+    if (pred(elem)) {
+      yield elem;
+    }
+  }
+}
+
 export const takeWhile = <T>(elems: Iterable<T>, pred: (elem: T) => boolean): T[] => {
   const result: T[] = [];
 

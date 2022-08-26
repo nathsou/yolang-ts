@@ -104,7 +104,13 @@ const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2
     console.log(showTypes(bitterProg.entry.decls).join('\n\n') + '\n');
   }
 
-  const coreProg = core.Prog.from(bitterProg);
+  const [coreProg, errs4] = core.Prog.from(bitterProg);
+
+  if (errs4.length > 0) {
+    logErrors(errs4);
+    return 1;
+  }
+
   const compiler = await createLLVMCompiler();
   const modules = compiler.compile(coreProg);
 
