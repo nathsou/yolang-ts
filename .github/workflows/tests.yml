@@ -14,6 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - run: wget https://apt.llvm.org/llvm.sh
+      - run: sudo chmod +x llvm.sh
+      - run: sudo ./llvm.sh 14
+      - run: sudo apt-get install cmake zlib1g-dev
       - run: yarn install
       - run: yarn typeCheck
       - run: yarn test
