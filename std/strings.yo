@@ -35,8 +35,7 @@ pub fun reverse(mut buf: str, start: u32, end: u32): void {
 
   while i < j {
     let tmp = buf[i]
-    let back = buf[j]
-    buf[i] = back
+    buf[i] = buf[j]
     buf[j] = tmp
     i += 1u32
     j -= 1u32

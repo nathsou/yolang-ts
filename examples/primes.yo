@@ -1,38 +1,66 @@
 import std/foundations
 
-fun isPrime(n) {
-  if n == 2 { return true }
-  if n.even() or n < 2 { return false }
+type Sieve = {
+  primes: i32[],
+  count: u32,
+}
 
-  mut i = 3
-  while i * i <= n {
-    if n mod i == 0 {
+fun init(mut sieve: Sieve): void {
+  sieve.primes[0u32] = 2
+  sieve.primes[1u32] = 3
+  sieve.count = 1u32
+}
+
+fun isPrime(sieve: Sieve, n: i32): bool {
+  mut i = 1u32
+
+  while true {
+    let p = sieve.primes[i]
+
+    if p * p > n {
+      return true
+    }
+
+    if n mod p == 0 {
       return false
     }
 
-    i += 2
+    i += 1u32
   }
 
-  return true
+  true
 }
 
-fun countPrimes(upTo) {
-  mut i = 2
-  mut count = 0
-  while i <= upTo {
-    if i.isPrime() {
-      count += 1
-    }
-
-    i += 1
+fun nextPrime(mut sieve: Sieve): i32 {
+  mut n = sieve.primes[sieve.count] + 2
+  
+  while not sieve.isPrime(n) {
+    n += 2
   }
 
-  count
+  sieve.count += 1u32
+  sieve.primes[sieve.count] = n
+
+  n
+}
+
+fun fill(mut sieve: Sieve): void {
+  let max = sieve.primes.len - 1u32
+  while sieve.count < max {
+    sieve.nextPrime()
+  }
 }
 
 fun main() {
-  log("Number of primes <= 10000000:")
-  log(countPrimes(10000000))
+  mut sieve = Sieve {
+    primes: [0; 1000000],
+    count: 0u32
+  }
 
-  0 // unix exit code
+  sieve.init()
+  sieve.fill()
+
+  log(sieve.primes[sieve.primes.len - 1u32])
+
+  return 0 // unix exit code
 }

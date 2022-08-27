@@ -1,3 +1,4 @@
+import std/ops [-]
 
 pub type []<T> = {
   len: u32,

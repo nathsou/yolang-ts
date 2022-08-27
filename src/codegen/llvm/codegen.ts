@@ -117,11 +117,11 @@ export const createLLVMCompiler = async () => {
       );
     }
 
-    function arrayElementPtr(ty: LLVM.Type, arrayPtr: LLVM.Value, index: number): LLVM.Value {
+    function arrayElementPtr(ty: LLVM.Type, arrayPtr: LLVM.Value, index: number | LLVM.Value): LLVM.Value {
       return builder.CreateInBoundsGEP(
         ty,
         arrayPtr,
-        [builder.getInt32(0), builder.getInt32(index)],
+        [builder.getInt32(0), typeof index === 'number' ? builder.getInt32(index) : index],
       );
     }
 
@@ -175,6 +175,30 @@ export const createLLVMCompiler = async () => {
       });
 
       return arrayStructPtr;
+    }
+
+    function createWhileLoop(compileCondition: () => LLVM.Value, compileBody: () => void): void {
+      const parent = builder.GetInsertBlock()!.getParent()!;
+      const loopCondBB = llvm.BasicBlock.Create(context, 'loop_cond', parent);
+      const loopBodyBB = llvm.BasicBlock.Create(context, 'loop_body');
+      const loopEndBB = llvm.BasicBlock.Create(context, 'loop_end');
+
+      builder.CreateBr(loopCondBB);
+
+      // loop condition
+      builder.SetInsertPoint(loopCondBB);
+      const condValue = compileCondition();
+      builder.CreateCondBr(condValue, loopBodyBB, loopEndBB);
+
+      // loop body
+      parent.insertAfter(loopCondBB, loopBodyBB);
+      builder.SetInsertPoint(loopBodyBB);
+      const [loopExitBB] = setTargetControlFlowBranch(loopCondBB, compileBody);
+      builder.CreateBr(loopExitBB);
+
+      // loop end
+      parent.insertAfter(loopBodyBB, loopEndBB);
+      builder.SetInsertPoint(loopEndBB);
     }
 
     function compileExpr(expr: Expr): llvm.Value {
@@ -304,17 +328,35 @@ export const createLLVMCompiler = async () => {
           const { arrayStructPtr, arrayTy, arrayData } = allocateArray(elemTy, ArrayInit.len(init));
 
           // TODO: use a loop when len is large
-          const elems = match(init, {
-            elems: ({ elems }) => elems.map(elem => compileExpr(elem)),
+          match(init, {
+            elems: ({ elems }) => {
+              elems.forEach((elem, index) => {
+                const elemPtr = arrayElementPtr(arrayTy, arrayData, index);
+                builder.CreateStore(compileExpr(elem), elemPtr);
+              });
+            },
             fill: ({ value, count }) => {
               const elem = compileExpr(value);
-              return gen(count, () => elem);
-            },
-          });
+              // counter
+              const counter = builder.CreateAlloca(llvm.Type.getInt32Ty(context), builder.getInt32(1), 'counter');
+              builder.CreateStore(llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), 0), counter);
+              const max = llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), count);
 
-          elems.forEach((elem, index) => {
-            const elemPtr = arrayElementPtr(arrayTy, arrayData, index);
-            builder.CreateStore(elem, elemPtr);
+              createWhileLoop(() => builder.CreateICmpULT(builder.CreateLoad(llvm.Type.getInt32Ty(context), counter), max), () => {
+                const counterDeref = builder.CreateLoad(llvm.Type.getInt32Ty(context), counter);
+                const elemPtr = arrayElementPtr(arrayTy, arrayData, counterDeref);
+                builder.CreateStore(elem, elemPtr);
+
+                // counter += 1                
+                builder.CreateStore(
+                  builder.CreateAdd(
+                    counterDeref,
+                    llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), 1)
+                  ),
+                  counter
+                );
+              });
+            },
           });
 
           return arrayStructPtr;
@@ -339,32 +381,11 @@ export const createLLVMCompiler = async () => {
         },
         Expr: ({ expr }) => { compileExpr(expr); },
         While: ({ condition, statements }) => {
-          const parent = builder.GetInsertBlock()!.getParent()!;
-
-          const loopCondBB = llvm.BasicBlock.Create(context, 'loop_cond', parent);
-          const loopBodyBB = llvm.BasicBlock.Create(context, 'loop_body');
-          const loopEndBB = llvm.BasicBlock.Create(context, 'loop_end');
-
-          builder.CreateBr(loopCondBB);
-
-          // loop condition
-          builder.SetInsertPoint(loopCondBB);
-          const condValue = compileExpr(condition);
-          builder.CreateCondBr(condValue, loopBodyBB, loopEndBB);
-
-          // loop body
-          parent.insertAfter(loopCondBB, loopBodyBB);
-          builder.SetInsertPoint(loopBodyBB);
-          const [loopExitBB] = setTargetControlFlowBranch(loopCondBB, () => {
+          createWhileLoop(() => compileExpr(condition), () => {
             statements.forEach(stmt => {
               compileStmt(stmt);
             });
           });
-          builder.CreateBr(loopExitBB);
-
-          // loop end
-          parent.insertAfter(loopBodyBB, loopEndBB);
-          builder.SetInsertPoint(loopEndBB);
         },
         Return: ({ expr }) => {
           assert(stacks.func.length > 0, 'empty func stack');

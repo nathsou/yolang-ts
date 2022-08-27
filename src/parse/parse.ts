@@ -297,7 +297,7 @@ const namedStruct = alt(
   map(seq(
     upperIdent,
     optionalOrDefault(angleBrackets(optionalOrDefault(commas(monoTy), [])), []),
-    curlyBrackets(optionalOrDefault(commas(structField), [])),
+    curlyBrackets(commas(structField, true)),
   ),
     ([name, params, fields]) => Expr.Struct(name, params, fields)
   ),
