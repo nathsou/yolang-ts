@@ -183,7 +183,7 @@ const [, , source, debugLvl] = process.argv;
     if (debugLvl) {
       debugLevel = parseInt(debugLvl);
     }
-    const exitCode = await compile(source, 'wasm', 3);
+    const exitCode = await compile(source, 'native', 3);
     process.exit(exitCode);
   } else {
     console.info('Usage: yo <source.yo>');

@@ -8,7 +8,7 @@ import { zip } from "../utils/array";
 import { Maybe, none } from "../utils/maybe";
 import { assert, block, panic, proj, pushMap } from "../utils/misc";
 import * as bitter from './bitter';
-import { MonoContext, MonoInstances, monomorphize } from "./monomorphize";
+import { Mono } from "./monomorphize";
 import { FuncName, VarName } from "./name";
 import * as sweet from './sweet';
 
@@ -79,7 +79,7 @@ export const Expr = {
     'Const', 'Variable', 'NamedFuncCall', 'IfThenElse',
     'StructAccess', 'Struct', 'Block', 'Array',
   ]),
-  from: (expr: bitter.Expr, f: VariantOf<Decl, 'Function'>, ctx: MonoContext): Expr => {
+  from: (expr: bitter.Expr, f: VariantOf<Decl, 'Function'>, ctx: Mono['Context']): Expr => {
     const go = (expr: bitter.Expr) => Expr.from(expr, f, ctx);
     return match(expr, {
       Const: ({ value, ty }) => Expr.Const({ value, ty }),
@@ -155,7 +155,7 @@ export type Stmt = DataType<{
 
 export const Stmt = {
   ...genConstructors<Stmt>(['Let', 'VariableAssignment', 'StructAssignment', 'Expr', 'While', 'Return']),
-  from: (stmt: bitter.Stmt, f: VariantOf<Decl, 'Function'>, ctx: MonoContext): Stmt => match(stmt, {
+  from: (stmt: bitter.Stmt, f: VariantOf<Decl, 'Function'>, ctx: Mono['Context']): Stmt => match(stmt, {
     Let: ({ mutable, name, expr }) => Stmt.Let({ mut: mutable, name, value: Expr.from(expr, f, ctx) }),
     Expr: ({ expr }) => Stmt.Expr({ expr: Expr.from(expr, f, ctx) }),
     While: ({ condition, statements }) => Stmt.While({
@@ -194,15 +194,12 @@ export type Decl = DataType<{
 
 export const Decl = {
   ...genConstructors<Decl>(['Function']),
-  from: (decl: bitter.Decl, ctx: MonoContext, errors: Error[]): Decl[] => match(decl, {
+  from: (decl: bitter.Decl, ctx: Mono['Context']): Decl[] => match(decl, {
     Function: func => {
-      const { attributes, pub, name, args, body, funTy, instances } = func;
+      const { attributes, pub, name, args, body, funTy } = func;
 
       if (PolyTy.isPolymorphic(funTy)) {
-        return [...instances.values()].flatMap(params => {
-          const instance = monomorphize(ctx, func, params, errors);
-          return Decl.from(instance, ctx, errors);
-        });
+        return [];
       }
 
       const ty = MonoTy.deref(funTy[1]);
@@ -239,9 +236,9 @@ export type Module = {
 };
 
 export const Module = {
-  from: (mod: bitter.Module, instances: MonoInstances, errors: Error[]): Module => {
-    const ctx: MonoContext = { types: mod.typeContext, instances };
-    const decls = mod.decls.flatMap(d => Decl.from(d, ctx, errors));
+  from: (mod: bitter.Module, instances: Mono['Instances']): Module => {
+    const ctx: Mono['Context'] = { types: mod.typeContext, instances };
+    const decls = mod.decls.flatMap(d => Decl.from(d, ctx));
     const coreMod: Module = {
       name: mod.name,
       path: mod.path,
@@ -273,15 +270,15 @@ export const Prog = {
   from: (prog: bitter.Prog): [Prog, Error[]] => {
     const errors: Error[] = [];
     const coreModules = new Map<string, Module>();
-    const instances: MonoInstances = new Map();
+    const [monoProg, instances] = Mono.prog(prog, errors);
 
-    for (const [path, mod] of prog.modules) {
-      coreModules.set(path, Module.from(mod, instances, errors));
+    for (const [path, mod] of monoProg.modules) {
+      coreModules.set(path, Module.from(mod, instances));
     }
 
     return [{
       modules: coreModules,
-      entry: coreModules.get(prog.entry.path)!,
+      entry: coreModules.get(monoProg.entry.path)!,
     }, errors];
   },
 };

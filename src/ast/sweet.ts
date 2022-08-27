@@ -243,7 +243,7 @@ export const Decl = {
     Function: ({ attributes, name, typeParams, args, returnTy, body }) => {
       const attrsFmt = attributes.length > 0 ? Attribute.showMany(attributes) + '\n' : '';
       const argsFmt = `${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')})`;
-      const retTyFmt = returnTy.mapWithDefault(ty => ': ' + MonoTy.show(ty), '');
+      const retTyFmt = returnTy.mapWithDefault(ty => ': ' + MonoTy.show(ty) + ' ', '');
       const bodyFmt = body.mapWithDefault(Expr.show, '');
       return `${attrsFmt}fun ${name}${argsFmt}${retTyFmt}${bodyFmt}`;
     },

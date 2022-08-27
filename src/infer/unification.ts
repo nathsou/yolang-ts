@@ -1,13 +1,12 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { match, P } from "ts-pattern";
 import { Error } from "../errors/errors";
-import { Maybe, none } from "../utils/maybe";
 import { panic } from "../utils/misc";
 import { Result } from "../utils/result";
 import { Row } from "./structs";
 import { Subst } from "./subst";
 import { Tuple } from "./tuples";
-import { TypeAlias, TypeContext } from "./typeContext";
+import { TypeContext } from "./typeContext";
 import { MonoTy, TyVar } from "./types";
 
 export type UnificationError = DataType<{
@@ -26,9 +25,7 @@ const linkTo = (v: VariantOf<MonoTy, 'Var'>, to: MonoTy, subst?: Subst) => {
 
     subst.set(v.value.id, MonoTy.deref(to));
   } else {
-    const link: TyVar = { kind: 'Link', to: MonoTy.deref(to) };
-    /// @ts-ignore
-    v.value = link;
+    v.value = TyVar.Link(MonoTy.deref(to));
   }
 };
 
@@ -47,75 +44,25 @@ const unifyMany = (
   const errors: Error[] = [];
   let score = 0;
   const pushEqs = (...newEqs: [MonoTy, MonoTy][]): void => {
-    eqs.push(...newEqs.map(([s, t]) => [MonoTy.deref(s), MonoTy.deref(t)] as [MonoTy, MonoTy]));
-  };
-
-  const instantiateGenericTyConst = (c: VariantOf<MonoTy, 'Const'>): Maybe<MonoTy> => {
-    const resolveTypeAlias = (ty: VariantOf<MonoTy, 'Const'>): Maybe<TypeAlias> => {
-      if (MonoTy.isPrimitive(ty)) {
-        return none;
-      }
-
-      const res = TypeContext.resolveTypeAlias(ctx, ty.name);
-      if (res.isNone()) {
-        errors.push(Error.Unification({ type: 'CouldNotResolveType', ty }));
-      }
-
-      return res;
-    };
-
-    // Type parameters are parsed as Const types
-    // if the type parameters environment contains this Const name
-    // then interpret it as a type parameter
-    const typeParam = TypeContext.resolveTypeParam(ctx, c.name);
-    const typeAlias = () => resolveTypeAlias(c).map(ta => {
-      return TypeContext.instantiateTypeAlias(ta, c.args);
-    });
-
-    return typeParam.or(typeAlias);
+    eqs.push(...newEqs);
   };
 
   while (eqs.length > 0) {
-    const [s, t] = eqs.pop()!;
+    const [s, t] = eqs.pop()!.map(ty => MonoTy.expand(MonoTy.deref(ty), ctx));
 
     match<[MonoTy, MonoTy]>([s, t])
       .with([{ variant: 'Const' }, { variant: 'Const' }], ([s, t]) => {
-        let pushed = false;
-        instantiateGenericTyConst(s).do(s => {
-          pushed = true;
-          pushEqs([s, t]);
-        });
-
-        if (!pushed) {
-          instantiateGenericTyConst(t).do(t => {
-            pushed = true;
-            pushEqs([s, t]);
-          });
-        }
-
-        if (!pushed) {
-          if (s.name === t.name && s.args.length === t.args.length) {
-            for (let i = 0; i < s.args.length; i++) {
-              pushEqs([s.args[i], t.args[i]]);
-            }
-
-            if (s.args.length === 0) {
-              score += UNIFICATION_SCORE.exactMatch;
-            }
-          } else {
-            errors.push(Error.Unification({ type: 'Ununifiable', s, t }));
+        if (s.name === t.name && s.args.length === t.args.length) {
+          for (let i = 0; i < s.args.length; i++) {
+            pushEqs([s.args[i], t.args[i]]);
           }
+
+          if (s.args.length === 0) {
+            score += UNIFICATION_SCORE.exactMatch;
+          }
+        } else {
+          errors.push(Error.Unification({ type: 'Ununifiable', s, t }));
         }
-      })
-      .when(([s]) => s.variant === 'Const' && !MonoTy.isPrimitive(s), ([s, t]) => {
-        instantiateGenericTyConst(s as VariantOf<MonoTy, 'Const'>).do(s => {
-          pushEqs([s, t]);
-        });
-      })
-      .when(([, t]) => t.variant === 'Const' && !MonoTy.isPrimitive(t), ([s, t]) => {
-        instantiateGenericTyConst(t as VariantOf<MonoTy, 'Const'>).do(t => {
-          pushEqs([s, t]);
-        });
       })
       // Delete
       .when(([s, t]) => MonoTy.eq(s, t), () => {

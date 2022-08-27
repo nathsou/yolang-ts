@@ -13,7 +13,7 @@ pub fun newline() {
 pub fun log(msg: str) {
   mut index = 0u32
   while index < msg.len {
-    putchar(msg.data.getUnchecked(index))
+    putchar(msg[index])
     index += 1u32
   }
 
@@ -34,10 +34,10 @@ pub fun reverse(mut buf: str, start: u32, end: u32): void {
   mut j = end
 
   while i < j {
-    let tmp = buf.data.getUnchecked(i)
-    let back = buf.data.getUnchecked(j)
-    buf.data.setUnchecked(i, back)
-    buf.data.setUnchecked(j, tmp)
+    let tmp = buf[i]
+    let back = buf[j]
+    buf[i] = back
+    buf[j] = tmp
     i += 1u32
     j -= 1u32
   }
@@ -52,17 +52,17 @@ pub fun log(n: i32) {
 
   while r != 0 {
     let ch = u8(48 + r mod 10)
-    buf.data.setUnchecked(index, ch)
+    buf[index] = ch
     r /= 10
     index += 1u32
   }
 
   if n < 0 {
     // append '-'
-    buf.data.setUnchecked(index, 45u8)
+    buf[index] = 45u8
     index += 1u32
   } else if n == 0 {
-    buf.data.setUnchecked(0u32, 48u8)
+    buf[0u32] = 48u8
   }
 
   buf.reverse(0u32, index)

@@ -18,7 +18,7 @@ export type TypingError = DataType<{
   UnboundVariable: { name: string },
   UnknownFunction: { name: string },
   ImmutableValue: { expr: Expr },
-  CannotUseImmutableValueForImmutableFuncArg: { func: string, arg: string },
+  CannotUseImmutableValueForMutFuncArg: { func: string, arg: string },
   UnassignableExpression: { expr: Expr },
   TupleIndexTooBig: { index: number },
   ParsingError: { message: string },
@@ -135,7 +135,7 @@ const inferExpr = (
             zip(resolvedFunc.args, args).forEach(([funcArg, receivedArg]) => {
               if (funcArg.mutable && !Expr.isMutable(receivedArg)) {
                 errors.push(Error.Typing({
-                  type: 'CannotUseImmutableValueForImmutableFuncArg',
+                  type: 'CannotUseImmutableValueForMutFuncArg',
                   func: funcName,
                   arg: funcArg.name.original
                 }));
@@ -143,8 +143,9 @@ const inferExpr = (
             });
 
             call.name = Either.right(resolvedFunc.name);
+            const isPoly = PolyTy.isPolymorphic(resolvedFunc.funTy);
             const [funTy, paramsInst] = block(() => {
-              if (PolyTy.isPolymorphic(resolvedFunc.funTy)) {
+              if (isPoly) {
                 const inst = PolyTy.instantiate(resolvedFunc.funTy);
                 return [inst.ty, [...inst.subst.values()]];
               } else {
@@ -460,7 +461,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void =
 
         unify(funTy, name.ty);
 
-        const genFunTy = PolyTy.isPolymorphic(f.funTy) ? f.funTy : MonoTy.generalize(ctx.env, funTy);
+        const genFunTy = MonoTy.generalize(ctx.env, funTy);
         f.funTy = genFunTy;
       });
     },
@@ -524,7 +525,7 @@ const declareImports = (mod: Module, errors: Error[]): void => {
 export const infer = (prog: Prog): Error[] => {
   const errors: Error[] = [];
 
-  // build dependency graph (in resolve?) and check for circular dependencies
+  // TODO: build dependency graph (in resolve?) and check for circular dependencies
   for (const mod of prog.modules.values()) {
     inferModule(mod, errors);
   }

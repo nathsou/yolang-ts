@@ -48,7 +48,7 @@ export const Error = {
       UndeclaredStruct: ({ name }) => `Undeclared struct '${name}' in struct constructor expression`,
       MissingStructFields: ({ name, fields }) => `Missing fields in struct constructor expression for '${name}': ${fields.join(', ')}`,
       ExtraneoussStructFields: ({ name, fields }) => `Extraneous fields in struct constructor expression for '${name}': ${fields.join(', ')}`,
-      CannotUseImmutableValueForImmutableFuncArg: ({ func, arg }) => `Cannot use an immutable value in place of an immutable argument: '${arg}' in function '${func}'`,
+      CannotUseImmutableValueForMutFuncArg: ({ func, arg }) => `Cannot use an immutable value in place of a mutable argument: '${arg}' in function '${func}'`,
       MissingFuncPrototypeReturnTy: ({ name }) => `Missing return type in function prototype for '${name}'`,
       ReturnUsedOutsideFunctionBody: () => `return expression used outside of a function body`,
     }, 'type'),

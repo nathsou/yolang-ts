@@ -1,6 +1,6 @@
 import { DataType, match, matchMany } from "itsamatch";
 import { Context } from "../ast/context";
-import { gen, joinWith, zip } from "../utils/array";
+import { filter, gen, joinWith, zip } from "../utils/array";
 import { Maybe } from "../utils/maybe";
 import { cond, matchString, panic, parenthesized, proj } from "../utils/misc";
 import { diffSet } from "../utils/set";
@@ -300,20 +300,20 @@ export const MonoTy = {
     return match(ty, {
       Const: ({ name, args }) => {
         if (ctx.typeAliases.has(name)) {
-          return TypeContext.instantiateTypeAlias(ctx.typeAliases.get(name)!, args);
-        } else {
-          return MonoTy.Const(name, ...args.map(go));
+          return TypeContext.instantiateTypeAlias(ctx, ctx.typeAliases.get(name)!, args);
         }
+
+        if (ctx.typeParamsEnv.has(name)) {
+          return MonoTy.expand(ctx.typeParamsEnv.get(name)!, ctx);
+        }
+
+        return MonoTy.Const(name, ...args.map(go));
       },
       Param: ({ name }) => MonoTy.Param(name),
       Fun: ({ args, ret }) => MonoTy.Fun(args.map(go), go(ret)),
-      Struct: ({ name, params, row }) => MonoTy.Struct(
-        Row.fromFields(Row.fields(row).map(([name, t]) => [name, go(t)])),
-        name,
-        params
-      ),
+      Struct: ({ name, params, row }) => MonoTy.Struct(Row.map(row, go), name, params),
       Tuple: ({ tuple }) => MonoTy.Tuple(Tuple.fromArray(Tuple.toArray(tuple).map(go))),
-      Var: ({ value }) => MonoTy.Var(value),
+      Var: v => v,
     });
   },
 };
@@ -335,7 +335,10 @@ export const PolyTy = {
       subst.set(id, MonoTy.fresh());
     });
 
-    return { ty: MonoTy.substitute(ty, subst), subst };
+    const freeVars = MonoTy.freeTypeVars(ty);
+    const inst = MonoTy.substitute(ty, subst);
+
+    return { ty: inst, subst: new Map(filter(subst, ([id]) => freeVars.has(id))) };
   },
   instantiatePartially: ([quantifiedVars, ty]: PolyTy, inst: MonoTy[]): PolyTy => {
     const subst = new Map<TyVarId, MonoTy>(zip(quantifiedVars, inst));

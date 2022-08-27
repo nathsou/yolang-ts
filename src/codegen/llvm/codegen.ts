@@ -221,7 +221,7 @@ export const createLLVMCompiler = async () => {
           if (funcs.has(name.mangled)) {
             return builder.CreateCall(funcs.get(name.mangled)!, args.map(arg => compileExpr(arg)));
           } else {
-            return panic(`undeclared function in call: ${name.mangled}`);
+            return panic(`undeclared function in call: '${name.mangled}'`);
           }
         },
         IfThenElse: ({ condition, then, else_, ty }) => {
@@ -402,7 +402,7 @@ export const createLLVMCompiler = async () => {
           'ptr': () => llvm.PointerType.get(llvmTy(c.args[0]), 0),
           _: () => {
             const typeAlias = TypeContext.resolveTypeAlias(module.typeContext, c.name).map(ta => {
-              const t = TypeContext.instantiateTypeAlias(ta, c.args);
+              const t = TypeContext.instantiateTypeAlias(module.typeContext, ta, c.args);
               return llvmTy(t);
             });
 

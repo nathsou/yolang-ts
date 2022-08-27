@@ -6,16 +6,10 @@ type S = {
   c: i32[],
 }
 
-fun [](a: i32[], index: u32): i32 {
-  a.data.getUnchecked(index)
-}
-
-fun []=(mut a: i32[], index: u32, value: i32): void {
-  a.data.setUnchecked(index, value)
-}
-
 fun main() {
-  let s = S { a: 11, b: true, c: [1, 2, 3] }
+  mut s = S { a: 11, b: true, c: [1, 2, 3] }
+
+  s.c[0u32] = 7
 
   log(s.a)
   log(s.b)

@@ -1,4 +1,4 @@
-import { DataType } from "itsamatch";
+import { DataType, match, VariantOf } from "itsamatch";
 import { reverse, zip } from "../utils/array";
 import { Maybe, none, some } from "../utils/maybe";
 import { MonoTy } from "./types";
@@ -42,6 +42,17 @@ export const Row = {
       acc
     );
   },
+  map: (row: Row, f: (ty: MonoTy) => MonoTy): Row => {
+    if (row.type === 'empty') {
+      return Row.empty();
+    }
+
+    if (row.tail.variant === 'Struct') {
+      return Row.extend(row.field, f(row.ty), MonoTy.Struct(Row.map(row.tail.row, f)));
+    }
+
+    return Row.extend(row.field, row.ty, f(row.tail));
+  },
   sortedFields: (row: Row): [string, MonoTy][] => {
     return Row.fields(row).sort(([a], [b]) => a.localeCompare(b));
   },
@@ -73,5 +84,12 @@ export const Row = {
 
     return none;
   },
-  show: (row: Row): string => '{ ' + Row.fields(row).map(([name, ty]) => `${name}: ${MonoTy.show(ty)}`).join(', ') + ' }',
+  show: (row: Row): string => {
+    const base = '{ ' + Row.fields(row).map(([name, ty]) => `${name}: ${MonoTy.show(ty)}`).join(', ') + ' }';
+    if (row.type === 'extend') {
+      return base + '..' + MonoTy.show(row.tail);
+    }
+
+    return base;
+  },
 };

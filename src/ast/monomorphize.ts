@@ -1,3 +1,4 @@
+import { match } from "itsamatch";
 import { Error } from "../errors/errors";
 import { FunDecl } from "../infer/env";
 import { inferDecl } from "../infer/infer";
@@ -6,18 +7,19 @@ import { MonoTy, PolyTy, showTyVarId, TypeParams } from "../infer/types";
 import { zip } from "../utils/array";
 import { some } from "../utils/maybe";
 import { assert, block, id } from "../utils/misc";
-import { Decl } from "./bitter";
+import { Decl, Module, Prog } from "./bitter";
 import { NameEnv } from "./name";
 
-export type MonoInstances = Map<string, Map<string, FunDecl>>;
-
-export type MonoContext = {
-  types: TypeContext,
-  instances: MonoInstances,
+export type Mono = {
+  Instances: Map<string, Map<string, FunDecl>>,
+  Context: {
+    types: TypeContext,
+    instances: Mono['Instances'],
+  },
 };
 
-export const monomorphize = (
-  ctx: MonoContext,
+const monomorphize = (
+  ctx: Mono['Context'],
   f: FunDecl,
   typeParams: MonoTy[],
   errors: Error[]
@@ -35,7 +37,6 @@ export const monomorphize = (
     assert(!PolyTy.isPolymorphic(instanceTy), 'instantiated generic function is still polymorphic');
     const res = instanceTy[1];
     assert(res.variant === 'Fun');
-    // console.log('instantiating', f.name.mangled + PolyTy.show(f.funTy), 'with', key, '==>', MonoTy.show(res));
     return res;
   });
 
@@ -67,4 +68,59 @@ export const monomorphize = (
   ctx.instances.get(f.name.mangled)!.set(key, inst);
 
   return inst;
+};
+
+const monomorphizeModule = (mod: Module, instances: Mono['Instances'], errors: Error[]): void => {
+  const ctx: Mono['Context'] = { types: mod.typeContext, instances };
+
+  for (const decl of mod.decls) {
+    if (decl.variant === 'Function' && PolyTy.isPolymorphic(decl.funTy)) {
+      for (const params of decl.instances.values()) {
+        monomorphize(ctx, decl, params, errors);
+      }
+    }
+  }
+};
+
+const patchGenericFuns = (mod: Module, instances: Mono['Instances'], errors: Error[]): Decl[] => {
+  const decls: Decl[] = [];
+
+  for (const decl of mod.decls) {
+    match(decl, {
+      Function: f => {
+        if (f.instances.size > 0) {
+          f.instances.forEach(params => {
+            const inst = monomorphize({ instances, types: mod.typeContext }, f, params, errors);
+            decls.push(inst);
+          });
+        } else {
+          decls.push(f);
+        }
+      },
+      _: () => {
+        decls.push(decl);
+      },
+    });
+  }
+
+  return decls;
+};
+
+export const Mono = {
+  prog: (prog: Prog, errors: Error[]): [Prog, Mono['Instances']] => {
+    const instances: Mono['Instances'] = new Map();
+    const monoProg = Prog.shallowClone(prog);
+
+    // collect instances
+    for (const mod of monoProg.modules.values()) {
+      monomorphizeModule(mod, instances, errors);
+    }
+
+    // replace generic functions with their instances
+    for (const mod of monoProg.modules.values()) {
+      mod.decls = patchGenericFuns(mod, instances, errors);
+    }
+
+    return [monoProg, instances];
+  },
 };

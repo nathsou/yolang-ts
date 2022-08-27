@@ -37,7 +37,7 @@ export const TypeContext = {
     typeParams: TypeParam[],
     alias: MonoTy
   ): void => {
-    TypeContext.declareTypeParams(ctx, ...typeParams);
+    // TypeContext.declareTypeParams(ctx, ...typeParams);
     const fullTy = MonoTy.expand(alias, ctx);
     if (fullTy.variant === 'Struct') {
       fullTy.name = name;
@@ -63,12 +63,12 @@ export const TypeContext = {
 
     return none;
   },
-  instantiateTypeAlias: (ta: TypeAlias, params: MonoTy[]): MonoTy => {
+  instantiateTypeAlias: (ctx: TypeContext, ta: TypeAlias, params: MonoTy[]): MonoTy => {
     if (ta.params.length === 0) {
       return ta.ty;
     }
 
-    const subst = new Map<string, MonoTy>(zip(ta.params.map(proj('name')), params));
+    const subst = new Map<string, MonoTy>(zip(ta.params.map(proj('name')), params.map(ty => MonoTy.expand(ty, ctx))));
     return MonoTy.substituteTyParams(ta.ty, subst);
   },
   resolveTypeAlias: (ctx: TypeContext, name: string): Maybe<TypeAlias> => {

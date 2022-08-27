@@ -1,6 +1,5 @@
 import { DataType, genConstructors, match, VariantOf } from "itsamatch";
 import { Error } from "../errors/errors";
-import { FunDecl } from "../infer/env";
 import { Tuple } from "../infer/tuples";
 import { TypeContext } from "../infer/typeContext";
 import { MonoTy, PolyTy, TypeParam, TyVar } from "../infer/types";
@@ -8,7 +7,7 @@ import { Const } from "../parse/token";
 import { last, zip } from "../utils/array";
 import { Either } from "../utils/either";
 import { Maybe, none, some } from "../utils/maybe";
-import { assert, pushMap } from "../utils/misc";
+import { assert, mapMap, pushMap } from "../utils/misc";
 import { Context } from "./context";
 import { FuncName, NameEnv, VarName } from "./name";
 import * as sweet from "./sweet";
@@ -385,7 +384,7 @@ export const Decl = {
           pub,
           name: NameEnv.declareFunc(nameEnv, name.original, name.mangled),
           typeParams: typeParams.map(p => ({ name: p.name, ty: none })),
-          args: args.map(arg => ({ ...arg, name: NameEnv.declareVar(bodyEnv, arg.name.original, false, arg.name.mangled) })),
+          args: args.map(arg => ({ ...arg, name: NameEnv.declareVar(bodyEnv, arg.name.original, arg.name.mutable, arg.name.mangled) })),
           returnTy,
           body: body.map(b => Expr.rewrite(b, bodyEnv, rewriteExpr)),
         });
@@ -442,6 +441,15 @@ const Module = {
 
     return bitterMod;
   },
+  shallowClone: (mod: Module): Module => ({
+    name: mod.name,
+    path: mod.path,
+    decls: [...mod.decls],
+    members: new Map(mod.members),
+    imports: mapMap(mod.imports, s => ({ ...s })),
+    typeContext: TypeContext.clone(mod.typeContext),
+    typeChecked: mod.typeChecked,
+  }),
 };
 
 export type Prog = {
@@ -468,6 +476,15 @@ export const Prog = {
 
     return [bitterProg, errors];
   },
+  shallowClone: (prog: Prog): Prog => {
+    const mods = mapMap(prog.modules, Module.shallowClone);
+
+    return {
+      modules: mods,
+      entry: mods.get(prog.entry.path)!,
+      nameEnv: NameEnv.clone(prog.nameEnv),
+    };
+  }
 };
 
 const rewriteFuncArgsPatternMatching = (
