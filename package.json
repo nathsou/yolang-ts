@@ -11,15 +11,17 @@
     "postinstall": "mkdir -p build && cp node_modules/llvm-bindings/build/Release/llvm-bindings.node ./build"
   },
   "devDependencies": {
-    "esbuild": "^0.14.51",
-    "itsamatch": "^1.1.2",
-    "jest":"^28.1.3",
-    "ts-pattern": "^4.0.5",
-    "typescript": "^4.7.4",
-    "ts-jest":"^28.0.7",
+    "@types/command-exists": "^1.2.0",
     "@types/jest": "^28.1.6",
+    "command-exists": "^1.2.9",
+    "esbuild": "^0.15.5",
     "fast-check": "^2.20.0",
-    "llvm-bindings": "^0.4.2"
+    "itsamatch": "^1.1.2",
+    "jest": "^28.1.3",
+    "llvm-bindings": "^0.4.2",
+    "ts-jest": "^28.0.7",
+    "ts-pattern": "^4.0.5",
+    "typescript": "^4.8.2"
   },
   "repository": {
     "type": "git",

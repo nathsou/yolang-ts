@@ -5,7 +5,7 @@ import { VarName } from '../../ast/name';
 import { Row } from '../../infer/structs';
 import { TypeContext } from '../../infer/typeContext';
 import { MonoTy } from '../../infer/types';
-import { gen, last, zip } from '../../utils/array';
+import { last, zip } from '../../utils/array';
 import { Maybe } from '../../utils/maybe';
 import { array, assert, block, matchString, panic, proj } from '../../utils/misc';
 import { meta } from './attributes';
@@ -603,6 +603,17 @@ export const createLLVMCompiler = async () => {
   ): Promise<string> {
     const { exec } = await import('child_process');
     const { existsSync, mkdirSync } = await import('fs');
+    const { sync: commandExists } = await import('command-exists');
+
+    const findCommand = (name: string, cmds: string[]): string => {
+      for (const cmd of cmds) {
+        if (commandExists(cmd)) {
+          return cmd;
+        }
+      }
+
+      return panic(`Could not find the '${name}' command, tried ${cmds.map(c => `'${c}'`).join(', ')}`);
+    };
 
     if (!existsSync(outDir)) {
       mkdirSync(outDir);
@@ -634,10 +645,14 @@ export const createLLVMCompiler = async () => {
       byteCodeFiles.push(modOutFile);
     });
 
+    const llvmVersion = 14;
+    const llvmLinkCmd = findCommand('llvm-link', [`llvm-link-${llvmVersion}`, 'llvm-link']);
+    const clangCmd = findCommand('clang', [`clang-${llvmVersion}`, 'clang']);
+
     // link all the modules together
     const linkedFile = `${outDir}/main.linked.bc`;
     const linkCommand = [
-      'llvm-link',
+      llvmLinkCmd,
       ...byteCodeFiles,
       '-o',
       linkedFile,
@@ -645,7 +660,7 @@ export const createLLVMCompiler = async () => {
 
     const buildCommand = matchString(target, {
       wasm: () => [
-        'clang',
+        clangCmd,
         `--target=${targetTriple}`,
         '-nostdlib',
         `-O${optLevel}`,
@@ -657,7 +672,7 @@ export const createLLVMCompiler = async () => {
         linkedFile,
       ],
       native: () => [
-        'clang',
+        clangCmd,
         `--target=${targetTriple}`,
         `-O${optLevel}`,
         `-o ${outFile}`,
