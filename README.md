@@ -12,6 +12,29 @@ $ yarn install
 $ node build/yolang.js examples/euler2.yo
 ```
 
+```
+Usage: yolang [options] <input>
+
+Arguments:
+  input                input source file
+
+Options:
+  -V, --version        output the version number
+  -o, --out <file>     output file
+  -t, --target <name>  target: host | wasm (default: "host")
+  -r, --run            compile and run the program
+  -a, --artifacts      build artificats directory
+  -T, --type-check     type check only
+  -D, --debug          create a debug build
+  --show:types         show types
+  --show:sweet         show sweet IR
+  --show:bitter        show bitter IR
+  --show:mono          show the monomorphized program
+  --show:llvm          show LLVM IR
+  --show:time          show pipeline timing
+  -h, --help           display help for command
+```
+
 ## References
 
 - Sérgio Medeiros, Fabio Mascarenhas, 2018, [Syntax Error Recovery in Parsing Expression Grammars](https://arxiv.org/abs/1806.11150)

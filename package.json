@@ -21,7 +21,8 @@
     "llvm-bindings": "^0.4.2",
     "ts-jest": "^28.0.7",
     "ts-pattern": "^4.0.5",
-    "typescript": "^4.8.2"
+    "typescript": "^4.8.2",
+    "commander": "^9.4.0"
   },
   "repository": {
     "type": "git",

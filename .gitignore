@@ -3,4 +3,6 @@
 /build
 out.*
 /out
+main
+/artifacts
 .vscode/settings.json

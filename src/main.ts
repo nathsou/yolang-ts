@@ -1,4 +1,6 @@
+import { program } from 'commander';
 import { match as matchVariant } from "itsamatch";
+import { resolve as resolvePath } from 'path';
 import * as bitter from "./ast/bitter";
 import { Context } from './ast/context';
 import * as core from "./ast/core";
@@ -13,17 +15,57 @@ import { resolve } from './resolve/resolve';
 import { sum } from "./utils/array";
 import { block, panic } from "./utils/misc";
 
-enum DebugMode {
-  run = 0,
-  types = 1,
-  sweet = 2,
-  bitter = 3,
-  mono = 4,
-  llvm = 5,
-  time = 6,
+const TARGETS = ['host', 'wasm'] as const;
+
+type Options = {
+  out?: string,
+  target: (typeof TARGETS)[number],
+  run: boolean,
+  typeCheck: boolean,
+  artifacts: string,
+  debug: boolean,
+  'show:types': boolean,
+  'show:sweet': boolean,
+  'show:bitter': boolean,
+  'show:mono': boolean,
+  'show:llvm': boolean,
+  'show:time': boolean,
 }
 
-let debugMode = DebugMode.run;
+program
+  .name('yolang')
+  .version('0.0.1')
+  .argument('<input>', 'input source file')
+  .option('-o, --out <file>', 'output file')
+  .option('-t, --target <name>', `target: ${TARGETS.join(' | ')}`, TARGETS[0])
+  .option('-r, --run', 'compile and run the program')
+  .option('-a, --artifacts', 'build artificats directory', 'out')
+  .option('-T, --type-check', 'type check only')
+  .option('-D, --debug', 'create a debug build')
+  .option('--show:types', 'show types')
+  .option('--show:sweet', 'show sweet IR')
+  .option('--show:bitter', 'show bitter IR')
+  .option('--show:mono', 'show the monomorphized program')
+  .option('--show:llvm', 'show LLVM IR')
+  .option('--show:time', 'show pipeline timing')
+  .action(input => {
+    const opts = program.opts<Options>();
+
+    if (!TARGETS.includes(opts.target)) {
+      console.error(`invalid target '${opts.target}', options are: ${TARGETS.join(', ')}`);
+      process.exit(1);
+    }
+
+    yo(input, opts)
+      .then(exitCode => {
+        process.exit(exitCode);
+      })
+      .catch(err => {
+        console.error(err);
+      });
+  });
+
+program.parse();
 
 // pipeline:
 // <string> -> parse -> <sweet> -> desugar -> <bitter> -> infer ->
@@ -36,7 +78,6 @@ const typeCheck = (prog: bitter.Prog): Error[] => {
 
 const getWasmMainFunc = async (source: string): Promise<() => number> => {
   const { readFile } = await import('fs/promises');
-
   const wasm = await readFile(source);
   const module = new WebAssembly.Module(wasm);
   const putcharBuffer: number[] = [];
@@ -79,7 +120,7 @@ const timeAsync = async <T>(fn: () => Promise<T>): Promise<[T, number]> => {
   return [res, Date.now() - t1];
 };
 
-const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2 | 3): Promise<number> => {
+async function yo(source: string, options: Options): Promise<number> {
   const logErrors = (errors: Error[]) => {
     errors.forEach(err => {
       console.log('\x1b[31m%s\x1b[0m', Error.show(err));
@@ -89,7 +130,7 @@ const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2
   const nfs = await createNodeFileSystem();
   const [[sweetProg, errs1], resolveDuration] = await timeAsync(() => resolve(source, nfs));
 
-  if (debugMode === DebugMode.sweet) {
+  if (options['show:sweet']) {
     console.log('--- sweet ---');
     console.log(sweet.Prog.show(sweetProg) + '\n');
   }
@@ -101,7 +142,7 @@ const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2
 
   const [[bitterProg, errs2], bitterDuration] = time(() => bitter.Prog.from(sweetProg));
 
-  if (debugMode === DebugMode.bitter) {
+  if (options['show:bitter']) {
     console.log('--- bitter ---');
     console.log(bitter.Prog.show(bitterProg) + '\n');
   }
@@ -118,14 +159,18 @@ const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2
     return 1;
   }
 
-  if (debugMode === DebugMode.types) {
+  if (options.typeCheck) {
+    return 0;
+  }
+
+  if (options['show:types']) {
     console.log('--- types ---');
     console.log(showTypes(bitterProg.entry.decls).join('\n\n') + '\n');
   }
 
   const [[monoProg, instances, errs4], monoDuration] = time(() => Mono.prog(bitterProg));
 
-  if (debugMode === DebugMode.mono) {
+  if (options['show:mono']) {
     console.log('--- mono ---');
     console.log(bitter.Prog.show(monoProg) + '\n');
   }
@@ -145,23 +190,54 @@ const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2
   const compiler = createLLVMCompiler();
   const [modules, compileDuration] = time(() => compiler.compile(coreProg));
 
-  if (debugMode === DebugMode.llvm) {
+  if (options['show:llvm']) {
     modules.forEach(m => {
       console.log(m.print());
     });
   }
 
-  const outDir = 'out';
-  const outFile = target === 'wasm' ? `${outDir}/main.wasm` : `${outDir}/main`;
-  const [stdout, buildDuration] = await timeAsync(() => compiler.compileIR(modules, target, outDir, outFile, opt));
+  const outFile = resolvePath(block(() => {
+    if (options.out != null) {
+      return options.out;
+    }
+
+    return options.target === 'wasm' ? 'main.wasm' : 'main';
+  }));
+
+  const [stdout, buildDuration] = await timeAsync(() => compiler.compileIR(
+    modules,
+    options.target,
+    options.artifacts,
+    outFile,
+    options.debug ? 0 : 3,
+  ));
 
   if (stdout.length > 0) {
     console.log(stdout);
   }
 
-  if (debugMode === DebugMode.run) {
+  if (options['show:time']) {
+    const durations = {
+      'parsing': resolveDuration,
+      'sweet -> bitter': bitterDuration,
+      'type inference': inferDuration,
+      'monomorphization': monoDuration,
+      'bitter -> core': coreDuration,
+      'compilation': compileDuration,
+      'build': buildDuration,
+    };
+
+    console.log('--- timing ---');
+    Object.entries(durations).forEach(([name, duration]) => {
+      console.log(`${name}: ${duration}ms`);
+    });
+
+    console.log(`total: ${sum(Object.values(durations))}ms`);
+  }
+
+  if (options.run) {
     const exitCode = await block(async () => {
-      if (target === 'wasm') {
+      if (options.target === 'wasm') {
         // run the program
         const mainFunc = await getWasmMainFunc(outFile);
         return mainFunc();
@@ -183,29 +259,10 @@ const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2
     return exitCode;
   }
 
-  if (debugMode === DebugMode.time) {
-    const durations = {
-      'parsing': resolveDuration,
-      'sweet -> bitter': bitterDuration,
-      'type inference': inferDuration,
-      'monomorphization': monoDuration,
-      'bitter -> core': coreDuration,
-      'compilation': compileDuration,
-      'build': buildDuration,
-    };
-
-    console.log('--- timing ---');
-    Object.entries(durations).forEach(([name, duration]) => {
-      console.log(`${name}: ${duration}ms`);
-    });
-
-    console.log(`total: ${sum(Object.values(durations))}ms`);
-  }
-
   return 0;
-};
+}
 
-const showTypes = (decls: bitter.Decl[]): string[] => {
+function showTypes(decls: bitter.Decl[]): string[] {
   const types: string[] = [];
 
   for (const decl of decls) {
@@ -221,19 +278,4 @@ const showTypes = (decls: bitter.Decl[]): string[] => {
   }
 
   return types;
-};
-
-const [, , source, debugLvl] = process.argv;
-
-(async () => {
-  if (source) {
-    if (debugLvl) {
-      debugMode = parseInt(debugLvl);
-    }
-    const exitCode = await compile(source, 'native', 3);
-    process.exit(exitCode);
-  } else {
-    console.info('Usage: yo <source.yo>');
-    process.exit(0);
-  }
-})();
+}

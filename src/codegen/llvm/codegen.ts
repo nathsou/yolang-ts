@@ -593,7 +593,7 @@ export const createLLVMCompiler = () => {
 
   async function compileIR(
     modules: Map<string, LLVM.Module>,
-    target: 'native' | 'wasm',
+    target: 'host' | 'wasm',
     outDir: string,
     outFile: string,
     optLevel: 0 | 1 | 2 | 3
@@ -628,7 +628,7 @@ export const createLLVMCompiler = () => {
 
     const targetTriple = matchString(target, {
       wasm: () => 'wasm32-unknown-unknown',
-      native: () => llvm.config.LLVM_DEFAULT_TARGET_TRIPLE,
+      host: () => llvm.config.LLVM_DEFAULT_TARGET_TRIPLE,
     });
 
     modules.forEach(module => {
@@ -664,7 +664,7 @@ export const createLLVMCompiler = () => {
         `-o ${outFile}`,
         linkedFile,
       ],
-      native: () => [
+      host: () => [
         clangCmd,
         `--target=${targetTriple}`,
         `-O${optLevel}`,
