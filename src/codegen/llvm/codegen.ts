@@ -9,6 +9,10 @@ import { last, zip } from '../../utils/array';
 import { Maybe } from '../../utils/maybe';
 import { array, assert, block, matchString, panic, proj } from '../../utils/misc';
 import { meta } from './attributes';
+import llvm from 'llvm-bindings';
+import { exec } from 'child_process';
+import { existsSync, mkdirSync } from 'fs';
+import { sync as commandExists } from 'command-exists';
 
 type LocalVar =
   | { kind: 'mut', name: string, ptr: LLVM.AllocaInst, ty: MonoTy }
@@ -29,9 +33,7 @@ const LexicalScope = {
   has: (self: LexicalScope, name: string): boolean => name in self,
 };
 
-export const createLLVMCompiler = async () => {
-  const llvm = await import('llvm-bindings');
-
+export const createLLVMCompiler = () => {
   function compileModule(module: Module, modules: Map<string, Module>): LLVM.Module {
     const context = new llvm.LLVMContext();
     const mod = new llvm.Module(module.path, context);
@@ -410,7 +412,7 @@ export const createLLVMCompiler = async () => {
     const structInstances: { row: Row, ty: LLVM.StructType }[] = [];
 
     function llvmTy(ty: MonoTy): llvm.Type {
-      return match(ty, {
+      return match(MonoTy.expand(ty, module.typeContext), {
         Const: c => matchString<string, llvm.Type>(c.name, {
           'void': () => llvm.Type.getVoidTy(context),
           'u32': () => llvm.Type.getInt32Ty(context),
@@ -422,12 +424,7 @@ export const createLLVMCompiler = async () => {
           'bool': () => llvm.Type.getInt1Ty(context),
           'ptr': () => llvm.PointerType.get(llvmTy(c.args[0]), 0),
           _: () => {
-            const typeAlias = TypeContext.resolveTypeAlias(module.typeContext, c.name).map(ta => {
-              const t = TypeContext.instantiateTypeAlias(module.typeContext, ta, c.args);
-              return llvmTy(t);
-            });
-
-            return typeAlias.unwrap(`Unknown type representation for const type: ${c.name}`);
+            return panic(`Unknown type representation for const type: ${c.name}`);
           },
         }),
         Var: v => match(v.value, {
@@ -601,10 +598,6 @@ export const createLLVMCompiler = async () => {
     outFile: string,
     optLevel: 0 | 1 | 2 | 3
   ): Promise<string> {
-    const { exec } = await import('child_process');
-    const { existsSync, mkdirSync } = await import('fs');
-    const { sync: commandExists } = await import('command-exists');
-
     const findCommand = (name: string, cmds: string[]): string => {
       for (const cmd of cmds) {
         if (commandExists(cmd)) {

@@ -8,7 +8,7 @@ import { zip } from "../utils/array";
 import { Maybe, none } from "../utils/maybe";
 import { assert, block, panic, proj, pushMap } from "../utils/misc";
 import * as bitter from './bitter';
-import { Mono } from "./monomorphize";
+import type { Mono } from "./monomorphize";
 import { FuncName, VarName } from "./name";
 import * as sweet from './sweet';
 
@@ -92,7 +92,7 @@ export const Expr = {
             assert(ctx.instances.has(overloadName.mangled), () => `missing instance '${overloadName.mangled}'`);
             const instances = ctx.instances.get(overloadName.mangled)!;
             assert(instances.has(key), () => `missing instance '${overloadName.mangled}${key}'`);
-            return instances.get(key)!.name;
+            return instances.get(key)!.fun.name;
           } else {
             return overloadName;
           }
@@ -267,10 +267,9 @@ export type Prog = {
 };
 
 export const Prog = {
-  from: (prog: bitter.Prog): [Prog, Error[]] => {
+  from: (monoProg: bitter.Prog, instances: Mono['Instances']): [Prog, Error[]] => {
     const errors: Error[] = [];
     const coreModules = new Map<string, Module>();
-    const [monoProg, instances] = Mono.prog(prog, errors);
 
     for (const [path, mod] of monoProg.modules) {
       coreModules.set(path, Module.from(mod, instances));

@@ -135,3 +135,12 @@ export const groupBy = <T>(
 
   return groups;
 };
+
+export const sum = (values: Iterable<number>): number => {
+  let total = 0;
+  for (const n of values) {
+    total += n;
+  }
+
+  return total;
+};

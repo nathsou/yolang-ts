@@ -36,12 +36,12 @@ export class Maybe<T> {
     }
   }
 
-  mapWithDefault<U>(f: (val: T) => U, defaultValue: U): U {
+  mapWithDefault<U>(f: (val: T) => U, defaultValue: U | (() => U)): U {
     if (this.raw.type === 'some') {
       return f(this.raw.data);
     }
 
-    return defaultValue;
+    return typeof defaultValue === 'function' ? (defaultValue as Function)() : defaultValue;
   }
 
   flatMap<U>(f: (val: T) => Maybe<U>): Maybe<U> {

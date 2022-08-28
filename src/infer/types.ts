@@ -1,8 +1,8 @@
 import { DataType, match, matchMany } from "itsamatch";
 import { Context } from "../ast/context";
-import { filter, gen, joinWith, zip } from "../utils/array";
+import { filter, gen, joinWith, sum, zip } from "../utils/array";
 import { Maybe } from "../utils/maybe";
-import { cond, matchString, panic, parenthesized, proj } from "../utils/misc";
+import { cond, matchString, panic, parenthesized } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./structs";
@@ -58,8 +58,6 @@ export const MonoTy = {
   bool: () => MonoTy.Const('bool'),
   str: () => MonoTy.Const('str'), // not primitive
   void: () => MonoTy.Const('void'),
-  primitiveTypes: new Set(['void', 'u32', 'i32', 'u64', 'i64', 'i8', 'u8', 'bool', 'ptr']),
-  isPrimitive: (ty: MonoTy): boolean => ty.variant === 'Const' && MonoTy.primitiveTypes.has(ty.name),
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
     match(ty, {
       Var: ({ value }) => {
@@ -175,48 +173,16 @@ export const MonoTy = {
     });
   },
   substituteTyParams: (ty: MonoTy, subst: Map<string, MonoTy>): MonoTy => {
-    const substRowTyParams = (row: Row): Row => {
-      return Row.fromFields(
-        Row.fields(row).map(([name, ty]) =>
-          [name, MonoTy.substituteTyParams(ty, subst)]
-        ),
-        false
-      );
-    };
-
-    return match(ty, {
-      Var: () => {
-        if (ty.variant === 'Var' && ty.value.kind === 'Link') {
-          return MonoTy.substituteTyParams(ty.value.to, subst);
+    return MonoTy.rewrite(ty, t => {
+      if (t.variant === 'Param') {
+        if (!subst.has(t.name)) {
+          panic(`Type parameter '${t.name}' not found in substitution`);
         }
 
-        return ty;
-      },
-      Param: ({ name }) => {
-        if (!subst.has(name)) {
-          panic(`Type parameter '${name}' not found in substitution`);
-        }
+        return subst.get(t.name)!;
+      }
 
-        return subst.get(name)!;
-      },
-      Const: ({ name, args }) => {
-        if (subst.has(name) && args.length === 0) {
-          return subst.get(name)!;
-        }
-
-        return MonoTy.Const(name, ...args.map(a => MonoTy.substituteTyParams(a, subst)));
-      },
-      Fun: ({ args, ret }) => MonoTy.Fun(
-        args.map(a => MonoTy.substituteTyParams(a, subst)),
-        MonoTy.substituteTyParams(ret, subst)
-      ),
-      Tuple: ({ tuple }) => MonoTy.Tuple(
-        Tuple.map(tuple, a => MonoTy.substituteTyParams(a, subst))
-      ),
-      Struct: ({ name, row }) => MonoTy.Struct(
-        substRowTyParams(row),
-        name,
-      ),
+      return t;
     });
   },
   instantiateTyParams: (ty: MonoTy, tyParams: string[]): MonoTy => {
@@ -245,13 +211,13 @@ export const MonoTy = {
     },
     Tuple: ({ tuple }) => Tuple.show(tuple),
     Struct: ({ row, name, params }) => {
-      if (name != null) {
-        if (params.length > 0) {
-          return `${name}<${params.map(MonoTy.show).join(', ')}>`;
-        } else {
-          return name;
-        }
-      }
+      // if (name != null) {
+      //   if (params.length > 0) {
+      //     return `${name}<${params.map(MonoTy.show).join(', ')}>`;
+      //   } else {
+      //     return name;
+      //   }
+      // }
 
       if (row.type === 'empty') {
         return '{}';
@@ -295,27 +261,34 @@ export const MonoTy = {
     _: () => false,
   }),
   isDetermined: (s: MonoTy): boolean => PolyTy.isDetermined([[], s]),
-  expand: (ty: MonoTy, ctx: TypeContext): MonoTy => {
-    const go = (t: MonoTy) => MonoTy.expand(t, ctx);
-    return match(ty, {
-      Const: ({ name, args }) => {
-        if (ctx.typeAliases.has(name)) {
-          return TypeContext.instantiateTypeAlias(ctx, ctx.typeAliases.get(name)!, args);
-        }
-
-        if (ctx.typeParamsEnv.has(name)) {
-          return MonoTy.expand(ctx.typeParamsEnv.get(name)!, ctx);
-        }
-
-        return MonoTy.Const(name, ...args.map(go));
-      },
-      Param: ({ name }) => MonoTy.Param(name),
+  rewrite: (ty: MonoTy, f: (ty: MonoTy) => MonoTy): MonoTy => {
+    const go = (t: MonoTy) => MonoTy.rewrite(t, f);
+    return f(match(ty, {
+      Const: ({ name, args }) => MonoTy.Const(name, ...args.map(go)),
       Fun: ({ args, ret }) => MonoTy.Fun(args.map(go), go(ret)),
       Struct: ({ name, params, row }) => MonoTy.Struct(Row.map(row, go), name, params),
       Tuple: ({ tuple }) => MonoTy.Tuple(Tuple.fromArray(Tuple.toArray(tuple).map(go))),
+      Param: p => p,
       Var: v => v,
-    });
+    }));
   },
+  expand: (ty: MonoTy, ctx: TypeContext): MonoTy => MonoTy.rewrite(ty, t => {
+    if (t.variant === 'Const' && ctx.typeAliases.has(t.name)) {
+      return TypeContext.instantiateTypeAlias(ctx, ctx.typeAliases.get(t.name)!, t.args);
+    } else if (t.variant === 'Param' && ctx.typeParamsEnv.has(t.name)) {
+      return ctx.typeParamsEnv.get(t.name)!;
+    }
+
+    return t;
+  }),
+  specificity: (ty: MonoTy): number => match(ty, {
+    Param: () => 1,
+    Var: () => 2,
+    Const: () => 4,
+    Fun: ({ args, ret }) => sum(args.map(MonoTy.specificity)) + MonoTy.specificity(ret),
+    Struct: ({ row }) => sum(Row.fields(row).map(([_, ty]) => MonoTy.specificity(ty))),
+    Tuple: ({ tuple }) => sum(Tuple.toArray(tuple).map(MonoTy.specificity)),
+  }),
 };
 
 export type PolyTy = [TyVarId[], MonoTy];
@@ -394,7 +367,7 @@ export const PolyTy = {
 export type TypeParam = { name: string, ty: Maybe<MonoTy> };
 
 export const TypeParams = {
-  show: (params: TypeParam[]) => params.length > 0 ? `<${joinWith(params, proj('name'))}>` : '',
+  show: (params: TypeParam[]) => params.length > 0 ? `<${joinWith(params, p => p.ty.match({ None: () => p.name, Some: ty => `${p.name}: ${MonoTy.show(ty)}` }))}>` : '',
   hash: (params: MonoTy[]) => `<${joinWith(params, MonoTy.show)}>`,
 };
 

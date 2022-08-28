@@ -42,7 +42,7 @@ const resolveOverloading = (
   const matches = candidates.map(func => {
     const gInst = PolyTy.instantiate(func.funTy);
     const score = unifyPure(f, gInst.ty, ctx).match({
-      Ok: ({ score }) => score,
+      Ok: () => MonoTy.specificity(gInst.ty),
       Error: () => 0,
     });
 
@@ -115,7 +115,7 @@ const inferExpr = (
       });
     },
     NamedFuncCall: call => {
-      const { name, typeParams, args } = call;
+      const { name, args } = call;
 
       resolveFuncs(name).do(funcs => {
         args.forEach(arg => {
@@ -128,7 +128,7 @@ const inferExpr = (
         });
 
         const argTys = args.map(proj('ty'));
-        const actualFunTy = MonoTy.Fun(argTys, tau) as VariantOf<MonoTy, 'Fun'>;
+        const actualFunTy = MonoTy.Fun(argTys, tau);
 
         resolveOverloading(funcName, actualFunTy, funcs, ctx).match({
           left: resolvedFunc => {
@@ -430,6 +430,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void =
 
       if (body.isNone() && returnTy.isNone()) {
         errors.push(Error.Typing({ type: 'MissingFuncPrototypeReturnTy', name: name.original }));
+        return;
       }
 
       Env.declareFunc(ctx.env, f);

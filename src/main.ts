@@ -2,6 +2,7 @@ import { match as matchVariant } from "itsamatch";
 import * as bitter from "./ast/bitter";
 import { Context } from './ast/context';
 import * as core from "./ast/core";
+import { Mono } from "./ast/monomorphize";
 import * as sweet from "./ast/sweet";
 import { createLLVMCompiler } from "./codegen/llvm/codegen";
 import { Error } from './errors/errors';
@@ -9,30 +10,31 @@ import { infer } from "./infer/infer";
 import { MonoTy, PolyTy, TypeParams } from "./infer/types";
 import { createNodeFileSystem } from './resolve/nodefs';
 import { resolve } from './resolve/resolve';
-import { panic } from "./utils/misc";
+import { sum } from "./utils/array";
+import { block, panic } from "./utils/misc";
 
-enum DebugLvl {
-  nothing = 0,
-  sections = 1,
-  types = 2,
-  sweet = 3,
-  llvm = 4,
-  time = 5,
-  all = 6,
+enum DebugMode {
+  run = 0,
+  types = 1,
+  sweet = 2,
+  bitter = 3,
+  mono = 4,
+  llvm = 5,
+  time = 6,
 }
 
-let debugLevel = DebugLvl.nothing;
+let debugMode = DebugMode.run;
 
 // pipeline:
-// <string> -> parse -> <sweet> -> desugar & resolve modules -> <bitter> -> infer ->
-// monomorphize -> inject reference counting -> emit code
+// <string> -> parse -> <sweet> -> desugar -> <bitter> -> infer ->
+// monomorphize -> inject reference counting -> <core> -> codegen
 
 const typeCheck = (prog: bitter.Prog): Error[] => {
   Context.clear();
   return infer(prog);
 };
 
-const getWasmMainFunc = async (source: string): Promise<Function> => {
+const getWasmMainFunc = async (source: string): Promise<() => number> => {
   const { readFile } = await import('fs/promises');
 
   const wasm = await readFile(source);
@@ -59,10 +61,22 @@ const getWasmMainFunc = async (source: string): Promise<Function> => {
   });
 
   if ('main' in instance.exports && typeof instance.exports['main'] === 'function') {
-    return instance.exports['main'];
+    return instance.exports['main'] as (() => number);
   }
 
   return panic('main function not found');
+};
+
+const time = <T>(fn: () => T): [T, number] => {
+  const t1 = Date.now();
+  const res = fn();
+  return [res, Date.now() - t1];
+};
+
+const timeAsync = async <T>(fn: () => Promise<T>): Promise<[T, number]> => {
+  const t1 = Date.now();
+  const res = await fn();
+  return [res, Date.now() - t1];
 };
 
 const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2 | 3): Promise<number> => {
@@ -73,48 +87,65 @@ const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2
   };
 
   const nfs = await createNodeFileSystem();
-  const [sweetProg, errs1] = await resolve(source, nfs);
+  const [[sweetProg, errs1], resolveDuration] = await timeAsync(() => resolve(source, nfs));
+
+  if (debugMode === DebugMode.sweet) {
+    console.log('--- sweet ---');
+    console.log(sweet.Prog.show(sweetProg) + '\n');
+  }
 
   if (errs1.length > 0) {
     logErrors(errs1);
     return 1;
   }
 
-  if (debugLevel >= DebugLvl.sweet) {
-    console.log('--- sweet ---');
-    console.log(sweet.Prog.show(sweetProg) + '\n');
-  }
+  const [[bitterProg, errs2], bitterDuration] = time(() => bitter.Prog.from(sweetProg));
 
-  const [bitterProg, errs2] = bitter.Prog.from(sweetProg);
+  if (debugMode === DebugMode.bitter) {
+    console.log('--- bitter ---');
+    console.log(bitter.Prog.show(bitterProg) + '\n');
+  }
 
   if (errs2.length > 0) {
     logErrors(errs2);
     return 1;
   }
 
-  const errs3 = typeCheck(bitterProg);
+  const [errs3, inferDuration] = time(() => typeCheck(bitterProg));
 
   if (errs3.length > 0) {
     logErrors(errs3);
     return 1;
   }
 
-  if (debugLevel >= DebugLvl.types) {
+  if (debugMode === DebugMode.types) {
     console.log('--- types ---');
     console.log(showTypes(bitterProg.entry.decls).join('\n\n') + '\n');
   }
 
-  const [coreProg, errs4] = core.Prog.from(bitterProg);
+  const [[monoProg, instances, errs4], monoDuration] = time(() => Mono.prog(bitterProg));
+
+  if (debugMode === DebugMode.mono) {
+    console.log('--- mono ---');
+    console.log(bitter.Prog.show(monoProg) + '\n');
+  }
 
   if (errs4.length > 0) {
     logErrors(errs4);
     return 1;
   }
 
-  const compiler = await createLLVMCompiler();
-  const modules = compiler.compile(coreProg);
+  const [[coreProg, errs5], coreDuration] = time(() => core.Prog.from(monoProg, instances));
 
-  if (debugLevel >= DebugLvl.llvm) {
+  if (errs5.length > 0) {
+    logErrors(errs5);
+    return 1;
+  }
+
+  const compiler = createLLVMCompiler();
+  const [modules, compileDuration] = time(() => compiler.compile(coreProg));
+
+  if (debugMode === DebugMode.llvm) {
     modules.forEach(m => {
       console.log(m.print());
     });
@@ -122,40 +153,56 @@ const compile = async (source: string, target: 'wasm' | 'native', opt: 0 | 1 | 2
 
   const outDir = 'out';
   const outFile = target === 'wasm' ? `${outDir}/main.wasm` : `${outDir}/main`;
-  const stdout = await compiler.compileIR(modules, target, outDir, outFile, opt);
+  const [stdout, buildDuration] = await timeAsync(() => compiler.compileIR(modules, target, outDir, outFile, opt));
 
   if (stdout.length > 0) {
     console.log(stdout);
   }
 
-  let t1, t2 = 0;
-  let exitCode = 0;
-  if (target === 'wasm') {
-    // run the program
-    const mainFunc = await getWasmMainFunc(outFile);
-    t1 = Date.now();
-    exitCode = mainFunc();
-    t2 = Date.now();
-  } else {
-    const { execFileSync } = await import('child_process');
-    t1 = Date.now();
-    const stdout = execFileSync(outFile);
-    t2 = Date.now();
-    // remove trailing newline
-    try {
-      const filteredStdout = stdout.at(-1) === 10 ? stdout.slice(0, -1) : stdout;
-      console.log(filteredStdout.toString('utf-8'));
-      exitCode = 0;
-    } catch (err: any) {
-      exitCode = err.status;
-    }
+  if (debugMode === DebugMode.run) {
+    const exitCode = await block(async () => {
+      if (target === 'wasm') {
+        // run the program
+        const mainFunc = await getWasmMainFunc(outFile);
+        return mainFunc();
+      } else {
+        const { execFileSync } = await import('child_process');
+        try {
+          const stdout = execFileSync(outFile);
+          // remove trailing newline
+          const filteredStdout = stdout.at(-1) === 10 ? stdout.slice(0, -1) : stdout;
+          console.log(filteredStdout.toString('utf-8'));
+          return 0;
+        } catch (err: any) {
+          console.error(err);
+          return err.status;
+        }
+      }
+    });
+
+    return exitCode;
   }
 
-  if (debugLevel >= DebugLvl.time) {
-    console.log(`took ${t2 - t1}ms`);
+  if (debugMode === DebugMode.time) {
+    const durations = {
+      'parsing': resolveDuration,
+      'sweet -> bitter': bitterDuration,
+      'type inference': inferDuration,
+      'monomorphization': monoDuration,
+      'bitter -> core': coreDuration,
+      'compilation': compileDuration,
+      'build': buildDuration,
+    };
+
+    console.log('--- timing ---');
+    Object.entries(durations).forEach(([name, duration]) => {
+      console.log(`${name}: ${duration}ms`);
+    });
+
+    console.log(`total: ${sum(Object.values(durations))}ms`);
   }
 
-  return exitCode;
+  return 0;
 };
 
 const showTypes = (decls: bitter.Decl[]): string[] => {
@@ -181,7 +228,7 @@ const [, , source, debugLvl] = process.argv;
 (async () => {
   if (source) {
     if (debugLvl) {
-      debugLevel = parseInt(debugLvl);
+      debugMode = parseInt(debugLvl);
     }
     const exitCode = await compile(source, 'native', 3);
     process.exit(exitCode);

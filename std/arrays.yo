@@ -1,4 +1,4 @@
-import std/ops [-]
+import std/ops
 
 pub type []<T> = {
   len: u32,
@@ -6,10 +6,10 @@ pub type []<T> = {
 }
 
 #meta(getUnchecked)
-pub fun getUnchecked<T>(elems: ptr<T>, index: u32): T
+fun getUnchecked<T>(elems: ptr<T>, index: u32): T
 
 #meta(setUnchecked)
-pub fun setUnchecked<T>(mut elems: ptr<T>, index: u32, value: T): void
+fun setUnchecked<T>(mut elems: ptr<T>, index: u32, value: T): void
 
 pub fun []<T>(a: T[], index: u32): T {
   a.data.getUnchecked(index)
@@ -17,4 +17,8 @@ pub fun []<T>(a: T[], index: u32): T {
 
 pub fun []=<T>(mut a: T[], index: u32, value: T): void {
   a.data.setUnchecked(index, value)
+}
+
+pub fun last<T>(a: T[]): T {
+  a[a.len - 1u32]
 }

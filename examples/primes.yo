@@ -60,7 +60,7 @@ fun main() {
   sieve.init()
   sieve.fill()
 
-  log(sieve.primes[sieve.primes.len - 1u32])
+  log(sieve.primes.last())
 
   return 0 // unix exit code
 }

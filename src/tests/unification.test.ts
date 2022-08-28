@@ -181,14 +181,13 @@ describe('unifyPure', () => {
     const ty1 = MonoTy.Tuple(Tuple.fromArray([tv1, tv2]));
     const ty2 = MonoTy.Tuple(Tuple.fromArray([MonoTy.bool(), MonoTy.u32()]));
 
-    const res = unifyPure(ty1, ty2, TypeContext.make(new Map()));
+    const subst = unifyPure(ty1, ty2, TypeContext.make(new Map()));
 
-    expect(res.isOk()).toBeTruthy();
+    expect(subst.isOk()).toBeTruthy();
     expect(tv1).toMatchObject(MonoTy.Var({ kind: 'Unbound', id: 0 }));
     expect(tv2).toMatchObject(MonoTy.Var({ kind: 'Unbound', id: 1 }));
 
-    const { subst } = res.unwrap();
-    expect(subst.get(0)).toMatchObject(MonoTy.bool());
-    expect(subst.get(1)).toMatchObject(MonoTy.u32());
+    expect(subst.unwrap().get(0)).toMatchObject(MonoTy.bool());
+    expect(subst.unwrap().get(1)).toMatchObject(MonoTy.u32());
   });
 });

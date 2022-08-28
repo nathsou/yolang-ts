@@ -24,6 +24,7 @@ export const FuncName = {
     ty: MonoTy.fresh(),
   }),
   clone: (name: FuncName, freshTy = true): FuncName => ({ ...name, ty: freshTy ? MonoTy.fresh() : name.ty }),
+  show: (name: FuncName) => name.mangled,
 };
 
 export const VarName = {
@@ -35,16 +36,18 @@ export const VarName = {
     initialized,
   }),
   clone: (name: VarName, freshTy = true): VarName => ({ ...name, ty: freshTy ? MonoTy.fresh() : name.ty }),
+  show: (name: VarName) => name.mangled,
 };
 
 export type NameEnv = {
   vars: Record<string, VarName>,
   funcs: Record<string, FuncName[]>,
+  params: Record<string, MonoTy>,
 };
 
 export const NameEnv = {
-  make: (): NameEnv => ({ vars: {}, funcs: {} }),
-  clone: (env: NameEnv): NameEnv => ({ vars: { ...env.vars }, funcs: { ...env.funcs } }),
+  make: (): NameEnv => ({ vars: {}, funcs: {}, params: {} }),
+  clone: (env: NameEnv): NameEnv => ({ vars: { ...env.vars }, funcs: { ...env.funcs }, params: { ...env.params } }),
   declareVar: (env: NameEnv, name: string, mutable: boolean, renaming = name): VarName => {
     const fresh = VarName.fresh(name, mutable);
     fresh.mangled = renaming;
@@ -56,6 +59,11 @@ export const NameEnv = {
     fresh.mangled = renaming;
     pushRecord(env.funcs, name, fresh);
     return fresh;
+  },
+  declareTypeParam: (env: NameEnv, name: string, ty: MonoTy = MonoTy.Param(name)): MonoTy => {
+
+    env.params[name] = ty;
+    return ty;
   },
   resolveVar: (env: NameEnv, name: string): VarName => {
     if (name in env.vars) {
@@ -70,6 +78,22 @@ export const NameEnv = {
     }
 
     return panic(`unresolved function '${name}'`);
+  },
+  resolveTypeParam: (env: NameEnv, name: string): MonoTy => {
+    if (name in env.params) {
+      return env.params[name];
+    }
+
+    return panic(`unresolved type parameter '${name}'`);
+  },
+  resolveType: (env: NameEnv, ty: MonoTy): MonoTy => {
+    return MonoTy.rewrite(ty, t => {
+      if (t.variant === 'Const' && t.args.length === 0 && t.name in env.params) {
+        return env.params[t.name];
+      }
+
+      return t;
+    });
   },
   isUndeclared: (name: VarName): boolean => {
     return name.mangled === '<__!undeclared!__>';

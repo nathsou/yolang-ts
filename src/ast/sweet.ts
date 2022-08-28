@@ -121,7 +121,7 @@ export const Expr = {
         return `${Expr.show(args[0])}[${joinWith(args.slice(1, -1), Expr.show)}] = ${Expr.show(last(args))}`;
       }
 
-      const params: string = `${typeParams.length > 0 ? `<${joinWith(typeParams, MonoTy.show)}>` : ''}`;
+      const params = `${typeParams.length > 0 ? `<${joinWith(typeParams, MonoTy.show)}>` : ''}`;
       return `${Expr.show(lhs)}${params}(${joinWith(args, Expr.show, ', ')})`;
     },
     Error: ({ message }) => `<Error: ${message}>`,
@@ -245,7 +245,7 @@ export const Decl = {
       const argsFmt = `${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')})`;
       const retTyFmt = returnTy.mapWithDefault(ty => ': ' + MonoTy.show(ty) + ' ', '');
       const bodyFmt = body.mapWithDefault(Expr.show, '');
-      return `${attrsFmt}fun ${name}${argsFmt}${retTyFmt}${bodyFmt}`;
+      return `${attrsFmt}fun ${name}${argsFmt}${retTyFmt} ${bodyFmt}`;
     },
     TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)} `,
     Import: ({ path, imports }) => `import ${path}${Imports.show(imports)} `,
