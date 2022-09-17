@@ -1,6 +1,6 @@
 # Yolang
 
-Simple procedural language targetting LLVM
+Simple procedural language targeting LLVM
 
 ## Usage
 

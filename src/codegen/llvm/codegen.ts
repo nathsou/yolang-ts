@@ -593,7 +593,7 @@ export const createLLVMCompiler = () => {
 
   async function compileIR(
     modules: Map<string, LLVM.Module>,
-    target: 'host' | 'wasm',
+    target: 'host' | 'wasm' | 'wasi',
     outDir: string,
     outFile: string,
     optLevel: 0 | 1 | 2 | 3
@@ -627,8 +627,9 @@ export const createLLVMCompiler = () => {
     };
 
     const targetTriple = matchString(target, {
-      wasm: () => 'wasm32-unknown-unknown',
       host: () => llvm.config.LLVM_DEFAULT_TARGET_TRIPLE,
+      wasm: () => 'wasm32-unknown-unknown',
+      wasi: () => 'wasm32-unknown-wasi',
     });
 
     modules.forEach(module => {
@@ -652,6 +653,13 @@ export const createLLVMCompiler = () => {
     ].join(' ');
 
     const buildCommand = matchString(target, {
+      host: () => [
+        clangCmd,
+        `--target=${targetTriple}`,
+        `-O${optLevel}`,
+        `-o ${outFile}`,
+        linkedFile,
+      ],
       wasm: () => [
         clangCmd,
         `--target=${targetTriple}`,
@@ -664,12 +672,20 @@ export const createLLVMCompiler = () => {
         `-o ${outFile}`,
         linkedFile,
       ],
-      host: () => [
+      wasi: () => [
         clangCmd,
-        `--target=${targetTriple}`,
-        `-O${optLevel}`,
-        `-o ${outFile}`,
         linkedFile,
+        `--target=${targetTriple}`,
+        '-nostdlib',
+        '-e main',
+        '--sysroot=./build/wasi/wasi-sysroot',
+        '-lc',
+        './build/wasi/libclang/wasi/libclang_rt.builtins-wasm32.a',
+        `-O${optLevel}`,
+        '-flto', // Add metadata for link-time optimizations
+        '-Wl,--lto-O3', // Aggressive link-time optimizations
+        // '-Wl,--no-entry',
+        `-o ${outFile}`,
       ],
     });
 

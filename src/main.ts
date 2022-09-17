@@ -1,5 +1,5 @@
 import { program } from 'commander';
-import { match as matchVariant } from "itsamatch";
+import { match } from "itsamatch";
 import { resolve as resolvePath } from 'path';
 import * as bitter from "./ast/bitter";
 import { Context } from './ast/context';
@@ -13,9 +13,10 @@ import { MonoTy, PolyTy, TypeParams } from "./infer/types";
 import { createNodeFileSystem } from './resolve/nodefs';
 import { resolve } from './resolve/resolve';
 import { sum } from "./utils/array";
-import { block, panic } from "./utils/misc";
+import { block, matchString, panic } from "./utils/misc";
+import { spawn, execFileSync } from 'child_process';
 
-const TARGETS = ['host', 'wasm'] as const;
+const TARGETS = ['host', 'wasm', 'wasi'] as const;
 
 type Options = {
   out?: string,
@@ -201,7 +202,11 @@ async function yo(source: string, options: Options): Promise<number> {
       return options.out;
     }
 
-    return options.target === 'wasm' ? 'main.wasm' : 'main';
+    return matchString(options.target, {
+      host: () => 'main',
+      wasm: () => 'main.wasm',
+      wasi: () => 'main.wasm',
+    });
   }));
 
   const [stdout, buildDuration] = await timeAsync(() => compiler.compileIR(
@@ -236,23 +241,47 @@ async function yo(source: string, options: Options): Promise<number> {
   }
 
   if (options.run) {
+    const spawnPromise = (cmd: string, ...args: string[]) => new Promise<void>(resolve => {
+      const sp = spawn(cmd, args);
+
+      sp.on('error', err => {
+        console.error(err);
+      });
+
+      sp.stdout.on('data', data => {
+        process.stdout.write(data.toString());
+      });
+
+      sp.stderr.on('data', data => {
+        process.stderr.write(data.toString());
+      });
+
+      sp.on('close', () => {
+        resolve();
+      });
+    });
+
     const exitCode = await block(async () => {
-      if (options.target === 'wasm') {
-        // run the program
-        const mainFunc = await getWasmMainFunc(outFile);
-        return mainFunc();
-      } else {
-        const { execFileSync } = await import('child_process');
-        try {
-          const stdout = execFileSync(outFile);
-          // remove trailing newline
-          const filteredStdout = stdout.at(-1) === 10 ? stdout.slice(0, -1) : stdout;
-          console.log(filteredStdout.toString('utf-8'));
+      switch (options.target) {
+        case 'wasm':
+          // run the program
+          const mainFunc = await getWasmMainFunc(outFile);
+          return mainFunc();
+        case 'wasi':
+          await spawnPromise('wasmtime', outFile, '--invoke', 'main');
           return 0;
-        } catch (err: any) {
-          console.error(err);
-          return err.status;
-        }
+        case 'host':
+          try {
+            const stdout = execFileSync(outFile);
+            // remove trailing newline
+            const filteredStdout = stdout.at(-1) === 10 ? stdout.slice(0, -1) : stdout;
+            console.log(filteredStdout.toString('utf-8'));
+            return 0;
+          } catch (err: any) {
+            console.error(err);
+            return err.status;
+          }
+
       }
     });
 
@@ -266,7 +295,7 @@ function showTypes(decls: bitter.Decl[]): string[] {
   const types: string[] = [];
 
   for (const decl of decls) {
-    matchVariant(decl, {
+    match(decl, {
       Function: ({ name, funTy }) => {
         types.push(name.original + ': ' + PolyTy.show(PolyTy.canonicalize(funTy)));
       },

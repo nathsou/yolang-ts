@@ -227,7 +227,7 @@ export const MonoTy = {
     },
   }),
   eq: (s: MonoTy, t: MonoTy): boolean => matchMany([MonoTy.deref(s), MonoTy.deref(t)], {
-    "Var Var": ({ value: v1 }, { value: v2 }) => {
+    'Var Var': ({ value: v1 }, { value: v2 }) => {
       if (v1.kind === 'Unbound' && v2.kind === 'Unbound') {
         return v1.id === v2.id;
       }

@@ -1,0 +1,5 @@
+import std/foundations
+
+fun main(): void {
+  log("Yo Yolang!");
+}
