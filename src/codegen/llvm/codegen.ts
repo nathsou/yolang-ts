@@ -669,6 +669,9 @@ export const createLLVMCompiler = () => {
         '-Wl,--export-all',
         `-Wl,--lto-O${optLevel}`,
         '-Wl,--allow-undefined',
+        '-flto', // Add metadata for link-time optimizations
+        '-Wl,--lto-O3', // Aggressive link-time optimizations
+        '-Wl,-z,stack-size=$[8 * 1024 * 1024]', // Set maximum stack size to 8MiB
         `-o ${outFile}`,
         linkedFile,
       ],
@@ -684,7 +687,7 @@ export const createLLVMCompiler = () => {
         `-O${optLevel}`,
         '-flto', // Add metadata for link-time optimizations
         '-Wl,--lto-O3', // Aggressive link-time optimizations
-        // '-Wl,--no-entry',
+        '-Wl,-z,stack-size=$[8 * 1024 * 1024]', // Set maximum stack size to 8MiB
         `-o ${outFile}`,
       ],
     });

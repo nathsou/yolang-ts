@@ -406,11 +406,13 @@ export const Decl = {
       args,
       body: body.map(body => {
         assert(body.variant === 'Block');
-        // if the last statement is a return statement
-        // then put it in the lastExpr field instead
-        const lastStmt = last(body.statements);
-        if (body.lastExpr.isNone() && lastStmt?.variant === 'Return') {
-          return Expr.Block(body.statements.slice(0, -1), lastStmt.expr, body.sweet);
+        if (body.statements.length > 0) {
+          // if the last statement is a return statement
+          // then put it in the lastExpr field instead
+          const lastStmt = last(body.statements);
+          if (body.lastExpr.isNone() && lastStmt.variant === 'Return') {
+            return Expr.Block(body.statements.slice(0, -1), lastStmt.expr, body.sweet);
+          }
         }
 
         return body;

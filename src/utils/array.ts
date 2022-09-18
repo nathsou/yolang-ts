@@ -1,5 +1,5 @@
 import { Maybe, none, some } from "./maybe";
-import { pushRecord } from './misc';
+import { panic, pushRecord } from './misc';
 
 export const findRev = <T>(elems: T[], pred: (elem: T) => boolean): Maybe<T> => {
   for (let i = elems.length - 1; i >= 0; i--) {
@@ -90,6 +90,10 @@ export const uniq = <T>(elems: T[]): T[] => {
 };
 
 export const last = <T>(elems: T[]): T => {
+  if (elems.length === 0) {
+    panic('called last with an empty array');
+  }
+
   return elems[elems.length - 1];
 };
 
