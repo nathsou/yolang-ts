@@ -466,7 +466,7 @@ export const createLLVMCompiler = () => {
       const ext = isExternal ?? (
         f.pub ||
         f.name.original === 'main' ||
-        f.attributes.some(attr => attr.name === 'extern')
+        f.attributes.has('extern')
       );
       const linkage = llvm.Function.LinkageTypes[ext ? 'ExternalLinkage' : 'PrivateLinkage'];
       const func = llvm.Function.Create(funcTy, linkage, f.name.mangled, mod);
@@ -480,7 +480,7 @@ export const createLLVMCompiler = () => {
         Function: f => {
           const proto = declareFunc(f);
 
-          if (f.attributes.some(attr => attr.name === 'extern')) {
+          if (f.attributes.has('extern')) {
             return;
           }
 
@@ -538,21 +538,24 @@ export const createLLVMCompiler = () => {
                 return ret;
               },
               None: () => {
-                if (f.attributes.some(attr => attr.name === 'meta')) {
+                if (f.attributes.has('meta')) {
                   const ret = meta(
-                    f.attributes.find(attr => attr.name === 'meta')!.args[0],
+                    f.attributes.get('meta')!.args[0],
                     proto,
                     builder,
                     llvm,
                     context,
                   );
 
-                  assert(ret === 'void' ? returnsVoid : !returnsVoid);
-                  if (ret === 'void') {
-                    builder.CreateRetVoid();
-                  } else {
-                    builder.CreateRet(ret);
-                  }
+                  assert(ret.isNone() ? returnsVoid : !returnsVoid);
+                  ret.match({
+                    Some: ret => {
+                      builder.CreateRet(ret);
+                    },
+                    None: () => {
+                      builder.CreateRetVoid();
+                    },
+                  });
                 } else {
                   return panic(`Function prototype for '${f.name.original}' is missing a meta or extern attribute`);
                 }

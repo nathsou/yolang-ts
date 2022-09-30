@@ -10,7 +10,6 @@ import { assert, block, panic, proj, pushMap } from "../utils/misc";
 import * as bitter from './bitter';
 import type { Mono } from "./monomorphize";
 import { FuncName, VarName } from "./name";
-import * as sweet from './sweet';
 
 type Typed<T> = {
   [K in keyof T]: T[K] & { ty: MonoTy }
@@ -181,7 +180,7 @@ export const Stmt = {
 
 export type Decl = DataType<{
   Function: {
-    attributes: sweet.Attribute[],
+    attributes: Map<string, { args: string[] }>,
     pub: boolean,
     name: FuncName,
     args: { mut: boolean, name: VarName }[],
@@ -206,7 +205,7 @@ export const Decl = {
       assert(ty.variant === 'Fun');
 
       const f = Decl.Function({
-        attributes,
+        attributes: new Map(attributes.map(({ name, args }) => [name, { args }])),
         pub,
         name,
         args: args.map(({ mutable, name }) => ({ mut: mutable, name })),

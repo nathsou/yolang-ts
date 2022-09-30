@@ -1,96 +1,344 @@
-import { block, id } from "../utils/misc";
-import { Slice } from "../utils/slice";
-import { isAlpha } from "../utils/strings";
-import { alphaNum, alphaNumUnderscore, alt, char, digit, letter, many, map, not, oneOrMore, optional, spaces, str, then, trie } from "./lexerCombinators";
-import { Const, Keyword, operators, Position, Space, Spaces, Symbol, Token, TokenWithPos, withPos } from "./token";
+import { last } from "../utils/array";
+import { error, ok, Result } from "../utils/result";
+import { Char, isAlpha, isAlphaNum, isDigit } from "../utils/strings";
+import { Const, Keyword, Position, Token, TokenWithPos, withPos } from "./token";
 
-export const symbol = map(trie(Symbol.values), s => Token.Symbol(s as Symbol));
+const INSERT_SEMICOLONS = false;
 
-export const keyword = map(
-  then(
-    trie(Keyword.values),
-    not(alphaNum, false)
-  ),
-  ([kw, _]) => Token.Keyword(kw as Keyword)
-);
-
-const digits = map(oneOrMore(digit), digits => parseInt(digits.join(''), 10));
-
-const intKind = trie(['u32', 'u64', 'i32', 'u64', 'i64', 'u8', 'i8']);
-export const int = map(
-  then(then(optional(str('-')), digits), optional(intKind)),
-  ([[neg, n], kind]) => Token.Const(Const[kind.mapWithDefault(id, 'i32')](n * neg.match({ Some: () => -1, None: () => 1 })))
-);
-export const bool = map(alt(str('true'), str('false')), b => Token.Const(Const.bool(b === 'true')));
-export const ident = block(() => {
-  const specialOperators = [...operators].filter(op => !op.split('').every(c => isAlpha(c)));
-  return map(
-    alt(
-      trie(specialOperators),
-      map(then(letter, many(alphaNumUnderscore)), ([h, tl]) => h + tl.join('')),
-    ),
-    Token.Identifier
-  );
-});
-
-const string = map(
-  then(char('"'), then(many(not(char('"'))), char('"'))),
-  ([_, [s]]) => Token.Const(Const.str(s.join(''))),
-);
-
-const constant = alt(int, bool, string);
-
-export const token = alt(constant, keyword, symbol, ident);
-
-const invalid = map(oneOrMore(not(token)), chars => Token.Invalid(chars.join('').trim()));
-
-const removeComments = (input: string): string => {
-  return input.split('\n').map(line => line.split('//')[0]).join('\n');
+export const lex = (source: string): Result<TokenWithPos[], string> => {
+  const lexer = Lexer.make(source);
+  return Lexer.lex(lexer);
 };
 
-export const lex = (input: string): TokenWithPos[] => {
-  const tokens: TokenWithPos[] = [];
-  const pos: Position = { line: 1, column: 1 };
-  const slice = Slice.from((removeComments(input) + ' ').split(''));
+type Lexer = {
+  source: string,
+  index: number,
+  tokens: TokenWithPos[],
+  pos: Position,
+};
 
-  const spaceActionMap: { [S in Space]: (pos: Position) => void } = {
-    [Spaces.enum.space]: pos => {
-      pos.column += 1;
-    },
-    [Spaces.enum.newline]: pos => {
-      pos.line += 1;
-      pos.column = 1;
-    },
-    [Spaces.enum.tab]: pos => {
-      pos.column += 4;
-    },
-    [Spaces.enum.carriageReturn]: pos => {
-      pos.column = 1;
-    },
-  };
+const Lexer = {
+  compoundOpIdents: new Set(['not', 'mod', 'and', 'or', 'nand', 'nor', 'xor', 'xnor']),
+  make: (source: string): Lexer => ({
+    source,
+    index: 0,
+    tokens: [],
+    pos: { line: 1, column: 1 },
+  }),
+  advance: (self: Lexer): Char | undefined => {
+    if (self.index >= self.source.length) {
+      return undefined;
+    }
 
-  const skipSpaces = () => {
-    spaces(slice).do(([spaces, rem]) => {
-      spaces.forEach(space => {
-        spaceActionMap[space as Space](pos);
-      });
+    const c = self.source[self.index];
+    self.index += 1;
+    self.pos.column += 1;
 
-      slice.start = rem.start;
-    });
-  };
+    if (c === '\n') {
+      self.pos.line += 1;
+      self.pos.column = 1;
 
-  skipSpaces();
+      if (INSERT_SEMICOLONS && Lexer.shouldInsertSemicolon(self)) {
+        self.tokens.push(withPos(Token.Symbol(';'), self.pos));
+      }
+    }
 
-  while (!Slice.isEmpty(slice)) {
-    const [tok, rem] = alt(token, invalid)(slice).unwrap();
-    tokens.push(withPos(tok, pos));
-    pos.column += rem.start - slice.start;
-    slice.start = rem.start;
+    return c;
+  },
+  peek: (self: Lexer): Char | undefined => {
+    return self.source[self.index];
+  },
+  match: (self: Lexer, ch: Char): boolean => {
+    if (Lexer.peek(self) === ch) {
+      Lexer.advance(self);
+      return true;
+    }
 
-    skipSpaces();
-  }
+    return false;
+  },
+  matchString: (self: Lexer, str: string): boolean => {
+    const matches = self.source.slice(self.index, self.index + str.length) === str;
 
-  tokens.push(withPos(Token.EOF(), pos));
+    if (matches) {
+      self.index += str.length;
+    }
 
-  return tokens;
+    return matches;
+  },
+  skipWhitespaces: (self: Lexer): void => {
+    while (true) {
+      const c = Lexer.peek(self);
+      if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+        Lexer.advance(self);
+      } else {
+        break;
+      }
+    }
+  },
+  skipLine: (self: Lexer): void => {
+    while (true) {
+      const c = Lexer.peek(self);
+      if (c === undefined) {
+        break;
+      }
+
+      Lexer.advance(self);
+
+      if (c === '\n') {
+        break;
+      }
+    }
+  },
+  parseNumber: (self: Lexer, startIndex: number): Const => {
+    while (true) {
+      const c = Lexer.peek(self);
+      if (c !== undefined && isDigit(c)) {
+        Lexer.advance(self);
+      } else {
+        break;
+      }
+    }
+
+    const lexeme = self.source.slice(startIndex, self.index);
+    let type: `${'u' | 'i'}${8 | 32 | 64}` = 'i32';
+
+    switch (Lexer.peek(self)) {
+      case 'u':
+        if (Lexer.matchString(self, 'u32')) {
+          type = 'u32';
+        } else if (Lexer.matchString(self, 'u64')) {
+          type = 'u64';
+        } else if (Lexer.matchString(self, 'u8')) {
+          type = 'u8';
+        }
+        break;
+      case 'i':
+        if (Lexer.matchString(self, 'i64')) {
+          type = 'i64';
+        } else if (Lexer.matchString(self, 'i8')) {
+          type = 'i8';
+        }
+        break;
+    }
+
+    return Const[type](Number(lexeme));
+  },
+  parseString: (self: Lexer, startIndex: number): string => {
+    while (true) {
+      const c = Lexer.peek(self);
+      if (c === undefined) {
+        break;
+      }
+
+      Lexer.advance(self);
+
+      if (c === '"') {
+        break;
+      }
+    }
+
+    return self.source.slice(startIndex + 1, self.index - 1);
+  },
+  parseIdentOrKeyword: (self: Lexer, startIndex: number): Token => {
+    while (true) {
+      const c = Lexer.peek(self);
+      if (c === undefined) {
+        break;
+      }
+
+      if (isAlphaNum(c)) {
+        Lexer.advance(self);
+      } else {
+        break;
+      }
+    }
+
+    let lexeme = self.source.slice(startIndex, self.index);
+    if (Lexer.match(self, '=') && Lexer.compoundOpIdents.has(lexeme)) {
+      lexeme += '=';
+    }
+
+    if (lexeme === 'true' || lexeme === 'false') {
+      return Token.Const(Const.bool(lexeme === 'true'));
+    }
+
+    if (Keyword.is(lexeme)) {
+      return Token.Keyword(lexeme);
+    }
+
+    return Token.Identifier(lexeme);
+  },
+  // https://medium.com/golangspec/automatic-semicolon-insertion-in-go-1990338f2649
+  shouldInsertSemicolon: (self: Lexer): boolean => {
+    if (self.tokens.length === 0) {
+      return false;
+    }
+
+    const lastToken = last(self.tokens);
+
+    switch (lastToken.variant) {
+      case 'Const':
+        return true;
+      case 'Symbol':
+        return lastToken.value === ')' || lastToken.value === ']' || lastToken.value === '}';
+      case 'Keyword':
+        return lastToken.value === 'return';
+    }
+
+    return false;
+  },
+  nextToken: (self: Lexer): boolean => {
+    Lexer.skipWhitespaces(self);
+    const startIndex = self.index;
+    const c = Lexer.advance(self);
+
+    if (c === undefined) {
+      self.tokens.push(withPos(Token.EOF(), self.pos));
+      return false;
+    }
+
+    switch (c) {
+      case '(':
+      case ')':
+      case '[':
+      case ']':
+      case '{':
+      case '}':
+      case ',':
+      case ':':
+      case ';':
+      case '\'':
+      case '_':
+      case '#':
+        self.tokens.push(withPos(Token.Symbol(c), self.pos));
+        return true;
+      case '.': {
+        let token: Token;
+        if (Lexer.match(self, '.')) {
+          if (Lexer.match(self, '.')) {
+            token = Token.Symbol('...');
+          } else {
+            token = Token.Symbol('..');
+          }
+        } else {
+          token = Token.Symbol('.');
+        }
+
+        self.tokens.push(withPos(token, self.pos));
+        return true;
+      }
+      case '+':
+        self.tokens.push(withPos(
+          Token.Identifier(Lexer.match(self, '=') ? '+=' : '+'),
+          self.pos
+        ));
+        return true;
+      case '*':
+        self.tokens.push(withPos(
+          Token.Identifier(Lexer.match(self, '=') ? '*=' : '*'),
+          self.pos
+        ));
+        return true;
+      case '=': {
+        let token: Token;
+        if (Lexer.match(self, '>')) {
+          token = Token.Symbol('=>');
+        } else if (Lexer.match(self, '=')) {
+          token = Token.Identifier('==');
+        } else {
+          token = Token.Identifier('=');
+        }
+
+        self.tokens.push(withPos(token, self.pos));
+        return true;
+      }
+      case '<':
+        self.tokens.push(withPos(
+          Token.Identifier(Lexer.match(self, '=') ? '<=' : '<'),
+          self.pos
+        ));
+        return true;
+      case '>':
+        self.tokens.push(withPos(
+          Token.Identifier(Lexer.match(self, '=') ? '>=' : '>'),
+          self.pos
+        ));
+        return true;
+      case '/':
+        if (Lexer.match(self, '/')) {
+          Lexer.skipLine(self);
+        } else {
+          self.tokens.push(withPos(
+            Token.Identifier(Lexer.match(self, '=') ? '/=' : '/'),
+            self.pos
+          ));
+        }
+
+        return true;
+      case '-': {
+        let token: Token;
+        if (Lexer.match(self, '>')) {
+          token = Token.Symbol('->');
+        } else if (Lexer.match(self, '=')) {
+          token = Token.Identifier('-=');
+        } else if (isDigit(Lexer.peek(self)!)) {
+          token = Token.Const(Lexer.parseNumber(self, startIndex));
+        } else {
+          token = Token.Identifier('-');
+        }
+
+        self.tokens.push(withPos(token, self.pos));
+        return true;
+      }
+      case '!':
+        self.tokens.push(withPos(
+          Token.Identifier(Lexer.match(self, '=') ? '!=' : '!'),
+          self.pos
+        ));
+        return true;
+      case '>':
+        self.tokens.push(withPos(
+          Token.Identifier(Lexer.match(self, '=') ? '>=' : '>'),
+          self.pos
+        ));
+        return true;
+      case '<':
+        self.tokens.push(withPos(
+          Token.Identifier(Lexer.match(self, '=') ? '<=' : '<'),
+          self.pos
+        ));
+        return true;
+      case '"':
+        const str = Const.str(Lexer.parseString(self, startIndex));
+        self.tokens.push(withPos(Token.Const(str), self.pos));
+        return true;
+      default:
+        if (isDigit(c)) {
+          const n = Lexer.parseNumber(self, startIndex);
+          self.tokens.push(withPos(Token.Const(n), self.pos));
+          return true;
+        }
+
+        if (isAlpha(c)) {
+          self.tokens.push(withPos(Lexer.parseIdentOrKeyword(self, startIndex), self.pos));
+          return true;
+        }
+
+        return false;
+    }
+  },
+  lex: (self: Lexer): Result<TokenWithPos[], string> => {
+    while (true) {
+      const shouldContinue = Lexer.nextToken(self);
+      if (!shouldContinue) {
+        break;
+      }
+    }
+
+    if (self.index < self.source.length) {
+      return error(`Invalid token '${Lexer.peek(self)}' at ${Position.show(self.pos)}`);
+    }
+
+    return ok(self.tokens);
+  },
 };

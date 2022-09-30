@@ -12,7 +12,7 @@ import { Slice } from '../utils/slice';
 import { Arb } from './arbitraries/arb';
 
 const tokens = (input: string): Slice<TokenWithPos> => {
-  const toks = Slice.from(lex(input));
+  const toks = Slice.from(lex(input).unwrap());
   lexerContext.tokens = toks.elems;
   return toks;
 };

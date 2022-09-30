@@ -1,7 +1,7 @@
 import { DataType, genConstructors, match } from "itsamatch";
 import { Module, Prog } from "../ast/sweet";
 import { Error } from "../errors/errors";
-import { lex } from '../parse/lex';
+import { lex } from "../parse/lex";
 import { parse } from '../parse/parse';
 import { groupBy, last } from '../utils/array';
 import { block, pushMap } from '../utils/misc';
@@ -61,8 +61,8 @@ export const resolve = async (path: string, fs: FileSystem): Promise<[Prog, Erro
     };
 
     const source = await fs.readFile(path);
-    const tokens = Slice.from(lex(source));
-    const [decls, errs] = parse(tokens);
+    const tokens = lex(source).unwrap();
+    const [decls, errs] = parse(Slice.from(tokens));
     errors.push(...errs.map(Error.Parser));
 
     for (const decl of decls) {

@@ -1,8 +1,7 @@
 import { Maybe, none, some } from "../utils/maybe";
-import { fst, panic, Ref, ref, snd } from "../utils/misc";
+import { panic, Ref, ref, snd } from "../utils/misc";
 import { error, ok, Result } from "../utils/result";
 import { Slice } from "../utils/slice";
-import { ident } from "./lex";
 import { RecoveryStrategy } from "./recovery";
 import { Keyword, Position, Symbol, Token, TokenWithPos } from "./token";
 
