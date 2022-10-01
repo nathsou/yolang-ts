@@ -10,7 +10,7 @@ import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
 import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, pos, satisfy, satisfyBy, seq, squareBrackets, symbol, uninitialized } from './combinators';
-import { Const, Token, TokenWithPos } from './token';
+import { Const, Position, Token } from './token';
 
 export const expr = uninitialized<Expr>();
 const stmt = uninitialized<Stmt>();
@@ -42,7 +42,7 @@ const invalid = mapParserResult(
   ([token, rem, errs]) => {
     return token.match({
       Ok: token => [
-        ok(Expr.Error(Token.show(token))),
+        ok(Expr.Error(Token.show(token), token.pos)),
         rem,
         [...errs, {
           message: Token.show(token),
@@ -50,24 +50,6 @@ const invalid = mapParserResult(
         }],
       ],
       Error: err => [error(err), rem, errs] as ParserResult<Expr>,
-    });
-  }
-);
-
-const unexpected = mapParserResult(
-  satisfy(() => true),
-  ([token, rem, errs]) => {
-    return token.match({
-      Ok: token => [
-        ok(Expr.Error(`Unexpected token: '${Token.show(token)}'`)),
-        rem,
-        [...errs, { message: `Unexpected token: '${Token.show(token)}'`, pos: pos(rem.start) }],
-      ],
-      Error: err => [
-        ok(Expr.Error(err.message)),
-        rem,
-        errs,
-      ],
     });
   }
 );
@@ -208,16 +190,16 @@ const stringConst = satisfyBy<Const>(token =>
 
 const constVal: Parser<Const> = alt(integerConst, boolConst, stringConst);
 
-const variable = map(ident, Expr.Variable);
+const variable = map(ident, (name, pos) => Expr.Variable(name, pos));
 
 const block: Parser<Expr> = map(
   curlyBrackets(many(stmt2)),
-  stmts => {
+  (stmts, pos) => {
     if (stmts.length > 0 && last(stmts).stmt.variant === 'Expr' && !last(stmts).discarded) {
       const [front, last] = deconsLast(stmts.map(proj('stmt')));
-      return Expr.Block(front, some((last as VariantOf<Stmt, 'Expr'>).expr));
+      return Expr.Block(front, some((last as VariantOf<Stmt, 'Expr'>).expr), pos);
     } else {
-      return Expr.Block(stmts.map(proj('stmt')), none);
+      return Expr.Block(stmts.map(proj('stmt')), none, pos);
     }
   }
 );
@@ -238,7 +220,7 @@ export const primary = alt(
 const app = leftAssoc(
   primary,
   seq(optionalOrDefault(typeParamsInst, []), parens(optionalOrDefault(commas(expr), []))),
-  (lhs, [tyParams, args]) => Expr.Call(lhs, tyParams, args)
+  (lhs, [tyParams, args], pos) => Expr.Call(lhs, tyParams, args, pos)
 );
 
 export const tuple = alt(
@@ -270,7 +252,7 @@ export const tuple = alt(
       symbol(','),
       expect(commas(expr), `Expected expression in tuple after ','`),
     )),
-    ([_l, h, _, tl]) => Expr.Tuple([h, ...tl])
+    ([_l, h, _, tl], pos) => Expr.Tuple([h, ...tl], pos)
   ),
   app
 );
@@ -281,7 +263,7 @@ const array = alt(
       map(seq(expr, symbol(';'), integerConst), ([value, _, count]) => ArrayInit.fill({ value, count: count.value })),
       map(commas(expr, true), elems => ArrayInit.elems({ elems })),
     )
-  ), init => Expr.Array(init)),
+  ), (init, pos) => Expr.Array(init, pos)),
   tuple
 );
 
@@ -299,7 +281,7 @@ const namedStruct = alt(
     optionalOrDefault(angleBrackets(optionalOrDefault(commas(monoTy), [])), []),
     curlyBrackets(commas(structField, true)),
   ),
-    ([name, params, fields]) => Expr.Struct(name, params, fields)
+    ([name, params, fields], pos) => Expr.Struct(name, params, fields, pos)
   ),
   array
 );
@@ -315,15 +297,15 @@ const fieldAccess = chainLeft(
     ), `Expected identifier or integer after '.'`, { variant: 'ident', name: '<?>' }),
     optional(parens(map(optional(commas(expr)), args => args.orDefault([])))),
   ),
-  (lhs, _, [field, args]) => args.match({
+  (lhs, _, [field, args], pos) => args.match({
     Some: args => match(field, {
-      ident: ({ name }) => Expr.Call(Expr.Variable(name), [], [lhs, ...args]),
+      ident: ({ name }) => Expr.Call(Expr.Variable(name, pos), [], [lhs, ...args], pos),
       // this will fail in the inferencer as integers are not valid method names
-      int: ({ value: n }) => Expr.Call(Expr.Variable(`${n}`), [], [lhs, ...args]),
+      int: ({ value: n }) => Expr.Call(Expr.Variable(`${n}`, pos), [], [lhs, ...args], pos),
     }),
     None: () => match(field, {
-      ident: ({ name }) => Expr.FieldAccess(lhs, name),
-      int: ({ value: n }) => Expr.TupleIndexing(lhs, n),
+      ident: ({ name }) => Expr.FieldAccess(lhs, name, pos),
+      int: ({ value: n }) => Expr.TupleIndexing(lhs, n, pos),
     }),
   })
 );
@@ -338,9 +320,9 @@ const indexing = alt(
         expr,
       )),
     ),
-    ([lhs, args, rhs]) => rhs.match({
-      None: () => Expr.Call(Expr.Variable('[]'), [], [lhs, ...args]),
-      Some: ([_, val]) => Expr.Call(Expr.Variable('[]='), [], [lhs, ...args, val]),
+    ([lhs, args, rhs], pos) => rhs.match({
+      None: () => Expr.Call(Expr.Variable('[]', pos), [], [lhs, ...args], pos),
+      Some: ([_, val]) => Expr.Call(Expr.Variable('[]=', pos), [], [lhs, ...args, val], pos),
     }),
   ),
   fieldAccess
@@ -352,7 +334,7 @@ export const unary = alt(
   map(seq(
     string('-', 'not'),
     expectOrDefault(factor, `Expected expression after unary operator`, Expr.Error)
-  ), ([op, expr]) => Expr.Call(Expr.Variable(op), [], [expr])),
+  ), ([op, expr], pos) => Expr.Call(Expr.Variable(op, pos), [], [expr], pos)),
   factor
 );
 
@@ -360,42 +342,42 @@ const multiplicative = chainLeft(
   unary,
   string('*', '/', 'mod'),
   expect(unary, 'Expected expression after multiplicative operator'),
-  (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b])
+  (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
 );
 
 const additive = chainLeft(
   multiplicative,
   string('+', '-'),
   expect(multiplicative, 'Expected expression after additive operator'),
-  (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b])
+  (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
 );
 
 const comparison = chainLeft(
   additive,
   string('<=', '>=', '<', '>'),
   expect(additive, 'Expected expression after relational operator'),
-  (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b])
+  (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
 );
 
 const and = chainLeft(
   comparison,
   string('and', 'nand'),
   expect(comparison, 'Expected expression after logical operator'),
-  (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b]),
+  (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos),
 );
 
 const or = chainLeft(
   and,
   string('or', 'nor', 'xor', 'xnor'),
   expect(and, 'Expected expression after logical operator'),
-  (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b]),
+  (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos),
 );
 
 const equality = chainLeft(
   or,
   string('==', '!='),
   expect(or, 'Expected expression after equality operator'),
-  (a, op, b) => Expr.Call(Expr.Variable(op), [], [a, b])
+  (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
 );
 
 export const binaryExpr = equality;
@@ -420,7 +402,7 @@ const ifThenElse = alt(
         expectOrDefault(block, `Expected block after 'else'`, Expr.Block([])),
       ))
     ),
-    ([_, cond, then, elseifs, else_]) => Expr.IfThenElse(cond, then, elseifs, else_.map(snd))
+    ([_, cond, then, elseifs, else_], pos) => Expr.IfThenElse(cond, then, elseifs, else_.map(snd), pos)
   ),
   binaryExpr
 );
@@ -435,7 +417,7 @@ const letIn = alt(
     keyword('in'),
     expectOrDefault(expr, `Expected expression after 'in' in let expression`, Expr.Error),
   ),
-    ([_let, pattern, ann, _eq, val, _in, body]) => Expr.LetIn(pattern, ann, val, body)
+    ([_let, pattern, ann, _eq, val, _in, body], pos) => Expr.LetIn(pattern, ann, val, body, pos)
   ),
   ifThenElse
 );
@@ -459,7 +441,7 @@ const matchExpr = alt(
       optional(typeAnnotation),
       curlyBrackets(many(matchCase)),
     ),
-    ([_, expr, ann, cases]) => Expr.Match(expr, ann, cases)
+    ([_, expr, ann, cases], pos) => Expr.Match(expr, ann, cases, pos)
   ),
   letIn
 );
@@ -499,7 +481,7 @@ const closure = alt(
       symbol('->'),
       expectOrDefault(expr, `Expected expression after '->'`, Expr.Error),
     ),
-    ([_l, args, _, body]) => Expr.Closure(args, body)
+    ([_l, args, _, body], pos) => Expr.Closure(args, body, pos)
   ),
   matchExpr
 );
@@ -540,7 +522,7 @@ const letStmt = map(seq(
   expect(ident2('='), `Expected '=' after identifier`),
   expectOrDefault(expr, `Expected expression after '='`, Expr.Error),
 ),
-  ([kw, name, ann, _, expr]) => Stmt.Let(name, expr, Token.eq(kw, Token.Keyword('mut')), ann)
+  ([kw, name, ann, _, expr], pos) => Stmt.Let(name, expr, Token.eq(kw, Token.Keyword('mut', pos)), ann)
 );
 
 const whileStmt = alt(
@@ -572,11 +554,11 @@ const assignmentStmt = alt(
       ),
       expectOrDefault(expr, `Expected expression after assignment operator`, Expr.Error),
     ),
-    ([lhs, op, rhs]) => {
+    ([lhs, op, rhs], pos) => {
       if (op === '=') {
         return Stmt.Assignment(lhs, rhs);
       } else {
-        return Stmt.Assignment(lhs, Expr.Call(Expr.Variable(op.slice(0, -1)), [], [lhs, rhs]));
+        return Stmt.Assignment(lhs, Expr.Call(Expr.Variable(op.slice(0, -1), pos), [], [lhs, rhs], pos));
       }
     }
   ),
@@ -718,7 +700,7 @@ initParser(decl, alt(
   importDecl,
 ));
 
-export const parse = (tokens: Slice<TokenWithPos>): [Decl[], ParserError[]] => {
+export const parse = (tokens: Slice<Token>): [Decl[], ParserError[]] => {
   lexerContext.tokens = tokens.elems;
   const [res, _, errs] = consumeAll(many(decl)).ref(tokens);
   lexerContext.tokens = [];

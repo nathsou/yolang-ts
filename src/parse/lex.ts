@@ -1,18 +1,18 @@
 import { last } from "../utils/array";
 import { error, ok, Result } from "../utils/result";
 import { Char, isAlpha, isAlphaNum, isDigit } from "../utils/strings";
-import { Const, Keyword, Position, Token, TokenWithPos, withPos } from "./token";
+import { Const, Keyword, Position, Token } from "./token";
 
 const INSERT_SEMICOLONS = false;
 
-export const lex = (source: string): Result<TokenWithPos[], string> => {
-  return Lexer(source).lex();
+export const lex = (source: string, path: string): Result<Token[], string> => {
+  return Lexer(source, path).lex();
 };
 
-const Lexer = (source: string) => {
+const Lexer = (source: string, path: string) => {
   let index = 0;
-  const tokens: TokenWithPos[] = [];
-  const pos: Position = { line: 1, column: 1 };
+  const tokens: Token[] = [];
+  const pos: Position = { line: 1, column: 1, path };
   const compoundOpIdents = new Set(['not', 'mod', 'and', 'or', 'nand', 'nor', 'xor', 'xnor']);
 
   const advance = (): Char | undefined => {
@@ -29,7 +29,7 @@ const Lexer = (source: string) => {
       pos.column = 1;
 
       if (INSERT_SEMICOLONS && shouldInsertSemicolon()) {
-        tokens.push(withPos(Token.Symbol(';'), pos));
+        tokens.push(Token.Symbol(';', { ...pos }));
       }
     }
 
@@ -155,14 +155,14 @@ const Lexer = (source: string) => {
     }
 
     if (lexeme === 'true' || lexeme === 'false') {
-      return Token.Const(Const.bool(lexeme === 'true'));
+      return Token.Const(Const.bool(lexeme === 'true'), { ...pos });
     }
 
     if (Keyword.is(lexeme)) {
-      return Token.Keyword(lexeme);
+      return Token.Keyword(lexeme, { ...pos });
     }
 
-    return Token.Identifier(lexeme);
+    return Token.Identifier(lexeme, { ...pos });
   };
 
   // https://medium.com/golangspec/automatic-semicolon-insertion-in-go-1990338f2649
@@ -191,7 +191,7 @@ const Lexer = (source: string) => {
     const c = advance();
 
     if (c === undefined) {
-      tokens.push(withPos(Token.EOF(), pos));
+      tokens.push(Token.EOF(pos));
       return false;
     }
 
@@ -208,117 +208,87 @@ const Lexer = (source: string) => {
       case '\'':
       case '_':
       case '#':
-        tokens.push(withPos(Token.Symbol(c), pos));
+        tokens.push(Token.Symbol(c, { ...pos }));
         return true;
       case '.': {
         let token: Token;
         if (match('.')) {
           if (match('.')) {
-            token = Token.Symbol('...');
+            token = Token.Symbol('...', { ...pos });
           } else {
-            token = Token.Symbol('..');
+            token = Token.Symbol('..', { ...pos });
           }
         } else {
-          token = Token.Symbol('.');
+          token = Token.Symbol('.', { ...pos });
         }
 
-        tokens.push(withPos(token, pos));
+        tokens.push(token);
         return true;
       }
       case '+':
-        tokens.push(withPos(
-          Token.Identifier(match('=') ? '+=' : '+'),
-          pos
-        ));
+        tokens.push(Token.Identifier(match('=') ? '+=' : '+', { ...pos }));
         return true;
       case '*':
-        tokens.push(withPos(
-          Token.Identifier(match('=') ? '*=' : '*'),
-          pos
-        ));
+        tokens.push(Token.Identifier(match('=') ? '*=' : '*', { ...pos }));
         return true;
       case '=': {
         let token: Token;
         if (match('>')) {
-          token = Token.Symbol('=>');
+          token = Token.Symbol('=>', { ...pos });
         } else if (match('=')) {
-          token = Token.Identifier('==');
+          token = Token.Identifier('==', { ...pos });
         } else {
-          token = Token.Identifier('=');
+          token = Token.Identifier('=', { ...pos });
         }
 
-        tokens.push(withPos(token, pos));
+        tokens.push(token);
         return true;
       }
       case '<':
-        tokens.push(withPos(
-          Token.Identifier(match('=') ? '<=' : '<'),
-          pos
-        ));
+        tokens.push(Token.Identifier(match('=') ? '<=' : '<', { ...pos }));
         return true;
       case '>':
-        tokens.push(withPos(
-          Token.Identifier(match('=') ? '>=' : '>'),
-          pos
-        ));
+        tokens.push(Token.Identifier(match('=') ? '>=' : '>', { ...pos }));
         return true;
       case '/':
         if (match('/')) {
           skipLine();
         } else {
-          tokens.push(withPos(
-            Token.Identifier(match('=') ? '/=' : '/'),
-            pos
-          ));
+          tokens.push(Token.Identifier(match('=') ? '/=' : '/', { ...pos }));
         }
 
         return true;
       case '-': {
         let token: Token;
         if (match('>')) {
-          token = Token.Symbol('->');
+          token = Token.Symbol('->', { ...pos });
         } else if (match('=')) {
-          token = Token.Identifier('-=');
+          token = Token.Identifier('-=', { ...pos });
         } else if (isDigit(peek()!)) {
-          token = Token.Const(parseNumber(startIndex));
+          token = Token.Const(parseNumber(startIndex), { ...pos });
         } else {
-          token = Token.Identifier('-');
+          token = Token.Identifier('-', { ...pos });
         }
 
-        tokens.push(withPos(token, pos));
+        tokens.push(token);
         return true;
       }
       case '!':
-        tokens.push(withPos(
-          Token.Identifier(match('=') ? '!=' : '!'),
-          pos
-        ));
-        return true;
-      case '>':
-        tokens.push(withPos(
-          Token.Identifier(match('=') ? '>=' : '>'),
-          pos
-        ));
-        return true;
-      case '<':
-        tokens.push(withPos(
-          Token.Identifier(match('=') ? '<=' : '<'),
-          pos
-        ));
+        tokens.push(Token.Identifier(match('=') ? '!=' : '!', { ...pos }));
         return true;
       case '"':
         const str = Const.str(parseString(startIndex));
-        tokens.push(withPos(Token.Const(str), pos));
+        tokens.push(Token.Const(str, { ...pos }));
         return true;
       default:
         if (isDigit(c)) {
           const n = parseNumber(startIndex);
-          tokens.push(withPos(Token.Const(n), pos));
+          tokens.push(Token.Const(n, { ...pos }));
           return true;
         }
 
         if (isAlpha(c)) {
-          tokens.push(withPos(parseIdentOrKeyword(startIndex), pos));
+          tokens.push(parseIdentOrKeyword(startIndex));
           return true;
         }
 
@@ -326,7 +296,7 @@ const Lexer = (source: string) => {
     }
   };
 
-  const lex = (): Result<TokenWithPos[], string> => {
+  const lex = (): Result<Token[], string> => {
     while (true) {
       const shouldContinue = nextToken();
       if (!shouldContinue) {

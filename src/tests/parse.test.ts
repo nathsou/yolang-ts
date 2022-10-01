@@ -6,13 +6,14 @@ import { MonoTy } from '../infer/types';
 import { lexerContext, Parser } from '../parse/combinators';
 import { lex } from '../parse/lex';
 import { binaryExpr, expr, structTy, tuple, unary } from '../parse/parse';
-import { Const, TokenWithPos } from '../parse/token';
+import { Const, Token } from '../parse/token';
 import { none } from '../utils/maybe';
+import { withoutDeep } from '../utils/misc';
 import { Slice } from '../utils/slice';
 import { Arb } from './arbitraries/arb';
 
-const tokens = (input: string): Slice<TokenWithPos> => {
-  const toks = Slice.from(lex(input).unwrap());
+const tokens = (input: string): Slice<Token> => {
+  const toks = Slice.from(lex(input, '').unwrap());
   lexerContext.tokens = toks.elems;
   return toks;
 };
@@ -21,7 +22,8 @@ const expectExpr = (parser: Parser<Expr>, input: string, expected: Expr): void =
   const [res, _, errs] = parser.ref(tokens(input));
   expect(res.isOk()).toBe(true);
   expect(errs).toHaveLength(0);
-  expect(res.unwrap()).toEqual(expected);
+  const actual = res.unwrap();
+  expect(withoutDeep(actual, 'pos')).toMatchObject(withoutDeep(expected, 'pos'));
 };
 
 const expectType = (parser: Parser<MonoTy>, input: string, expected: MonoTy): void => {

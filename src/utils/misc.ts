@@ -93,3 +93,35 @@ export const block = <T>(f: () => T): T => f();
 export const letIn = <T, U>(val: T, f: (val: T) => U): U => f(val);
 
 export const array = <T>(): T[] => [];
+
+export const without = <T, K extends keyof T>(obj: T, ...keys: K[]): Omit<T, K> => {
+  const without = { ...obj };
+
+  for (const key of keys) {
+    delete without[key];
+  }
+
+  return without;
+};
+
+type Id<T> = {} & { [P in keyof T]: T[P] };
+type OmitDistributive<T, K extends PropertyKey> = T extends any ? (T extends object ? Id<OmitRec<T, K>> : T) : never;
+type OmitRec<T extends any, K extends PropertyKey> = Omit<{ [P in keyof T]: OmitDistributive<T[P], K> }, K>;
+
+export const withoutDeep = <T extends {}, K extends string>(obj: T, ...keys: K[]): OmitRec<T, K> => {
+  const aux = (v: any): any => {
+    if (typeof v === 'object') {
+      if (Array.isArray(v)) {
+        return v.map(aux);
+      }
+
+      return without(Object.fromEntries(
+        Object.entries(v).map(([key, val]) => [key, aux(val)])
+      ), keys as any);
+    }
+
+    return v;
+  };
+
+  return aux(obj);
+};

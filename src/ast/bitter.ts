@@ -432,7 +432,12 @@ export const Decl = {
           NameEnv.declareTypeParam(nameEnv, name, ty.orDefault(() => MonoTy.Param(name)));
         });
 
-        const withoutPatterns = rewriteFuncArgsPatternMatching(args, body.orDefault(sweet.Expr.Block([], none)), nameEnv, errors);
+        const withoutPatterns = rewriteFuncArgsPatternMatching(
+          args,
+          body.orDefault(sweet.Expr.Block([])),
+          nameEnv,
+          errors
+        );
 
         return [Decl.Function({
           attributes,

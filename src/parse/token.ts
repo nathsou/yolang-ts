@@ -1,22 +1,41 @@
-import { DataType, genConstructors, VariantOf, match, matchMany } from "itsamatch";
+import { DataType, genConstructors, match, matchMany } from "itsamatch";
 import { MonoTy } from "../infer/types";
+import { FileSystem } from "../resolve/fileSystem";
 
-export type Token = DataType<{
+export type Position = {
+  line: number,
+  column: number,
+  path: string,
+};
+
+export const Position = {
+  DONT_CARE: { line: 0, column: 0, path: '' } as Readonly<Position>,
+  show: ({ line, column, path }: Position): string => `${path}:${line}:${column}`,
+  showWithShortPath: ({ line, column, path }: Position, fs: FileSystem): string => {
+    const shortPath = fs.relative(process.cwd(), path);
+    const finalPath = shortPath.length < path.length ? './' + shortPath : path;
+    return `${finalPath}:${line}:${column}`;
+  },
+};
+
+export type WithPos<T> = { [K in keyof T]: T[K] & { pos: Position } };
+
+export type Token = DataType<WithPos<{
   Symbol: { value: Symbol },
   Keyword: { value: Keyword },
   Const: { value: Const },
   Identifier: { name: string },
   Invalid: { lexeme: string },
   EOF: {},
-}>;
+}>>;
 
 export const Token = {
-  Symbol: (value: Symbol): Token => ({ variant: 'Symbol', value }),
-  Keyword: (value: Keyword): Token => ({ variant: 'Keyword', value }),
-  Const: (value: Const): Token => ({ variant: 'Const', value }),
-  Identifier: (name: string): Token => ({ variant: 'Identifier', name }),
-  Invalid: (lexeme: string): Token => ({ variant: 'Invalid', lexeme }),
-  EOF: (): Token => ({ variant: 'EOF' }),
+  Symbol: (value: Symbol, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Symbol', value, pos }),
+  Keyword: (value: Keyword, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Keyword', value, pos }),
+  Const: (value: Const, pos: Position): Token => ({ variant: 'Const', value, pos }),
+  Identifier: (name: string, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Identifier', name, pos }),
+  Invalid: (lexeme: string, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Invalid', lexeme, pos }),
+  EOF: (pos: Position = Position.DONT_CARE): Token => ({ variant: 'EOF', pos }),
   show: (token: Token) => match(token, {
     Symbol: ({ value }) => value,
     Keyword: ({ value }) => value,
@@ -35,24 +54,6 @@ export const Token = {
     _: () => false,
   }),
 };
-
-export type Position = {
-  line: number,
-  column: number,
-};
-
-export const Position = {
-  show: ({ line, column }: Position): string => `${line}:${column}`,
-};
-
-export type TokenWithPos = DataType<{
-  [Variant in Token['variant']]: VariantOf<Token, Variant> & { pos: Position }
-}>;
-
-export const withPos = (token: Token, pos: Position): TokenWithPos => ({
-  ...token,
-  pos: { ...pos },
-});
 
 const symbols = [
   '->', '=>', '(', ')', ',', ';', '{', '}',
@@ -84,9 +85,9 @@ export type Keyword = (typeof keywords)[number];
 
 export const Keyword = {
   values: keywords,
-  valuesSet: new Set(keywords),
+  valuesSet: new Set<string>(keywords),
   eq: (a: Keyword, b: Keyword) => a === b,
-  is: (ident: string): ident is Keyword => Keyword.valuesSet.has(ident as any),
+  is: (ident: string): ident is Keyword => Keyword.valuesSet.has(ident),
 };
 
 export type Const = DataType<{
@@ -140,18 +141,4 @@ export const Const = {
     'str': () => false,
     _: () => true,
   }),
-};
-
-const spaces = {
-  space: ' ',
-  newline: '\n',
-  tab: '\t',
-  carriageReturn: '\r',
-} as const;
-
-export type Space = (typeof spaces)[keyof typeof spaces];
-
-export const Spaces = {
-  enum: spaces,
-  set: new Set<string>(Object.values(spaces)),
 };

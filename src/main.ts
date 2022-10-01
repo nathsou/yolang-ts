@@ -122,13 +122,14 @@ const timeAsync = async <T>(fn: () => Promise<T>): Promise<[T, number]> => {
 };
 
 async function yo(source: string, options: Options): Promise<number> {
-  const logErrors = (errors: Error[]) => {
-    errors.forEach(err => {
-      console.log('\x1b[31m%s\x1b[0m', Error.show(err), '\n');
-    });
+  const nfs = await createNodeFileSystem();
+
+  const logErrors = async (errors: Error[]) => {
+    for (const err of errors) {
+      console.log('\x1b[31m%s\x1b[0m', await Error.show(err, nfs), '\n');
+    }
   };
 
-  const nfs = await createNodeFileSystem();
   const [[sweetProg, errs1], resolveDuration] = await timeAsync(() => resolve(source, nfs));
 
   if (options['show:sweet']) {
@@ -137,7 +138,7 @@ async function yo(source: string, options: Options): Promise<number> {
   }
 
   if (errs1.length > 0) {
-    logErrors(errs1);
+    await logErrors(errs1);
     return 1;
   }
 
@@ -149,14 +150,14 @@ async function yo(source: string, options: Options): Promise<number> {
   }
 
   if (errs2.length > 0) {
-    logErrors(errs2);
+    await logErrors(errs2);
     return 1;
   }
 
   const [errs3, inferDuration] = time(() => typeCheck(bitterProg));
 
   if (errs3.length > 0) {
-    logErrors(errs3);
+    await logErrors(errs3);
     return 1;
   }
 
@@ -177,14 +178,14 @@ async function yo(source: string, options: Options): Promise<number> {
   }
 
   if (errs4.length > 0) {
-    logErrors(errs4);
+    await logErrors(errs4);
     return 1;
   }
 
   const [[coreProg, errs5], coreDuration] = time(() => core.Prog.from(monoProg, instances));
 
   if (errs5.length > 0) {
-    logErrors(errs5);
+    await logErrors(errs5);
     return 1;
   }
 
@@ -272,10 +273,7 @@ async function yo(source: string, options: Options): Promise<number> {
           return 0;
         case 'host':
           try {
-            const stdout = execFileSync(outFile);
-            // remove trailing newline
-            const filteredStdout = stdout.at(-1) === 10 ? stdout.slice(0, -1) : stdout;
-            console.log(filteredStdout.toString('utf-8'));
+            process.stdout.write(execFileSync(outFile));
             return 0;
           } catch (err: any) {
             console.error(err);

@@ -11,7 +11,7 @@ import { Env, FunDecl } from './env';
 import { Row } from './structs';
 import { MAX_TUPLE_INDEX, Tuple } from './tuples';
 import { TypeContext } from './typeContext';
-import { MonoTy, PolyTy } from './types';
+import { MonoTy, PolyTy, TypeParams } from './types';
 import { unifyMut, unifyPure } from './unification';
 
 export type TypingError = DataType<{
@@ -68,8 +68,16 @@ const inferExpr = (
   ctx: TypeContext,
   errors: Error[]
 ): void => {
+  const pushError = (err: Error) => {
+    if (err.pos == null) {
+      err.pos = expr.sweet.pos;
+    }
+
+    errors.push(err);
+  };
+
   const unify = (s: MonoTy, t: MonoTy): void => {
-    errors.push(...unifyMut(s, t, ctx));
+    unifyMut(s, t, ctx).forEach(pushError);
   };
 
   const { env } = ctx;
@@ -85,7 +93,7 @@ const inferExpr = (
         return some(ty);
       },
       None: () => {
-        errors.push(Error.Typing({ type: 'UnboundVariable', name: name.original }));
+        pushError(Error.Typing({ type: 'UnboundVariable', name: name.original }));
         return none;
       },
     });
@@ -100,7 +108,7 @@ const inferExpr = (
     const funcs = Env.lookupFuncs(env, funcName);
 
     if (funcs.length === 0) {
-      errors.push(Error.Typing({ type: 'UnknownFunction', name: funcName }));
+      pushError(Error.Typing({ type: 'UnknownFunction', name: funcName }));
       return none;
     }
 
@@ -135,7 +143,7 @@ const inferExpr = (
           left: resolvedFunc => {
             zip(resolvedFunc.args, args).forEach(([funcArg, receivedArg]) => {
               if (funcArg.mutable && !Expr.isMutable(receivedArg)) {
-                errors.push(Error.Typing({
+                pushError(Error.Typing({
                   type: 'CannotUseImmutableValueForMutFuncArg',
                   func: funcName,
                   arg: funcArg.name.original
@@ -155,9 +163,9 @@ const inferExpr = (
             });
 
             unify(funTy, actualFunTy);
-            if (call.typeParams.length > 0) {
+            if (paramsInst.length > 0 && call.typeParams.length > 0) {
               if (call.typeParams.length !== paramsInst.length) {
-                errors.push(Error.Typing({
+                pushError(Error.Typing({
                   type: 'IncorrectNumberOfTypeParams',
                   name: resolvedFunc.name.original,
                   expected: paramsInst.length,
@@ -177,7 +185,7 @@ const inferExpr = (
             }
           },
           right: err => {
-            errors.push(Error.Typing(err));
+            pushError(Error.Typing(err));
           },
         });
       });
@@ -311,7 +319,7 @@ const inferExpr = (
       TypeContext.resolveTypeAlias(ctx, name).match({
         Some: ({ ty }) => {
           if (ty.variant !== 'Struct') {
-            errors.push(Error.Typing({ type: 'UndeclaredStruct', name }));
+            pushError(Error.Typing({ type: 'UndeclaredStruct', name }));
           } else {
             const expectedFields = Row.fields(ty.row);
             const expectedFieldNames = new Set(expectedFields.map(proj('0')));
@@ -321,9 +329,9 @@ const inferExpr = (
             const extraFields = diffSet(receivedFieldnames, expectedFieldNames);
 
             if (missingFields.size > 0) {
-              errors.push(Error.Typing({ type: 'MissingStructFields', name, fields: [...missingFields] }));
+              pushError(Error.Typing({ type: 'MissingStructFields', name, fields: [...missingFields] }));
             } else if (extraFields.size > 0) {
-              errors.push(Error.Typing({ type: 'ExtraneoussStructFields', name, fields: [...extraFields] }));
+              pushError(Error.Typing({ type: 'ExtraneoussStructFields', name, fields: [...extraFields] }));
             } else {
               fields.forEach(({ name: fieldName, value }) => {
                 const [, expectedFieldTy] = expectedFields.find(([name]) => name === fieldName)!;
@@ -343,13 +351,13 @@ const inferExpr = (
           }
         },
         None: () => {
-          errors.push(Error.Typing({ type: 'UndeclaredStruct', name }));
+          pushError(Error.Typing({ type: 'UndeclaredStruct', name }));
         },
       });
     },
     TupleIndexing: ({ lhs, index }) => {
       if (index > MAX_TUPLE_INDEX) {
-        errors.push(Error.Typing({ type: 'TupleIndexTooBig', index }));
+        pushError(Error.Typing({ type: 'TupleIndexTooBig', index }));
       } else {
         inferExpr(lhs, ctx, errors);
         const elemsTys = gen(index + 1, MonoTy.fresh);
@@ -361,7 +369,7 @@ const inferExpr = (
       }
     },
     Error: ({ message }) => {
-      errors.push(Error.Typing({ type: 'ParsingError', message }));
+      pushError(Error.Typing({ type: 'ParsingError', message }));
     },
   });
 };
@@ -377,12 +385,16 @@ const inferPattern = (pat: Pattern, expr: Expr, ctx: TypeContext, errors: Error[
 };
 
 const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): void => {
+  const pushError = (err: Error) => {
+    errors.push(err);
+  };
+
   match(stmt, {
     Let: ({ name, expr, annotation }) => {
       inferExpr(expr, ctx, errors);
 
       annotation.do(ann => {
-        errors.push(...unifyMut(expr.ty, ann, ctx));
+        unifyMut(expr.ty, ann, ctx).forEach(pushError);
       });
 
       const genTy = MonoTy.generalize(ctx.env, expr.ty);
@@ -397,9 +409,9 @@ const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): void => {
       unifyMut(lhsTy, rhsTy, ctx);
 
       if (!ASSIGNABLE_EXPRESSIONS.has(lhs.variant)) {
-        errors.push(Error.Typing({ type: 'UnassignableExpression', expr: lhs }));
+        pushError(Error.Typing({ type: 'UnassignableExpression', expr: lhs }));
       } else if (!Expr.isMutable(lhs)) { // mutability check
-        errors.push(Error.Typing({ type: 'ImmutableValue', expr: lhs }));
+        pushError(Error.Typing({ type: 'ImmutableValue', expr: lhs }));
       }
     },
     Expr: ({ expr }) => {
@@ -422,19 +434,23 @@ const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): void => {
           unifyMut(expectedRetTy, returnTy, ctx);
         },
         None: () => {
-          errors.push(Error.Typing({ type: 'ReturnUsedOutsideFunctionBody' }));
+          pushError(Error.Typing({ type: 'ReturnUsedOutsideFunctionBody' }));
         },
       });
     },
     Error: ({ message }) => {
-      errors.push(Error.Typing({ type: 'ParsingError', message }));
+      pushError(Error.Typing({ type: 'ParsingError', message }));
     },
   });
 };
 
 export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void => {
+  const pushError = (err: Error) => {
+    errors.push(err);
+  };
+
   const unify = (s: MonoTy, t: MonoTy, context = ctx): void => {
-    errors.push(...unifyMut(s, t, context));
+    unifyMut(s, t, context).forEach(pushError);
   };
 
   match(decl, {
@@ -442,7 +458,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void =
       const { name, typeParams, args, returnTy, body } = f;
 
       if (body.isNone() && returnTy.isNone()) {
-        errors.push(Error.Typing({ type: 'MissingFuncPrototypeReturnTy', name: name.original }));
+        pushError(Error.Typing({ type: 'MissingFuncPrototypeReturnTy', name: name.original }));
         return;
       }
 
@@ -484,7 +500,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void =
     },
     Import: ({ }) => { },
     Error: ({ message }) => {
-      errors.push(Error.Typing({ type: 'ParsingError', message }));
+      pushError(Error.Typing({ type: 'ParsingError', message }));
     },
   });
 };

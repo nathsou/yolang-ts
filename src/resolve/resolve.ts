@@ -61,7 +61,7 @@ export const resolve = async (path: string, fs: FileSystem): Promise<[Prog, Erro
     };
 
     const source = await fs.readFile(path);
-    const tokens = lex(source).unwrap();
+    const tokens = lex(source, path).unwrap();
     const [decls, errs] = parse(Slice.from(tokens));
     errors.push(...errs.map(Error.Parser));
 

@@ -3,7 +3,7 @@ import { panic, Ref, ref, snd } from "../utils/misc";
 import { error, ok, Result } from "../utils/result";
 import { Slice } from "../utils/slice";
 import { RecoveryStrategy } from "./recovery";
-import { Keyword, Position, Symbol, Token, TokenWithPos } from "./token";
+import { Keyword, Position, Symbol, Token } from "./token";
 
 // Syntax Error Recovery in Parsing Expression Grammars - https://arxiv.org/abs/1806.11150
 
@@ -18,7 +18,7 @@ export type ParserError = {
 };
 
 export const lexerContext = {
-  tokens: new Array<TokenWithPos>(),
+  tokens: new Array<Token>(),
 };
 
 export const pos = (index: number): Position => {
@@ -74,10 +74,11 @@ export const token = (token: Token): Parser<Token> => {
 export const symbol = (symb: Symbol) => token(Token.Symbol(symb));
 export const keyword = (keyword: Keyword) => token(Token.Keyword(keyword));
 
-export const map = <T, U>(p: Parser<T>, f: (t: T, tokens: Slice<Token>) => U): Parser<U> => {
+export const map = <T, U>(p: Parser<T>, f: (t: T, pos: Position, tokens: Slice<Token>) => U): Parser<U> => {
   return ref(tokens => {
     const [t, rem, errs] = p.ref(tokens);
-    return [t.map(x => f(x, tokens)), rem, errs];
+    const pos = Slice.head(tokens).mapWithDefault(t => t.pos, Position.DONT_CARE);
+    return [t.map(x => f(x, pos, tokens)), rem, errs];
   });
 };
 
@@ -191,11 +192,11 @@ export const optionalOrDefault = <T>(p: Parser<T>, def: T): Parser<T> => {
 export const leftAssoc = <L, R>(
   left: Parser<L>,
   right: Parser<R>,
-  combine: (left: L, right: R) => L
+  combine: (left: L, right: R, pos: Position) => L
 ): Parser<L> => {
   return map(
     seq(left, many(right)),
-    ([h, tl]) => tl.length === 0 ? h : tl.reduce(combine, h)
+    ([h, tl], pos) => tl.length === 0 ? h : tl.reduce((l, r) => combine(l, r, pos), h)
   );
 };
 
@@ -203,9 +204,9 @@ export const chainLeft = <L, Op, R>(
   l: Parser<L>,
   op: Parser<Op>,
   r: Parser<R>,
-  combine: (lhs: L, op: Op, rhs: R) => L
+  combine: (lhs: L, op: Op, rhs: R, pos: Position) => L
 ): Parser<L> => {
-  return leftAssoc(l, seq(op, r), (lhs, [op, rhs]) => combine(lhs, op, rhs));
+  return leftAssoc(l, seq(op, r), (lhs, [op, rhs], pos) => combine(lhs, op, rhs, pos));
 };
 
 export const sepBy = <S>(sep: Parser<S>) => <T>(p: Parser<T>, allowEmpty = false): Parser<T[]> => {
@@ -352,9 +353,9 @@ export const nestedBy = (left: Symbol, right: Symbol) => <T>(p: Parser<T>): Pars
   );
 };
 
-export const effect = <T>(p: Parser<T>, action: (data: T, tokens: Slice<Token>) => void): Parser<T> => {
-  return map(p, (data, tokens) => {
-    action(data, tokens);
+export const effect = <T>(p: Parser<T>, action: (data: T, pos: Position, tokens: Slice<Token>) => void): Parser<T> => {
+  return map(p, (data, pos, tokens) => {
+    action(data, pos, tokens);
     return data;
   });
 };

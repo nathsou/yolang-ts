@@ -18,6 +18,7 @@ export const createNodeFileSystem = async (): Promise<FileSystem> => {
       );
     },
     resolve: path.resolve,
+    relative: path.relative,
     readFile: async path => await fs.readFile(path, 'utf8'),
     parentDir: path.dirname,
     stdPath: __dirname + '/..',

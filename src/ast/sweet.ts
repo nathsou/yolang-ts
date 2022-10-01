@@ -1,6 +1,6 @@
 import { DataType, genConstructors, match, VariantOf } from 'itsamatch';
 import { MonoTy, TypeParam, TypeParams } from '../infer/types';
-import { Const, operators } from '../parse/token';
+import { Const, operators, Position, WithPos } from '../parse/token';
 import { joinWith, last } from '../utils/array';
 import { Maybe, none } from '../utils/maybe';
 import { parenthesized } from '../utils/misc';
@@ -59,7 +59,7 @@ export const ArrayInit = {
   }),
 };
 
-export type Expr = DataType<{
+export type Expr = DataType<WithPos<{
   Const: { value: Const },
   Variable: { name: string },
   Call: { lhs: Expr, typeParams: MonoTy[], args: Expr[] },
@@ -75,24 +75,24 @@ export type Expr = DataType<{
   Struct: { name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[] },
   TupleIndexing: { lhs: Expr, index: number },
   LetIn: { pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr },
-}>;
+}>>;
 
 export const Expr = {
-  Const: (c: Const): Expr => ({ variant: 'Const', value: c }),
-  Variable: (name: string): Expr => ({ variant: 'Variable', name }),
-  Call: (lhs: Expr, typeParams: MonoTy[], args: Expr[]): Expr => ({ variant: 'Call', lhs, typeParams, args }),
-  Error: (message: string): Expr => ({ variant: 'Error', message }),
-  Closure: (args: Argument[], body: Expr): Expr => ({ variant: 'Closure', args, body }),
-  Block: (statements: Stmt[], lastExpr?: Maybe<Expr>): Expr => ({ variant: 'Block', statements, lastExpr: lastExpr ?? none }),
-  IfThenElse: (condition: Expr, then: Expr, elseifs: { cond: Expr, body: Expr }[], else_: Maybe<Expr>): Expr => ({ variant: 'IfThenElse', condition, then, elseifs, else_ }),
-  FieldAccess: (lhs: Expr, field: string): Expr => ({ variant: 'FieldAccess', lhs, field }),
-  Tuple: (elements: Expr[]): Expr => ({ variant: 'Tuple', elements }),
-  Array: (init: ArrayInit): Expr => ({ variant: 'Array', init }),
-  Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[]): Expr => ({ variant: 'Match', annotation, expr, cases }),
-  Parenthesized: (expr: Expr): Expr => ({ variant: 'Parenthesized', expr }),
-  Struct: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[]): Expr => ({ variant: 'Struct', name, typeParams, fields }),
-  TupleIndexing: (lhs: Expr, index: number): Expr => ({ variant: 'TupleIndexing', lhs, index }),
-  LetIn: (pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr): Expr => ({ variant: 'LetIn', pattern, annotation, value, body }),
+  Const: (c: Const, pos: Position = Position.DONT_CARE): Expr => ({ variant: 'Const', value: c, pos }),
+  Variable: (name: string, pos: Position = Position.DONT_CARE): Expr => ({ variant: 'Variable', name, pos }),
+  Call: (lhs: Expr, typeParams: MonoTy[], args: Expr[], pos: Position = Position.DONT_CARE): Expr => ({ variant: 'Call', lhs, typeParams, args, pos }),
+  Error: (message: string, pos: Position = Position.DONT_CARE): Expr => ({ variant: 'Error', message, pos }),
+  Closure: (args: Argument[], body: Expr, pos: Position = Position.DONT_CARE): Expr => ({ variant: 'Closure', args, body, pos }),
+  Block: (statements: Stmt[], lastExpr?: Maybe<Expr>, pos: Position = Position.DONT_CARE): Expr => ({ variant: 'Block', statements, lastExpr: lastExpr ?? none, pos }),
+  IfThenElse: (condition: Expr, then: Expr, elseifs: { cond: Expr, body: Expr }[], else_: Maybe<Expr>, pos: Position): Expr => ({ variant: 'IfThenElse', condition, then, elseifs, else_, pos }),
+  FieldAccess: (lhs: Expr, field: string, pos: Position = Position.DONT_CARE): Expr => ({ variant: 'FieldAccess', lhs, field, pos }),
+  Tuple: (elements: Expr[], pos: Position = Position.DONT_CARE): Expr => ({ variant: 'Tuple', elements, pos }),
+  Array: (init: ArrayInit, pos: Position = Position.DONT_CARE): Expr => ({ variant: 'Array', init, pos }),
+  Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[], pos: Position = Position.DONT_CARE): Expr => ({ variant: 'Match', annotation, expr, cases, pos }),
+  Parenthesized: (expr: Expr, pos: Position = Position.DONT_CARE): Expr => ({ variant: 'Parenthesized', expr, pos }),
+  Struct: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], pos: Position = Position.DONT_CARE): Expr => ({ variant: 'Struct', name, typeParams, fields, pos }),
+  TupleIndexing: (lhs: Expr, index: number, pos: Position = Position.DONT_CARE): Expr => ({ variant: 'TupleIndexing', lhs, index, pos }),
+  LetIn: (pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr, pos: Position = Position.DONT_CARE): Expr => ({ variant: 'LetIn', pattern, annotation, value, body, pos }),
   show: (expr: Expr): string => match(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
