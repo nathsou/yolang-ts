@@ -124,7 +124,7 @@ const timeAsync = async <T>(fn: () => Promise<T>): Promise<[T, number]> => {
 async function yo(source: string, options: Options): Promise<number> {
   const logErrors = (errors: Error[]) => {
     errors.forEach(err => {
-      console.log('\x1b[31m%s\x1b[0m', Error.show(err));
+      console.log('\x1b[31m%s\x1b[0m', Error.show(err), '\n');
     });
   };
 

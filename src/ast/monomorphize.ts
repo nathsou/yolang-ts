@@ -5,7 +5,7 @@ import { inferDecl } from "../infer/infer";
 import { Subst } from "../infer/subst";
 import { TypeContext } from "../infer/typeContext";
 import { MonoTy, PolyTy, showTyVarId, TypeParams } from "../infer/types";
-import { zip } from "../utils/array";
+import { uniqueBy, zip } from "../utils/array";
 import { some } from "../utils/maybe";
 import { assert, block, id } from "../utils/misc";
 import { Decl, Module, Prog } from "./bitter";
@@ -91,13 +91,18 @@ const monomorphizeModule = (mod: Module, instances: Mono['Instances'], errors: E
   let monomorphizedSomething = false;
 
   for (const decl of mod.decls) {
-    if (decl.variant === 'Function' && PolyTy.isPolymorphic(decl.funTy)) {
-      for (const params of decl.instances.values()) {
-        monomorphize(ctx, decl, params, errors);
+    if (decl.variant === 'Function' && decl.instances.length > 0) {
+      const uniqueInstances = uniqueBy(
+        decl.instances.filter(params => params.every(MonoTy.isDetermined)),
+        TypeParams.hash
+      );
+
+      for (const params of uniqueInstances.values()) {
+        monomorphize(ctx, decl, params.map(MonoTy.deref), errors);
         monomorphizedSomething = true;
       }
 
-      decl.instances.clear();
+      decl.instances = [];
     }
   }
 

@@ -364,7 +364,7 @@ export type Decl = DataType<{
     returnTy: Maybe<MonoTy>,
     body: Maybe<Expr>,
     funTy: PolyTy,
-    instances: Map<string, MonoTy[]>,
+    instances: MonoTy[][],
   },
   TypeAlias: {
     pub: boolean,
@@ -419,7 +419,7 @@ export const Decl = {
       }),
       returnTy,
       funTy,
-      instances: new Map(),
+      instances: [],
     };
   },
   TypeAlias,

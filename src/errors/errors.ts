@@ -50,7 +50,8 @@ export const Error = {
       ExtraneoussStructFields: ({ name, fields }) => `Extraneous fields in struct constructor expression for '${name}': ${fields.join(', ')}`,
       CannotUseImmutableValueForMutFuncArg: ({ func, arg }) => `Cannot use an immutable value in place of a mutable argument: '${arg}' in function '${func}'`,
       MissingFuncPrototypeReturnTy: ({ name }) => `Missing return type in function prototype for '${name}'`,
-      ReturnUsedOutsideFunctionBody: () => `return expression used outside of a function body`,
+      ReturnUsedOutsideFunctionBody: () => `Return expression used outside of a function body`,
+      IncorrectNumberOfTypeParams: ({ name, given, expected }) => `Incorrect number of type parameters for function '${name}', expected ${expected}, got ${given}`,
     }, 'type'),
     Resolution: ({ err }) => matchVariant(err, {
       ModuleNotFound: ({ name }) => `Module '${name}' not found`,

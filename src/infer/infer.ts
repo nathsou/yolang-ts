@@ -11,7 +11,7 @@ import { Env, FunDecl } from './env';
 import { Row } from './structs';
 import { MAX_TUPLE_INDEX, Tuple } from './tuples';
 import { TypeContext } from './typeContext';
-import { MonoTy, PolyTy, TypeParams } from './types';
+import { MonoTy, PolyTy } from './types';
 import { unifyMut, unifyPure } from './unification';
 
 export type TypingError = DataType<{
@@ -29,6 +29,7 @@ export type TypingError = DataType<{
   ExtraneoussStructFields: { name: string, fields: string[] },
   MissingFuncPrototypeReturnTy: { name: string },
   ReturnUsedOutsideFunctionBody: {},
+  IncorrectNumberOfTypeParams: { name: string, given: number, expected: number },
 }, 'type'>;
 
 const ASSIGNABLE_EXPRESSIONS = new Set<Expr['variant']>(['Variable', 'FieldAccess']);
@@ -154,13 +155,25 @@ const inferExpr = (
             });
 
             unify(funTy, actualFunTy);
+            if (call.typeParams.length > 0) {
+              if (call.typeParams.length !== paramsInst.length) {
+                errors.push(Error.Typing({
+                  type: 'IncorrectNumberOfTypeParams',
+                  name: resolvedFunc.name.original,
+                  expected: paramsInst.length,
+                  given: call.typeParams.length
+                }));
+              }
+
+              zip(call.typeParams, paramsInst).forEach(([s, t]) => {
+                unify(s, t);
+              });
+            }
+
             call.typeParams = paramsInst;
 
-            if (paramsInst.length > 0 && paramsInst.every(MonoTy.isDetermined)) {
-              resolvedFunc.instances.set(
-                TypeParams.hash(paramsInst),
-                paramsInst.map(MonoTy.deref)
-              );
+            if (paramsInst.length > 0) {
+              resolvedFunc.instances.push(paramsInst);
             }
           },
           right: err => {

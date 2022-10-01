@@ -124,17 +124,7 @@ export const Const = {
     str: ({ value }) => `"${value}"`,
     unit: () => '()',
   }),
-  eq: (a: Const, b: Const) => matchMany([a, b], {
-    'u32 u32': (a, b) => a.value === b.value,
-    'i32 i32': (a, b) => a.value === b.value,
-    'u64 u64': (a, b) => a.value === b.value,
-    'i64 i64': (a, b) => a.value === b.value,
-    'i8 i8': (a, b) => a.value === b.value,
-    'u8 u8': (a, b) => a.value === b.value,
-    'bool bool': (a, b) => a.value === b.value,
-    'str str': (a, b) => a.value === b.value,
-    _: () => false,
-  }),
+  eq: (a: Const, b: Const) => a.variant === b.variant && a.value === b.value,
   type: (c: Const): MonoTy => match(c, {
     u32: MonoTy.u32,
     i32: MonoTy.i32,

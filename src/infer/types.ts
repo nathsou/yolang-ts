@@ -44,7 +44,7 @@ export const MonoTy = {
   Param: (name: string): MonoTy => ({ variant: 'Param', name }),
   Const: (name: string, ...args: MonoTy[]): MonoTy => ({ variant: 'Const', name, args }),
   Fun: (args: MonoTy[], ret: MonoTy): MonoTy => ({ variant: 'Fun', args, ret }),
-  Array: (elemTy: MonoTy): MonoTy => MonoTy.Const('[]', elemTy),
+  Array: (elemTy: MonoTy): MonoTy => MonoTy.Const('Array', elemTy),
   Tuple: (tuple: Tuple): MonoTy => ({ variant: 'Tuple', tuple }),
   Struct: (fields: Readonly<Row>, name?: string, params: MonoTy[] = []): MonoTy => ({ variant: 'Struct', name, params, row: fields }),
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
@@ -198,7 +198,7 @@ export const MonoTy = {
     Const: ({ name, args }) => cond(args.length === 0, {
       then: () => name,
       else: () => matchString(name, {
-        '[]': () => `${MonoTy.show(args[0])}[]`,
+        'Array': () => `${MonoTy.show(args[0])}[]`,
         _: () => `${name}<${joinWith(args, MonoTy.show, ', ')}>`,
       }),
     }),

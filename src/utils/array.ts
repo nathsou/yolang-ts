@@ -140,6 +140,23 @@ export const groupBy = <T>(
   return groups;
 };
 
+export const uniqueBy = <T>(
+  elems: T[],
+  f: (elem: T) => string
+): Map<string, T> => {
+  const uniques = new Map<string, T>();
+
+  for (const elem of elems) {
+    const key = f(elem);
+
+    if (!uniques.has(key)) {
+      uniques.set(key, elem);
+    }
+  }
+
+  return uniques;
+};
+
 export const sum = (values: Iterable<number>): number => {
   let total = 0;
   for (const n of values) {
@@ -147,4 +164,9 @@ export const sum = (values: Iterable<number>): number => {
   }
 
   return total;
+};
+
+export const swapRemove = <T>(elems: T[], index: number): void => {
+  [elems[index], elems[elems.length - 1]] = [elems[elems.length - 1], elems[index]];
+  elems.pop();
 };

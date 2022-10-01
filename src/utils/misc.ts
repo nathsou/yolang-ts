@@ -11,6 +11,14 @@ export const unreachable = (msg: string): never => {
   return panic(`unreachable code was reached: ${msg}`);
 };
 
+export const todo = (msg?: string): never => {
+  if (msg) {
+    return panic(`todo: ${msg}`);
+  }
+
+  return panic('todo block reached');
+};
+
 export const fst = <A, B>([a, _]: [A, B]): A => a;
 export const snd = <A, B>([_, b]: [A, B]): B => b;
 

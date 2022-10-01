@@ -147,7 +147,7 @@ export const createLLVMCompiler = () => {
       const arrayTy = llvm.ArrayType.get(llvmElemTy, len);
       const arrayData = builder.CreateAlloca(arrayTy, null);
       const arrayDataPtr = builder.CreateBitCast(arrayData, llvm.PointerType.get(llvmElemTy, 0));
-      const [arrayStruct, arrayStructTy] = resolveStruct('[]', [elemTy]).unwrap('resolveStruct array');
+      const [arrayStruct, arrayStructTy] = resolveStruct('Array', [elemTy]).unwrap('resolveStruct array');
       const arrayStructPtr = builder.CreateAlloca(arrayStructTy, null);
       const dataFieldPtr = structFieldPtr(arrayStruct, arrayStructPtr, 'data');
       const lenFieldPtr = structFieldPtr(arrayStruct, arrayStructPtr, 'len');

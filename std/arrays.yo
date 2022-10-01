@@ -1,6 +1,6 @@
 import std/ops
 
-pub type []<T> = {
+pub type Array<T> = {
   len: u32,
   data: ptr<T>,
 }

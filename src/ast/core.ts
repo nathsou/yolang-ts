@@ -88,7 +88,7 @@ export const Expr = {
           const overloadName = name.unwrapRight('core.Expr.from: NamedFuncCall');
           if (typeParams.length > 0) {
             const key = TypeParams.hash(typeParams);
-            assert(ctx.instances.has(overloadName.mangled), () => `missing instance '${overloadName.mangled}'`);
+            assert(ctx.instances.has(overloadName.mangled), `missing instance '${overloadName.mangled}${key}'`);
             const instances = ctx.instances.get(overloadName.mangled)!;
             assert(instances.has(key), () => `missing instance '${overloadName.mangled}${key}'`);
             return instances.get(key)!.fun.name;
