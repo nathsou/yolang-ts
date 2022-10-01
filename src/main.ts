@@ -125,8 +125,10 @@ async function yo(source: string, options: Options): Promise<number> {
   const nfs = await createNodeFileSystem();
 
   const logErrors = async (errors: Error[]) => {
+    let index = 1;
     for (const err of errors) {
-      console.log('\x1b[31m%s\x1b[0m', await Error.show(err, nfs), '\n');
+      console.log('\x1b[31m%s\x1b[0m', (errors.length > 1 ? `[${index} / ${errors.length}] ` : '') + await Error.show(err, nfs), '\n');
+      index += 1;
     }
   };
 

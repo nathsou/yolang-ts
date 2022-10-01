@@ -1,11 +1,13 @@
 import { DataType, genConstructors, match, VariantOf } from "itsamatch";
 import { Error } from "../errors/errors";
+import { FunDecl } from "../infer/env";
 import { Row } from "../infer/structs";
 import { TypeContext } from "../infer/typeContext";
 import { MonoTy, PolyTy, TypeParams } from "../infer/types";
 import { Const } from "../parse/token";
-import { zip } from "../utils/array";
-import { Maybe, none } from "../utils/maybe";
+import { find, zip } from "../utils/array";
+import { Either } from "../utils/either";
+import { Maybe, none, some } from "../utils/maybe";
 import { assert, block, panic, proj, pushMap } from "../utils/misc";
 import * as bitter from './bitter';
 import type { Mono } from "./monomorphize";
@@ -237,7 +239,32 @@ export type Module = {
 export const Module = {
   from: (mod: bitter.Module, instances: Mono['Instances']): Module => {
     const ctx: Mono['Context'] = { types: mod.typeContext, instances };
-    const decls = mod.decls.flatMap(d => Decl.from(d, ctx));
+    const bitterDecls = [...mod.decls];
+
+    // wrap the original main function to return a unix exit code
+    find(mod.decls as FunDecl[], d => d.variant === 'Function' && d.name.original === 'main').do(main => {
+      main.name.mangled = 'original_main';
+
+      const mainFun = bitter.Decl.Function({
+        name: FuncName.fresh('main'),
+        args: [],
+        attributes: [],
+        pub: true,
+        typeParams: [],
+        returnTy: some(MonoTy.i32()),
+        body: some(bitter.Expr.Block(
+          [
+            bitter.Stmt.Expr(bitter.Expr.NamedFuncCall(Either.right(main.name), [], [], main.body.unwrap().sweet))
+          ],
+          some(bitter.Expr.Const(Const.i32(0), main.body.unwrap().sweet)),
+          main.body.unwrap().sweet,
+        )),
+      });
+
+      bitterDecls.push(mainFun);
+    });
+
+    const decls = bitterDecls.flatMap(d => Decl.from(d, ctx));
     const coreMod: Module = {
       name: mod.name,
       path: mod.path,

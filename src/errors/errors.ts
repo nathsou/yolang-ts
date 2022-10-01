@@ -56,6 +56,7 @@ export const Error = {
         MissingFuncPrototypeReturnTy: ({ name }) => `Missing return type in function prototype for '${name}'`,
         ReturnUsedOutsideFunctionBody: () => `Return expression used outside of a function body`,
         IncorrectNumberOfTypeParams: ({ name, given, expected }) => `Incorrect number of type parameters for function '${name}', expected ${expected}, got ${given}`,
+        InvalidMainFunSignature: ({ ty }) => `Invalid signature for the main function, expected () -> void, got ${PolyTy.show(ty)}`,
       }, 'type'),
       Resolution: ({ err }) => matchVariant(err, {
         ModuleNotFound: ({ name }) => `Module '${name}' not found`,

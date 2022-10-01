@@ -11,7 +11,7 @@ import { Env, FunDecl } from './env';
 import { Row } from './structs';
 import { MAX_TUPLE_INDEX, Tuple } from './tuples';
 import { TypeContext } from './typeContext';
-import { MonoTy, PolyTy, TypeParams } from './types';
+import { MonoTy, PolyTy } from './types';
 import { unifyMut, unifyPure } from './unification';
 
 export type TypingError = DataType<{
@@ -30,6 +30,7 @@ export type TypingError = DataType<{
   MissingFuncPrototypeReturnTy: { name: string },
   ReturnUsedOutsideFunctionBody: {},
   IncorrectNumberOfTypeParams: { name: string, given: number, expected: number },
+  InvalidMainFunSignature: { ty: PolyTy },
 }, 'type'>;
 
 const ASSIGNABLE_EXPRESSIONS = new Set<Expr['variant']>(['Variable', 'FieldAccess']);
@@ -494,6 +495,13 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void =
         const genFunTy = MonoTy.generalize(ctx.env, funTy);
         f.funTy = genFunTy;
       });
+
+      if (f.name.original === 'main' && !PolyTy.eq(f.funTy, MonoTy.toPoly(MonoTy.Fun([], MonoTy.void())))) {
+        pushError(Error.Typing({
+          type: 'InvalidMainFunSignature',
+          ty: f.funTy,
+        }));
+      }
     },
     TypeAlias: ({ name, typeParams, alias }) => {
       TypeContext.declareTypeAlias(ctx, name, typeParams, alias);

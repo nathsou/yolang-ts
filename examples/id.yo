@@ -4,6 +4,4 @@ fun id(x) { x }
       
 fun main() {
   log(if id(false) { id(1) } else { id(3) })
-
-  return 0
 }

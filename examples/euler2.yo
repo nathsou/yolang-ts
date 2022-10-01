@@ -34,5 +34,4 @@ fun euler2() {
 
 fun main() {
   log(euler2())
-  return 0
 }

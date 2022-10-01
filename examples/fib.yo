@@ -26,6 +26,4 @@ fun fibIter(n: i32): i32 {
 fun main() {
   let n = fact(4, 1) * 2 - 6
   log(fibIter(n) == fibRec(n))
-
-  return 0
 }

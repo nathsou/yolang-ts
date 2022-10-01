@@ -6,11 +6,11 @@ pub type str = u8[]
 #extern
 fun putchar(char: u8): u32
 
-pub fun newline() {
-  putchar(10u8)
+pub fun newline(): void {
+  putchar(10u8);
 }
 
-pub fun log(msg: str) {
+pub fun log(msg: str): void {
   mut index = 0u32
   while index < msg.len {
     putchar(msg[index])
@@ -24,7 +24,7 @@ pub fun log(b: bool) {
   log(if b { "true" } else { "false" })
 }
 
-pub fun log(ch: u8) {
+pub fun log(ch: u8): void {
   putchar(ch)
   newline()
 }
@@ -44,7 +44,7 @@ pub fun reverse(mut buf: str, start: u32, end: u32): void {
 
 // does not work with the most negative i32
 // i.e -2147483648
-pub fun log(n: i32) {
+pub fun log(n: i32): void {
   mut r = abs(n)
   mut buf = [0u8; 11]
   mut index = 0u32

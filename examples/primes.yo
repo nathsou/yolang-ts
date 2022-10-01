@@ -61,6 +61,4 @@ fun main() {
   sieve.fill()
 
   log(sieve.primes.last())
-
-  return 0 // unix exit code
 }
