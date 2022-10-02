@@ -29,6 +29,7 @@ export type MonoTy = DataType<{
   Fun: { args: MonoTy[], ret: MonoTy },
   Tuple: { tuple: Tuple },
   Struct: { name?: string, params: MonoTy[], row: Row },
+  Union: { tys: MonoTy[] },
 }>;
 
 export const showTyVarId = (n: TyVarId): string => {
@@ -47,8 +48,25 @@ export const MonoTy = {
   Array: (elemTy: MonoTy): MonoTy => MonoTy.Const('Array', elemTy),
   Tuple: (tuple: Tuple): MonoTy => ({ variant: 'Tuple', tuple }),
   Struct: (fields: Readonly<Row>, name?: string, params: MonoTy[] = []): MonoTy => ({ variant: 'Struct', name, params, row: fields }),
+  Union: (tys: MonoTy[]): MonoTy => {
+    const flat: MonoTy[] = [];
+
+    // merge union types
+    const addTy = (ty: MonoTy) => {
+      if (ty.variant === 'Union') {
+        ty.tys.forEach(addTy);
+      } else {
+        flat.push(ty);
+      }
+    };
+
+    tys.forEach(addTy);
+
+    return { variant: 'Union', tys: flat };
+  },
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
   ptr: (ty: MonoTy): MonoTy => MonoTy.Const('ptr', ty),
+  int: () => MonoTy.Union([MonoTy.u8(), MonoTy.i8(), MonoTy.u32(), MonoTy.i32(), MonoTy.u64(), MonoTy.i64()]),
   u32: () => MonoTy.Const('u32'),
   i32: () => MonoTy.Const('i32'),
   u64: () => MonoTy.Const('u64'),
@@ -100,7 +118,13 @@ export const MonoTy = {
 
         return fvs;
       },
-      Integer: () => fvs,
+      Union: ({ tys }) => {
+        for (const ty of tys) {
+          MonoTy.freeTypeVars(ty, fvs);
+        }
+
+        return fvs;
+      },
     }),
   generalize: (env: Env, ty: MonoTy): PolyTy => {
     // can be optimized using (block instead of let) levels
@@ -126,7 +150,7 @@ export const MonoTy = {
     Fun: t => t.args.some(a => MonoTy.occurs(x, a)) || MonoTy.occurs(x, t.ret),
     Tuple: t => Tuple.toArray(t.tuple).some(a => MonoTy.occurs(x, a)),
     Struct: ({ row: fields }) => Row.fields(fields).some(([_, ty]) => MonoTy.occurs(x, ty)),
-    Integer: () => false,
+    Union: ({ tys }) => tys.some(a => MonoTy.occurs(x, a)),
   }),
   deref: (ty: MonoTy): MonoTy => {
     if (ty.variant === 'Var' && ty.value.kind === 'Link') {
@@ -170,6 +194,7 @@ export const MonoTy = {
         substituteRow(fields),
         name,
       ),
+      Union: ({ tys }) => MonoTy.Union(tys.map(ty => MonoTy.substitute(ty, subst))),
     });
   },
   substituteTyParams: (ty: MonoTy, subst: Map<string, MonoTy>): MonoTy => {
@@ -225,6 +250,7 @@ export const MonoTy = {
 
       return `{ ${joinWith(Row.sortedFields(row), ([k, v]) => `${k}: ${MonoTy.show(v)}`, ', ')} }`;
     },
+    Union: ({ tys }) => joinWith(tys, MonoTy.show, ' |'),
   }),
   eq: (s: MonoTy, t: MonoTy): boolean => matchMany([MonoTy.deref(s), MonoTy.deref(t)], {
     'Var Var': ({ value: v1 }, { value: v2 }) => {
@@ -268,6 +294,7 @@ export const MonoTy = {
       Fun: ({ args, ret }) => MonoTy.Fun(args.map(go), go(ret)),
       Struct: ({ name, params, row }) => MonoTy.Struct(Row.map(row, go), name, params),
       Tuple: ({ tuple }) => MonoTy.Tuple(Tuple.fromArray(Tuple.toArray(tuple).map(go))),
+      Union: ({ tys }) => MonoTy.Union(tys.map(go)),
       Param: p => p,
       Var: v => v,
     }));
@@ -288,6 +315,7 @@ export const MonoTy = {
     Fun: ({ args, ret }) => sum(args.map(MonoTy.specificity)) + MonoTy.specificity(ret),
     Struct: ({ row }) => sum(Row.fields(row).map(([_, ty]) => MonoTy.specificity(ty))),
     Tuple: ({ tuple }) => sum(Tuple.toArray(tuple).map(MonoTy.specificity)),
+    Union: ({ tys }) => sum(tys.map(MonoTy.specificity)),
   }),
 };
 
@@ -356,10 +384,10 @@ export const PolyTy = {
     }, 'kind'),
     Const: ({ args }) => args.every(a => PolyTy.isDetermined([vars, a])),
     Fun: ({ args, ret }) => args.every(arg => PolyTy.isDetermined([vars, arg])) && PolyTy.isDetermined([vars, ret]),
-    Tuple: ({ tuple }) => Tuple.toArray(tuple).every(t => PolyTy.isDetermined([vars, t])),
+    Tuple: ({ tuple }) => Tuple.toArray(tuple).every(ty => PolyTy.isDetermined([vars, ty])),
     Struct: ({ row }) => Row.fields(row).every(([, ty]) => PolyTy.isDetermined([vars, ty])),
+    Union: ({ tys }) => tys.every(ty => PolyTy.isDetermined([vars, ty])),
     Param: () => true,
-    Integer: () => true,
   }),
   isPolymorphic: ([quantified, _]: PolyTy): boolean => quantified.length > 0,
 };
