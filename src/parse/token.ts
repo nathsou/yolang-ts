@@ -90,55 +90,36 @@ export const Keyword = {
   is: (ident: string): ident is Keyword => Keyword.valuesSet.has(ident),
 };
 
+export type IntType = '?' | `${'i' | 'u'}${8 | 32 | 64}`;
+
 export type Const = DataType<{
-  u32: { value: number },
-  i32: { value: number },
-  u64: { value: number },
-  i64: { value: number },
-  i8: { value: number },
-  u8: { value: number },
+  int: { value: number, type: IntType },
   bool: { value: boolean },
   str: { value: string },
 }>;
 
-const { u32, i32, u64, i64, i8, u8, bool, str } = genConstructors<Const>([
-  'u32', 'i32', 'u64', 'i64', 'i8', 'u8', 'bool', 'str',
+const { int, bool, str } = genConstructors<Const>([
+  'int', 'bool', 'str',
 ]);
 
 export const Const = {
-  u32: (value: number) => u32({ value }),
-  u64: (value: number) => u64({ value }),
-  i32: (value: number) => i32({ value }),
-  i64: (value: number) => i64({ value }),
-  i8: (value: number) => i8({ value }),
-  u8: (value: number) => u8({ value }),
+  int: (value: number, type: IntType = '?') => int({ value, type }),
   bool: (value: boolean) => bool({ value }),
   str: (value: string) => str({ value }),
   show: (c: Const) => match(c, {
-    u32: ({ value }) => `${value}`,
-    i32: ({ value }) => `${value}`,
-    u64: ({ value }) => `${value}`,
-    i64: ({ value }) => `${value}`,
-    i8: ({ value }) => `${value}`,
-    u8: ({ value }) => `${value}`,
+    int: ({ value, type }) => `${value}${type}`,
     bool: ({ value }) => `${value}`,
     str: ({ value }) => `"${value}"`,
     unit: () => '()',
   }),
   eq: (a: Const, b: Const) => a.variant === b.variant && a.value === b.value,
   type: (c: Const): MonoTy => match(c, {
-    u32: MonoTy.u32,
-    i32: MonoTy.i32,
-    u64: MonoTy.u64,
-    i64: MonoTy.i64,
-    u8: MonoTy.u8,
-    i8: MonoTy.i8,
+    int: ({ type }) => type === '?' ? MonoTy.Const('Int') : MonoTy[type](),
     bool: MonoTy.bool,
     str: MonoTy.str,
   }),
   isInt: (c: Const) => match(c, {
-    'bool': () => false,
-    'str': () => false,
-    _: () => true,
+    int: () => true,
+    _: () => false,
   }),
 };

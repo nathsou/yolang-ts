@@ -204,12 +204,15 @@ export const createLLVMCompiler = () => {
       return match(expr, {
         Const: ({ value: c }) => match(c, {
           bool: ({ value }) => llvm.ConstantInt[value ? 'getTrue' : 'getFalse'](context),
-          u32: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
-          i32: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
-          u64: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),
-          i64: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),
-          i8: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt8Ty(context), value),
-          u8: ({ value }) => llvm.ConstantInt.get(llvm.Type.getInt8Ty(context), value),
+          int: ({ value, type }) => matchString(type, {
+            u8: () => llvm.ConstantInt.get(llvm.Type.getInt8Ty(context), value),
+            i8: () => llvm.ConstantInt.get(llvm.Type.getInt8Ty(context), value),
+            u32: () => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
+            i32: () => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
+            u64: () => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),
+            i64: () => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),
+            '?': () => panic('Found untyped int literal during codegen'),
+          }),
           unit: () => llvm.UndefValue.get(llvm.Type.getInt1Ty(context)),
           str: ({ value }) => {
             const buffer = new TextEncoder().encode(value);

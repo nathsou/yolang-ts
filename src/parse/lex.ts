@@ -3,7 +3,7 @@ import { Error } from "../errors/errors";
 import { last } from "../utils/array";
 import { error, ok, Result } from "../utils/result";
 import { Char, isAlpha, isAlphaNum, isDigit } from "../utils/strings";
-import { Const, Keyword, Position, Token } from "./token";
+import { Const, IntType, Keyword, Position, Token } from "./token";
 
 const INSERT_SEMICOLONS = false;
 
@@ -100,28 +100,30 @@ const Lexer = (source: string, path: string) => {
     }
 
     const lexeme = source.slice(startIndex, index);
-    let type: `${'u' | 'i'}${8 | 32 | 64}` = 'i32';
+    let type: IntType = 'i32';
 
     switch (peek()) {
       case 'u':
-        if (matchString('u32')) {
+        if (matchString('u8')) {
+          type = 'u8';
+        } else if (matchString('u32')) {
           type = 'u32';
         } else if (matchString('u64')) {
           type = 'u64';
-        } else if (matchString('u8')) {
-          type = 'u8';
         }
         break;
       case 'i':
-        if (matchString('i64')) {
-          type = 'i64';
-        } else if (matchString('i8')) {
+        if (matchString('i8')) {
           type = 'i8';
+        } else if (matchString('i32')) {
+          type = 'i32';
+        } else if (matchString('i64')) {
+          type = 'i64';
         }
         break;
     }
 
-    return Const[type](Number(lexeme));
+    return Const.int(Number(lexeme), type);
   };
 
   const parseString = (startIndex: number): string => {

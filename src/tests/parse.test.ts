@@ -36,12 +36,12 @@ const expectType = (parser: Parser<MonoTy>, input: string, expected: MonoTy): vo
 describe('Parser', () => {
   describe('unary operators', () => {
     it('should parse arithmetical negation', () => {
-      expectExpr(unary, '-(0)', Expr.Call(Expr.Variable('-'), [], [Expr.Parenthesized(Expr.Const(Const.i32(0)))]));
-      expectExpr(unary, '-1', Expr.Const(Const.i32(-1)));
+      expectExpr(unary, '-(0)', Expr.Call(Expr.Variable('-'), [], [Expr.Parenthesized(Expr.Const(Const.int(0, 'i32')))]));
+      expectExpr(unary, '-1', Expr.Const(Const.int(-1, 'i32')));
       expectExpr(
         unary,
         '-(-1621)',
-        Expr.Call(Expr.Variable('-'), [], [Expr.Parenthesized(Expr.Const(Const.i32(-1621)))])
+        Expr.Call(Expr.Variable('-'), [], [Expr.Parenthesized(Expr.Const(Const.int(-1621, 'i32')))])
       );
     });
 
@@ -61,25 +61,25 @@ describe('Parser', () => {
       expectExpr(
         binaryExpr,
         '1 + 2',
-        Expr.Call(Expr.Variable('+'), [], [Expr.Const(Const.i32(1)), Expr.Const(Const.i32(2))])
+        Expr.Call(Expr.Variable('+'), [], [Expr.Const(Const.int(1, 'i32')), Expr.Const(Const.int(2, 'i32'))])
       );
     });
   });
 
   describe('tuples', () => {
     it('should not parse parenthesized expressions as tuples', () => {
-      expectExpr(tuple, '(1)', Expr.Parenthesized(Expr.Const(Const.i32(1))));
+      expectExpr(tuple, '(1)', Expr.Parenthesized(Expr.Const(Const.int(1, 'i32'))));
     });
 
     it('should accept tuples with primary expressions', () => {
       expectExpr(tuple, '(1, 2, 3, 4, 5, 6, 7)', Expr.Tuple([
-        Expr.Const(Const.i32(1)),
-        Expr.Const(Const.i32(2)),
-        Expr.Const(Const.i32(3)),
-        Expr.Const(Const.i32(4)),
-        Expr.Const(Const.i32(5)),
-        Expr.Const(Const.i32(6)),
-        Expr.Const(Const.i32(7)),
+        Expr.Const(Const.int(1, 'i32')),
+        Expr.Const(Const.int(2, 'i32')),
+        Expr.Const(Const.int(3, 'i32')),
+        Expr.Const(Const.int(4, 'i32')),
+        Expr.Const(Const.int(5, 'i32')),
+        Expr.Const(Const.int(6, 'i32')),
+        Expr.Const(Const.int(7, 'i32')),
       ]));
 
       expectExpr(tuple, '(true, false, true)', Expr.Tuple([
@@ -89,13 +89,13 @@ describe('Parser', () => {
       ]));
 
       expectExpr(tuple, '(1, true)', Expr.Tuple([
-        Expr.Const(Const.i32(1)),
+        Expr.Const(Const.int(1, 'i32')),
         Expr.Const(Const.bool(true)),
       ]));
 
       expectExpr(tuple, '(a, 2, b, c, false)', Expr.Tuple([
         Expr.Variable('a'),
-        Expr.Const(Const.i32(2)),
+        Expr.Const(Const.int(2, 'i32')),
         Expr.Variable('b'),
         Expr.Variable('c'),
         Expr.Const(Const.bool(false)),
@@ -118,35 +118,35 @@ describe('Parser', () => {
       expectExpr(tuple, '(f(), g(1, 2)))', Expr.Tuple([
         Expr.Call(Expr.Variable('f'), [], []),
         Expr.Call(Expr.Variable('g'), [], [
-          Expr.Const(Const.i32(1)),
-          Expr.Const(Const.i32(2)),
+          Expr.Const(Const.int(1, 'i32')),
+          Expr.Const(Const.int(2, 'i32')),
         ]),
       ]));
     });
 
     it('should parse tuples contaning tuples', () => {
       expectExpr(tuple, '(1, (2, 3))', Expr.Tuple([
-        Expr.Const(Const.i32(1)),
+        Expr.Const(Const.int(1, 'i32')),
         Expr.Tuple([
-          Expr.Const(Const.i32(2)),
-          Expr.Const(Const.i32(3)),
+          Expr.Const(Const.int(2, 'i32')),
+          Expr.Const(Const.int(3, 'i32')),
         ]),
       ]));
 
       expectExpr(tuple, '(1, (2, 3), 4, (5, (6, (7, 8))))', Expr.Tuple([
-        Expr.Const(Const.i32(1)),
+        Expr.Const(Const.int(1, 'i32')),
         Expr.Tuple([
-          Expr.Const(Const.i32(2)),
-          Expr.Const(Const.i32(3)),
+          Expr.Const(Const.int(2, 'i32')),
+          Expr.Const(Const.int(3, 'i32')),
         ]),
-        Expr.Const(Const.i32(4)),
+        Expr.Const(Const.int(4, 'i32')),
         Expr.Tuple([
-          Expr.Const(Const.i32(5)),
+          Expr.Const(Const.int(5, 'i32')),
           Expr.Tuple([
-            Expr.Const(Const.i32(6)),
+            Expr.Const(Const.int(6, 'i32')),
             Expr.Tuple([
-              Expr.Const(Const.i32(7)),
-              Expr.Const(Const.i32(8)),
+              Expr.Const(Const.int(7, 'i32')),
+              Expr.Const(Const.int(8, 'i32')),
             ]),
           ]),
         ]),
@@ -156,7 +156,7 @@ describe('Parser', () => {
 
   describe('closures', () => {
     it('should parse closures with no parameters', () => {
-      expectExpr(expr, '() -> 1', Expr.Closure([], Expr.Const(Const.i32(1))));
+      expectExpr(expr, '() -> 1', Expr.Closure([], Expr.Const(Const.int(1, 'i32'))));
     });
 
     it('should parse closures with one parameter', () => {

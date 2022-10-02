@@ -5,7 +5,7 @@ import { none } from '../../utils/maybe';
 import { lowerIdent } from './common.arb';
 import { patternArb } from './pattern.arb';
 
-export const constIntExpr = fc.integer({ min: 1 }).map(n => Expr.Const(Const.i32(n)));
+export const constIntExpr = fc.integer({ min: 1 }).map(n => Expr.Const(Const.int(n, 'i32')));
 export const constBoolExpr = fc.boolean().map(b => Expr.Const(Const.bool(b)));
 export const varExpr = lowerIdent.map(Expr.Variable);
 

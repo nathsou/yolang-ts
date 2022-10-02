@@ -258,7 +258,7 @@ export const Module = {
           [
             bitter.Stmt.Expr(bitter.Expr.NamedFuncCall(Either.right(main.name), [], [], sweet.Expr.generated))
           ],
-          some(bitter.Expr.Const(Const.i32(0), sweet.Expr.generated)),
+          some(bitter.Expr.Const(Const.int(0, 'i32'), sweet.Expr.generated)),
           sweet.Expr.generated,
         )),
       });
