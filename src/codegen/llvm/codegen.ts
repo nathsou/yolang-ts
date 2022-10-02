@@ -446,6 +446,7 @@ export const createLLVMCompiler = () => {
           return llvm.PointerType.get(structTy, 0);
         },
         Integer: () => llvm.Type.getInt32Ty(context),
+        Union: ty => panic(`Found union type during codegen: '${MonoTy.show(ty)}'`),
         _: () => panic('llvmTy: ' + ty.variant + ' not implemented'),
       });
     }

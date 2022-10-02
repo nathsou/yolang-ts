@@ -39,30 +39,30 @@ export const Error = {
       }, 'type'),
       Parser: ({ err }) => `Parser error: ${err.message}`,
       Unification: ({ err }) => match(err, {
-        Ununifiable: ({ s, t }) => `Cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`,
+        Ununifiable: ({ s, t }) => `Type '${MonoTy.show(s)}' is not assignable to type '${MonoTy.show(t)}'`,
         RecursiveType: ({ s, t }) => `Recursive type encountered: ${MonoTy.show(s)} with ${MonoTy.show(t)}`,
         UnknownStructField: ({ row, field }) => `Unknown field '${field}' in struct ${MonoTy.show(MonoTy.Struct(row))}`,
-        DifferentLengthTuples: ({ s, t }) => `Cannot unify tuples with different lengths: ${Tuple.show(s)} with ${Tuple.show(t)}`,
-        CouldNotResolveType: ({ ty }) => `Could not resolve type: ${MonoTy.show(ty)}`,
+        DifferentLengthTuples: ({ s, t }) => `Cannot unify tuples with different lengths: ${Tuple.show(s)} with ${Tuple.show(t)} `,
+        CouldNotResolveType: ({ ty }) => `Could not resolve type: ${MonoTy.show(ty)} `,
       }, 'type'),
-      BitterConversion: ({ err }) => `Bitter conversion error: ${err.message}`,
+      BitterConversion: ({ err }) => `Bitter conversion error: ${err.message} `,
       Typing: ({ err }) => match(err, {
-        ParsingError: ({ message }) => `Parsing error: ${message}`,
+        ParsingError: ({ message }) => `Parsing error: ${message} `,
         UnboundVariable: ({ name }) => `Unbound variable: '${name}'`,
         UnknownFunction: ({ name }) => `Unknown function: '${name}'`,
         ImmutableValue: ({ expr }) => `Cannot update immutable value '${Expr.showSweet(expr)}'`,
         UnassignableExpression: ({ expr }) => `${Expr.showSweet(expr)} is not an assignable expression`,
-        TupleIndexTooBig: ({ index }) => `Tuple index ${index} is too big, limit is ${MAX_TUPLE_INDEX}`,
-        NoOverloadMatchesCallSignature: ({ name, f, candidates }) => `No overload of '${name}' matches the call signature '${MonoTy.show(f)}', candidates:\n${formatOverloadingCandidates(candidates)}`,
-        AmbiguousOverload: ({ name, funTy, matches }) => `Ambiguous overload for '${name}' with call signature ${funTy}, matches:\n${formatOverloadingCandidates(matches)}`,
+        TupleIndexTooBig: ({ index }) => `Tuple index ${index} is too big, limit is ${MAX_TUPLE_INDEX} `,
+        NoOverloadMatchesCallSignature: ({ name, f, candidates }) => `No overload of '${name}' matches the call signature '${MonoTy.show(f)}', candidates: \n${formatOverloadingCandidates(candidates)} `,
+        AmbiguousOverload: ({ name, funTy, matches }) => `Ambiguous overload for '${name}' with call signature ${funTy}, matches: \n${formatOverloadingCandidates(matches)} `,
         UndeclaredStruct: ({ name }) => `Undeclared struct '${name}' in struct constructor expression`,
-        MissingStructFields: ({ name, fields }) => `Missing fields in struct constructor expression for '${name}': ${fields.join(', ')}`,
-        ExtraneoussStructFields: ({ name, fields }) => `Extraneous fields in struct constructor expression for '${name}': ${fields.join(', ')}`,
+        MissingStructFields: ({ name, fields }) => `Missing fields in struct constructor expression for '${name}': ${fields.join(', ')} `,
+        ExtraneoussStructFields: ({ name, fields }) => `Extraneous fields in struct constructor expression for '${name}': ${fields.join(', ')} `,
         CannotUseImmutableValueForMutFuncArg: ({ func, arg }) => `Cannot use an immutable value in place of a mutable argument: '${arg}' in function '${func}'`,
         MissingFuncPrototypeReturnTy: ({ name }) => `Missing return type in function prototype for '${name}'`,
         ReturnUsedOutsideFunctionBody: () => `Return expression used outside of a function body`,
-        IncorrectNumberOfTypeParams: ({ name, given, expected }) => `Incorrect number of type parameters for function '${name}', expected ${expected}, got ${given}`,
-        InvalidMainFunSignature: ({ ty }) => `Invalid signature for the main function, expected () -> void, got ${PolyTy.show(ty)}`,
+        IncorrectNumberOfTypeParams: ({ name, given, expected }) => `Incorrect number of type parameters for function '${name}', expected ${expected}, got ${given} `,
+        InvalidMainFunSignature: ({ ty }) => `Invalid signature for the main function, expected() -> void, got ${PolyTy.show(ty)} `,
       }, 'type'),
       Resolution: ({ err }) => match(err, {
         ModuleNotFound: ({ name }) => `Module '${name}' not found`,
@@ -77,7 +77,7 @@ export const Error = {
       const lines = source.split('\n');
       const errLine = lines[err.pos.line - 1];
       const highlight = ' '.repeat(err.pos.column - 1) + '^';
-      return `${formatted}\n\n${errLine}\n${highlight} ${Position.showWithShortPath(err.pos, fs)}`;
+      return `${formatted} \n\n${errLine} \n${highlight} ${Position.showWithShortPath(err.pos, fs)} `;
     }
 
     return formatted;

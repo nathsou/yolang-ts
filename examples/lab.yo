@@ -1,4 +1,7 @@
 
+type Int = u8 | i8 | u32 | i32 | u64 | i64
+
 fun main() {
-  log(3.pow(7))
+  let n: Int = 3.pow(7)
+  log(n)
 }

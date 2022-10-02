@@ -6,11 +6,11 @@ import { Tuple } from '../infer/tuples';
 import { MonoTy, TypeParam } from '../infer/types';
 import { deconsLast, last } from '../utils/array';
 import { Maybe, none, some } from '../utils/maybe';
-import { compose, proj, ref, snd } from '../utils/misc';
-import { error, ok, Result } from '../utils/result';
+import { proj, ref, snd } from '../utils/misc';
+import { error, ok } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, pos, satisfy, satisfyBy, seq, squareBrackets, symbol, uninitialized } from './combinators';
+import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserResult, pos, satisfy, satisfyBy, sepBy, seq, squareBrackets, symbol, uninitialized } from './combinators';
 import { lex } from './lex';
 import { Const, Token } from './token';
 
@@ -76,45 +76,63 @@ const i64Ty = map(ident2('i64'), MonoTy.i64);
 const u8Ty = map(ident2('u8'), MonoTy.u8);
 const i8Ty = map(ident2('i8'), MonoTy.i8);
 const strTy = map(seq(ident2('str')), MonoTy.str);
-const constTy = alt(voidTy, boolTy, u32Ty, i32Ty, u64Ty, i64Ty, u8Ty, i8Ty, strTy);
-const namedTy = map(
-  seq(
-    alt(upperIdent, string('ptr')),
-    optionalOrDefault(angleBrackets(commas(monoTy)), []),
+
+const constTy = alt(
+  voidTy, boolTy, u8Ty, i8Ty, u32Ty, i32Ty, u64Ty, i64Ty, strTy,
+  parenthesizedTy
+);
+
+const namedTy = alt(
+  map(
+    seq(
+      alt(upperIdent, string('ptr')),
+      optionalOrDefault(angleBrackets(commas(monoTy)), []),
+    ),
+    ([name, args]) => MonoTy.Const(name, ...args),
   ),
-  ([name, args]) => MonoTy.Const(name, ...args),
+  constTy
 );
 
-const tupleTy = map(
-  parens(seq(
-    monoTy,
-    symbol(','),
-    expectOrDefault(commas(monoTy), `Expected type in tuple type after ','`, []),
-  )),
-  ([h, _, tl]) => MonoTy.Tuple(Tuple.fromArray([h, ...tl]))
+const tupleTy = alt(
+  map(
+    parens(seq(
+      monoTy,
+      symbol(','),
+      expectOrDefault(commas(monoTy), `Expected type in tuple type after ','`, []),
+    )),
+    ([h, _, tl]) => MonoTy.Tuple(Tuple.fromArray([h, ...tl]))
+  ),
+  namedTy
 );
 
-export const structTy = map(
-  curlyBrackets(commas(seq(
-    ident,
-    symbol(':'),
-    expectOrDefault(monoTy, `Expected type in struct type after ':'`, MonoTy.Const('()')),
-  ), true)),
-  fields => MonoTy.Struct(Row.fromFields(fields.map(([name, _, ty]) => [name, ty]), false))
+export const structTy = alt(
+  map(
+    curlyBrackets(commas(seq(
+      ident,
+      symbol(':'),
+      expectOrDefault(monoTy, `Expected type in struct type after ':'`, MonoTy.Const('()')),
+    ), true)),
+    fields => MonoTy.Struct(Row.fromFields(fields.map(([name, _, ty]) => [name, ty]), false))
+  ),
+  tupleTy
 );
 
-const allExceptFunTy = alt(
-  constTy,
-  tupleTy,
-  structTy,
-  namedTy,
-  parenthesizedTy,
+const unionTy = alt(
+  map(
+    seq(
+      structTy,
+      symbol('|'),
+      expectOrDefault(sepBy(symbol('|'))(monoTy, false), `Expected type in union type after '|'`, []),
+    ),
+    ([h, _, tl]) => MonoTy.Union([h, ...tl])
+  ),
+  structTy
 );
 
 const funTy = map(seq(
   alt(
     map(parens(optional(commas(monoTy))), args => args.orDefault([])),
-    map(allExceptFunTy, ty => [ty])
+    map(unionTy, ty => [ty])
   ),
   symbol('->'),
   monoTy,
@@ -126,7 +144,7 @@ const arrayTy = map(
   seq(
     alt(
       funTy,
-      allExceptFunTy,
+      unionTy,
     ),
     optional(seq(symbol('['), symbol(']'))),
   ), ([ty, arr]) => arr.match({

@@ -250,7 +250,7 @@ export const MonoTy = {
 
       return `{ ${joinWith(Row.sortedFields(row), ([k, v]) => `${k}: ${MonoTy.show(v)}`, ', ')} }`;
     },
-    Union: ({ tys }) => joinWith(tys, MonoTy.show, ' |'),
+    Union: ({ tys }) => joinWith(tys, MonoTy.show, ' | '),
   }),
   eq: (s: MonoTy, t: MonoTy): boolean => matchMany([MonoTy.deref(s), MonoTy.deref(t)], {
     'Var Var': ({ value: v1 }, { value: v2 }) => {
@@ -304,6 +304,8 @@ export const MonoTy = {
       return TypeContext.instantiateTypeAlias(ctx, ctx.typeAliases.get(t.name)!, t.args);
     } else if (t.variant === 'Param' && ctx.typeParamsEnv.has(t.name)) {
       return ctx.typeParamsEnv.get(t.name)!;
+    } else if (t.variant === 'Union' && t.tys.length === 1) {
+      return t.tys[0];
     }
 
     return t;

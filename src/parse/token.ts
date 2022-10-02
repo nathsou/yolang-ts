@@ -56,7 +56,7 @@ export const Token = {
 };
 
 const symbols = [
-  '->', '=>', '(', ')', ',', ';', '{', '}', '!',
+  '->', '=>', '(', ')', ',', ';', '{', '}', '!', '|',
   '[', ']', ':', '.', '\'', '"', '_', '..', '...', '#',
 ] as const;
 
@@ -103,18 +103,18 @@ const { int, bool, str } = genConstructors<Const>([
 ]);
 
 export const Const = {
-  int: (value: number, type: IntType = '?') => int({ value, type }),
-  bool: (value: boolean) => bool({ value }),
-  str: (value: string) => str({ value }),
-  show: (c: Const) => match(c, {
-    int: ({ value, type }) => `${value}${type}`,
+  int: (value: number, type: IntType = '?'): Const => int({ value, type }),
+  bool: (value: boolean): Const => bool({ value }),
+  str: (value: string): Const => str({ value }),
+  show: (c: Const): string => match(c, {
+    int: ({ value, type }) => type === '?' ? `${value}` : `${value}${type}`,
     bool: ({ value }) => `${value}`,
     str: ({ value }) => `"${value}"`,
     unit: () => '()',
   }),
-  eq: (a: Const, b: Const) => a.variant === b.variant && a.value === b.value,
+  eq: (a: Const, b: Const): boolean => a.variant === b.variant && a.value === b.value,
   type: (c: Const): MonoTy => match(c, {
-    int: ({ type }) => type === '?' ? MonoTy.Const('Int') : MonoTy[type](),
+    int: ({ type }) => type === '?' ? MonoTy.int() : MonoTy[type](),
     bool: MonoTy.bool,
     str: MonoTy.str,
   }),

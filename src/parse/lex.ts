@@ -216,6 +216,7 @@ const Lexer = (source: string, path: string) => {
       case '\'':
       case '_':
       case '#':
+      case '|':
         tokens.push(Token.Symbol(c, { ...pos }));
         return true;
       case '.': {

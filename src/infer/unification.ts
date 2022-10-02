@@ -1,8 +1,10 @@
 import { DataType, match as matchVariant, VariantOf } from "itsamatch";
 import { match, P } from "ts-pattern";
 import { Error } from "../errors/errors";
+import { find } from "../utils/array";
 import { panic } from "../utils/misc";
 import { Result } from "../utils/result";
+import { sameSet } from "../utils/set";
 import { Row } from "./structs";
 import { Subst } from "./subst";
 import { Tuple } from "./tuples";
@@ -36,7 +38,6 @@ const unifyMany = (
   subst?: Subst
 ): Error[] => {
   const errors: Error[] = [];
-  let score = 0;
   const pushEqs = (...newEqs: [MonoTy, MonoTy][]): void => {
     eqs.push(...newEqs);
   };
@@ -122,6 +123,30 @@ const unifyMany = (
       })
       .with([{ variant: 'Param' }, P._], () => { })
       .with([P._, { variant: 'Param' }], () => { })
+      .with([{ variant: 'Union' }, { variant: 'Union' }], ([s, t]) => {
+        const elemsS = new Set(s.tys.map(MonoTy.show));
+        const elemsT = new Set(t.tys.map(MonoTy.show));
+
+        if (!sameSet(elemsS, elemsT)) {
+          errors.push(Error.Unification({ type: 'Ununifiable', s, t }));
+        }
+      })
+      .with([{ variant: 'Union' }, P._], ([s, t]) => {
+        find(s.tys, ty => unifyPure(ty, t, ctx).isOk()).match({
+          Some: matchingTy => {
+            if (subst == null) {
+              // narrow the union to the first type in s unifiable with t
+              s.tys = [matchingTy];
+            }
+          },
+          None: () => {
+            errors.push(Error.Unification({ type: 'Ununifiable', s, t }));
+          },
+        });
+      })
+      .with([P._, { variant: 'Union' }], ([s, t]) => {
+        pushEqs([t, s]);
+      })
       .otherwise(([s, t]) => {
         errors.push(Error.Unification({ type: 'Ununifiable', s, t }));
       });
