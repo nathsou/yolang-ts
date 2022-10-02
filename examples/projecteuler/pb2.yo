@@ -14,7 +14,7 @@ fun fib(n) {
   b
 }
 
-fun euler2() {
+fun pb2() {
   mut nextFib = fib(0)
   mut i = 0
   mut sum = 0
@@ -32,5 +32,5 @@ fun euler2() {
 }
 
 fun main() {
-  log(euler2())
+  log(pb2())
 }

@@ -1,10 +1,11 @@
-import { DataType, match as matchVariant } from "itsamatch";
+import { DataType, match } from "itsamatch";
 import { BitterConversionError, Expr } from "../ast/bitter";
 import { TypingError } from "../infer/infer";
 import { MAX_TUPLE_INDEX, Tuple } from "../infer/tuples";
 import { MonoTy, PolyTy } from "../infer/types";
 import { UnificationError } from "../infer/unification";
 import { ParserError } from "../parse/combinators";
+import { LexerError } from "../parse/lex";
 import { Position } from "../parse/token";
 import { FileSystem } from "../resolve/fileSystem";
 import { ResolutionError } from '../resolve/resolve';
@@ -12,8 +13,9 @@ import { ResolutionError } from '../resolve/resolve';
 type WithOptionalPos<T> = { [K in keyof T]: T[K] & { pos?: Position } };
 
 export type Error = DataType<WithOptionalPos<{
-  Resolution: { err: ResolutionError },
+  Lexer: { err: LexerError },
   Parser: { err: ParserError },
+  Resolution: { err: ResolutionError },
   BitterConversion: { err: BitterConversionError },
   Typing: { err: TypingError },
   Unification: { err: UnificationError },
@@ -24,23 +26,27 @@ const formatOverloadingCandidates = (types: PolyTy[]): string => {
 };
 
 export const Error = {
-  Resolution: (err: ResolutionError): Error => ({ variant: 'Resolution', err }),
-  Parser: (err: ParserError): Error => ({ variant: 'Parser', err }),
-  BitterConversion: (err: BitterConversionError): Error => ({ variant: 'BitterConversion', err }),
-  Typing: (err: TypingError): Error => ({ variant: 'Typing', err }),
-  Unification: (err: UnificationError): Error => ({ variant: 'Unification', err }),
+  Lexer: (err: LexerError, pos?: Position): Error => ({ variant: 'Lexer', err, pos }),
+  Parser: (err: ParserError, pos?: Position): Error => ({ variant: 'Parser', err, pos }),
+  Resolution: (err: ResolutionError, pos?: Position): Error => ({ variant: 'Resolution', err, pos }),
+  BitterConversion: (err: BitterConversionError, pos?: Position): Error => ({ variant: 'BitterConversion', err, pos }),
+  Typing: (err: TypingError, pos?: Position): Error => ({ variant: 'Typing', err, pos }),
+  Unification: (err: UnificationError, pos?: Position): Error => ({ variant: 'Unification', err, pos }),
   show: async (err: Error, fs: FileSystem): Promise<string> => {
-    const formatted = matchVariant(err, {
-      Unification: ({ err }) => matchVariant(err, {
+    const formatted = match(err, {
+      Lexer: ({ err }) => match(err, {
+        InvalidToken: ({ char }) => `Invalid character '${char}'`,
+      }, 'type'),
+      Parser: ({ err }) => `Parser error: ${err.message}`,
+      Unification: ({ err }) => match(err, {
         Ununifiable: ({ s, t }) => `Cannot unify ${MonoTy.show(s)} with ${MonoTy.show(t)}`,
         RecursiveType: ({ s, t }) => `Recursive type encountered: ${MonoTy.show(s)} with ${MonoTy.show(t)}`,
         UnknownStructField: ({ row, field }) => `Unknown field '${field}' in struct ${MonoTy.show(MonoTy.Struct(row))}`,
         DifferentLengthTuples: ({ s, t }) => `Cannot unify tuples with different lengths: ${Tuple.show(s)} with ${Tuple.show(t)}`,
         CouldNotResolveType: ({ ty }) => `Could not resolve type: ${MonoTy.show(ty)}`,
       }, 'type'),
-      Parser: ({ err }) => `Parser error: ${err.message} at ${Position.show(err.pos)}`,
       BitterConversion: ({ err }) => `Bitter conversion error: ${err.message}`,
-      Typing: ({ err }) => matchVariant(err, {
+      Typing: ({ err }) => match(err, {
         ParsingError: ({ message }) => `Parsing error: ${message}`,
         UnboundVariable: ({ name }) => `Unbound variable: '${name}'`,
         UnknownFunction: ({ name }) => `Unknown function: '${name}'`,
@@ -58,7 +64,7 @@ export const Error = {
         IncorrectNumberOfTypeParams: ({ name, given, expected }) => `Incorrect number of type parameters for function '${name}', expected ${expected}, got ${given}`,
         InvalidMainFunSignature: ({ ty }) => `Invalid signature for the main function, expected () -> void, got ${PolyTy.show(ty)}`,
       }, 'type'),
-      Resolution: ({ err }) => matchVariant(err, {
+      Resolution: ({ err }) => match(err, {
         ModuleNotFound: ({ name }) => `Module '${name}' not found`,
         UnknownMember: ({ modulePath, member }) => `Module '${modulePath}' has no exported member '${member}'`,
         MemberIsNotPublic: ({ modulePath, member }) => `Member '${member}' from module '${modulePath}' is not public`,

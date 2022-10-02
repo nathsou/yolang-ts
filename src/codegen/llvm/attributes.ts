@@ -10,83 +10,47 @@ export const meta = (
   context: LLVM.LLVMContext,
 ): Maybe<LLVM.Value> => {
   switch (name) {
-    case 'addU64':
-    case 'addI64':
-    case 'addU32':
-    case 'addI32':
+    case 'add':
       return some(builder.CreateAdd(f.getArg(0), f.getArg(1)));
-    case 'subI32':
-    case 'subI64':
-    case 'subU64':
-    case 'subU32':
+    case 'sub':
       return some(builder.CreateSub(f.getArg(0), f.getArg(1)));
-    case 'negI64':
-    case 'negI32':
+    case 'neg':
       return some(builder.CreateNeg(f.getArg(0)));
     case 'not':
       return some(builder.CreateNot(f.getArg(0)));
-    case 'mulI32':
-    case 'mulU32':
-    case 'mulI64':
-    case 'mulU64':
+    case 'mul':
       return some(builder.CreateMul(f.getArg(0), f.getArg(1)));
-    case 'divI32':
-    case 'divI64':
+    case 'signedDiv':
       return some(builder.CreateSDiv(f.getArg(0), f.getArg(1)));
-    case 'divU32':
-    case 'divU64':
+    case 'unsignedDiv':
       return some(builder.CreateUDiv(f.getArg(0), f.getArg(1)));
-    case 'modI32':
-    case 'modI64':
-      return some(builder.CreateSRem(f.getArg(0), f.getArg(1)));
-    case 'modU32':
-    case 'modU64':
+    case 'mod':
       return some(builder.CreateURem(f.getArg(0), f.getArg(1)));
     case 'logicalAnd':
-    case 'bitwiseAndI32':
-    case 'bitwiseAndU32':
-    case 'bitwiseAndI64':
-    case 'bitwiseAndU64':
+    case 'bitwiseAnd':
       return some(builder.CreateAnd(f.getArg(0), f.getArg(1)));
     case 'logicalOr':
-    case 'bitwiseOrI32':
-    case 'bitwiseOrU32':
-    case 'bitwiseOrI64':
-    case 'bitwiseOrU64':
+    case 'bitwiseOr':
       return some(builder.CreateOr(f.getArg(0), f.getArg(1)));
-    case 'lssI32':
-    case 'lssI64':
+    case 'signedLss':
       return some(builder.CreateICmpSLT(f.getArg(0), f.getArg(1)));
-    case 'lssU32':
-    case 'lssU64':
+    case 'unsignedLss':
       return some(builder.CreateICmpULT(f.getArg(0), f.getArg(1)));
-    case 'gtrI32':
-    case 'gtrI64':
+    case 'signedGtr':
       return some(builder.CreateICmpSGT(f.getArg(0), f.getArg(1)));
-    case 'gtrU32':
-    case 'gtrU64':
+    case 'unsignedGtr':
       return some(builder.CreateICmpUGT(f.getArg(0), f.getArg(1)));
-    case 'leqI32':
-    case 'leqI64':
+    case 'signedLeq':
       return some(builder.CreateICmpSLE(f.getArg(0), f.getArg(1)));
-    case 'leqU32':
-    case 'leqU64':
+    case 'unsignedLeq':
       return some(builder.CreateICmpULE(f.getArg(0), f.getArg(1)));
-    case 'geqI32':
-    case 'geqI64':
+    case 'signedGeq':
       return some(builder.CreateICmpSGE(f.getArg(0), f.getArg(1)));
-    case 'geqU32':
-    case 'geqU64':
+    case 'unsignedGeq':
       return some(builder.CreateICmpUGE(f.getArg(0), f.getArg(1)));
-    case 'eqI32':
-    case 'eqI64':
-    case 'eqU32':
-    case 'eqU64':
+    case 'eq':
       return some(builder.CreateICmpEQ(f.getArg(0), f.getArg(1)));
-    case 'neqI32':
-    case 'neqI64':
-    case 'neqU32':
-    case 'neqU64':
+    case 'neq':
       return some(builder.CreateICmpNE(f.getArg(0), f.getArg(1)));
     case 'getUnchecked': {
       const arrayArg = f.getArg(0);

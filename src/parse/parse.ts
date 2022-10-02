@@ -1,5 +1,6 @@
 import { match, VariantOf } from 'itsamatch';
 import { Argument, ArrayInit, Attribute, Decl, Expr, Imports, Pattern, Stmt } from '../ast/sweet';
+import { Error } from '../errors/errors';
 import { Row } from '../infer/structs';
 import { Tuple } from '../infer/tuples';
 import { MonoTy, TypeParam } from '../infer/types';
@@ -10,6 +11,7 @@ import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
 import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, pos, satisfy, satisfyBy, seq, squareBrackets, symbol, uninitialized } from './combinators';
+import { lex } from './lex';
 import { Const, Token } from './token';
 
 export const expr = uninitialized<Expr>();
@@ -44,10 +46,9 @@ const invalid = mapParserResult(
       Ok: token => [
         ok(Expr.Error(Token.show(token), token.pos)),
         rem,
-        [...errs, {
+        [...errs, Error.Parser({
           message: Token.show(token),
-          pos: pos(rem.start),
-        }],
+        }, pos(rem.start))],
       ],
       Error: err => [error(err), rem, errs] as ParserResult<Expr>,
     });
@@ -728,15 +729,20 @@ initParser(decl, alt(
   importDecl,
 ));
 
-export const parse = (tokens: Slice<Token>): [Decl[], ParserError[]] => {
-  lexerContext.tokens = tokens.elems;
-  const [res, _, errs] = consumeAll(many(decl)).ref(tokens);
-  lexerContext.tokens = [];
+export const parse = (source: string, path: string): [Decl[], Error[]] => {
+  return lex(source, path).match({
+    Ok: tokens => {
+      lexerContext.tokens = tokens;
+      const [res, _, errs] = consumeAll(many(decl)).ref(Slice.from(tokens));
+      lexerContext.tokens = [];
 
-  return res.match({
-    Ok: decls => [decls, errs],
-    Error: err => [[], [...errs, err]],
+      return res.match({
+        Ok: decls => [decls, errs],
+        Error: err => [[], [...errs, err]],
+      });
+    },
+    Error: err => {
+      return [[], [err]];
+    },
   });
 };
-
-export const parseRes = compose(parse, Result.wrap);

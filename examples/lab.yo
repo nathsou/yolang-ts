@@ -1,16 +1,4 @@
 
-type S = {
-  a: i32,
-  b: bool,
-  c: i32[],
-}
-
 fun main() {
-  mut s = S { a: 11, b: true, c: [1, 2, 3] }
-
-  s.c[0u32] = 7
-
-  log(s.a)
-  log(s.b)
-  log(s.c[0u32])
+  log(3.pow(7))
 }

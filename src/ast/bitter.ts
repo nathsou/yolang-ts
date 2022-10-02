@@ -465,7 +465,7 @@ export const Decl = {
     }),
   show: (decl: Decl): string => match(decl, {
     Function: ({ attributes, name, typeParams, args, returnTy, body }) => {
-      const attrsFmt = attributes.length > 0 ? sweet.Attribute.showMany(attributes) + '\n' : '';
+      const attrsFmt = attributes.length > 0 ? sweet.Attribute.showMany(attributes, 'outer') + '\n' : '';
       const argsFmt = `${TypeParams.show(typeParams)}(${joinWith(args, FuncArg.show, ', ')})`;
       const retTyFmt = returnTy.mapWithDefault(ty => ': ' + MonoTy.show(ty), '');
       const bodyFmt = body.mapWithDefault(Expr.show, '');

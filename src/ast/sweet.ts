@@ -41,7 +41,7 @@ export const Attribute = {
 
     return `${name}(${args.join(', ')})`;
   },
-  showMany: (attrs: Attribute[], type: 'inner' | 'outer' = 'outer'): string => {
+  showMany: (attrs: Attribute[], type: 'inner' | 'outer'): string => {
     return (type === 'inner' ? '#!' : '#') + `[${attrs.map(Attribute.show).join(', ')}]`;
   },
 };
@@ -243,14 +243,14 @@ export const Decl = {
   ...genConstructors<Decl>(['Function', 'TypeAlias', 'Import', 'Attributes', 'Error']),
   show: (decl: Decl): string => match(decl, {
     Function: ({ attributes, name, typeParams, args, returnTy, body }) => {
-      const attrsFmt = attributes.length > 0 ? Attribute.showMany(attributes) + '\n' : '';
+      const attrsFmt = attributes.length > 0 ? Attribute.showMany(attributes, 'outer') + '\n' : '';
       const argsFmt = `${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')})`;
       const retTyFmt = returnTy.mapWithDefault(ty => ': ' + MonoTy.show(ty) + ' ', '');
       const bodyFmt = body.mapWithDefault(Expr.show, '');
       return `${attrsFmt}fun ${name}${argsFmt}${retTyFmt} ${bodyFmt}`;
     },
     TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)} `,
-    Attributes: ({ attributes }) => Attribute.showMany(attributes),
+    Attributes: ({ attributes }) => Attribute.showMany(attributes, 'inner'),
     Import: ({ path, imports }) => `import ${path}${Imports.show(imports)} `,
     Error: ({ message }) => `< Error: ${message}> `,
   }),

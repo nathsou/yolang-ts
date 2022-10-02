@@ -1,72 +1,72 @@
 #![noImplicitFoundationsImport]
 
-#meta(addI32)
+#meta(add)
 pub fun +(a: i32, b: i32): i32
 
-#meta(addU32)
+#meta(add)
 pub fun +(a: u32, b: u32): u32
 
-#meta(addI64)
+#meta(add)
 pub fun +(a: i64, b: i64): i64
 
-#meta(addU64)
+#meta(add)
 pub fun +(a: u64, b: u64): u64
 
-#meta(subI32)
+#meta(sub)
 pub fun -(a: i32, b: i32): i32
 
-#meta(subU32)
+#meta(sub)
 pub fun -(a: u32, b: u32): u32
 
-#meta(subI64)
+#meta(sub)
 pub fun -(a: i64, b: i64): i64
 
-#meta(subU64)
+#meta(sub)
 pub fun -(a: u64, b: u64): u64
 
-#meta(negI32)
+#meta(neg)
 pub fun -(n: i32): i32
 
-#meta(negI64)
+#meta(neg)
 pub fun -(n: i64): i64
 
 #meta(not)
 pub fun not(q: bool): bool
 
-#meta(mulI32)
+#meta(mul)
 pub fun *(a: i32, b: i32): i32
 
-#meta(mulU32)
+#meta(mul)
 pub fun *(a: u32, b: u32): u32
 
-#meta(mulI64)
+#meta(mul)
 pub fun *(a: i64, b: i64): i64
 
-#meta(mulU64)
+#meta(mul)
 pub fun *(a: u64, b: u64): u64
 
-#meta(divI32)
+#meta(signedDiv)
 pub fun /(a: i32, b: i32): i32
 
-#meta(divU32)
+#meta(unsignedDiv)
 pub fun /(a: u32, b: u32): u32
 
-#meta(divI64)
+#meta(signedDiv)
 pub fun /(a: i64, b: i64): i64
 
-#meta(divU64)
+#meta(unsignedDiv)
 pub fun /(a: u64, b: u64): u64
 
-#meta(modI32)
+#meta(mod)
 pub fun mod(a: i32, b: i32): i32
 
-#meta(modU32)
+#meta(mod)
 pub fun mod(a: u32, b: u32): u32
 
-#meta(modI64)
+#meta(mod)
 pub fun mod(a: i64, b: i64): i64
 
-#meta(modU64)
+#meta(mod)
 pub fun mod(a: u64, b: u64): u64
 
 #meta(logicalAnd)
@@ -91,100 +91,100 @@ pub fun xnor(a: bool, b: bool): bool {
   (a nor b) or (a and b)
 }
 
-#meta(bitwiseAndI32)
+#meta(bitwiseAnd)
 pub fun and(a: i32, b: i32): i32
 
-#meta(bitwiseAndU32)
+#meta(bitwiseAnd)
 pub fun and(a: u32, b: u32): u32
 
-#meta(bitwiseAndI64)
+#meta(bitwiseAnd)
 pub fun and(a: i64, b: i64): i64
 
-#meta(bitwiseAndU64)
+#meta(bitwiseAnd)
 pub fun and(a: u64, b: u64): u64
 
-#meta(bitwiseOrI32)
+#meta(bitwiseOr)
 pub fun or(a: i32, b: i32): i32
 
-#meta(bitwiseOrU32)
+#meta(bitwiseOr)
 pub fun or(a: u32, b: u32): u32
 
-#meta(bitwiseOrI64)
+#meta(bitwiseOr)
 pub fun or(a: i64, b: i64): i64
 
-#meta(bitwiseOrU64)
+#meta(bitwiseOr)
 pub fun or(a: u64, b: u64): u64
 
-#meta(lssI32)
+#meta(signedLss)
 pub fun <(a: i32, b: i32): bool
 
-#meta(lssU32)
+#meta(unsignedLss)
 pub fun <(a: u32, b: u32): bool
 
-#meta(lssI64)
+#meta(signedLss)
 pub fun <(a: i64, b: i64): bool
 
-#meta(lssU64)
+#meta(unsignedLss)
 pub fun <(a: u64, b: u64): bool
 
-#meta(leqI32)
+#meta(signedLeq)
 pub fun <=(a: i32, b: i32): bool
 
-#meta(leqU32)
+#meta(unsignedLeq)
 pub fun <=(a: u32, b: u32): bool
 
-#meta(leqI64)
+#meta(signedLeq)
 pub fun <=(a: i64, b: i64): bool
 
-#meta(leqU64)
+#meta(unsignedLeq)
 pub fun <=(a: u64, b: u64): bool
 
-#meta(gtrI32)
+#meta(signedGtr)
 pub fun >(a: i32, b: i32): bool
 
-#meta(gtrU32)
+#meta(unsignedGtr)
 pub fun >(a: u32, b: u32): bool
 
-#meta(gtrI64)
+#meta(signedGtr)
 pub fun >(a: i64, b: i64): bool
 
-#meta(gtrU64)
+#meta(unsignedGtr)
 pub fun >(a: u64, b: u64): bool
 
-#meta(geqI32)
+#meta(signedGeq)
 pub fun >=(a: i32, b: i32): bool
 
-#meta(geqU32)
+#meta(unsignedGeq)
 pub fun >=(a: u32, b: u32): bool
 
-#meta(geqI64)
+#meta(signedGeq)
 pub fun >=(a: i64, b: i64): bool
 
-#meta(geqU64)
+#meta(unsignedGeq)
 pub fun >=(a: u64, b: u64): bool
 
-#meta(eqI32)
+#meta(eq)
 pub fun ==(a: i32, b: i32): bool
 
-#meta(eqU32)
+#meta(eq)
 pub fun ==(a: u32, b: u32): bool
 
-#meta(eqI64)
+#meta(eq)
 pub fun ==(a: i64, b: i64): bool
 
-#meta(eqU64)
+#meta(eq)
 pub fun ==(a: u64, b: u64): bool
 
-#meta(neqI32)
+#meta(neq)
 pub fun !=(a: i32, b: i32): bool
 
-#meta(neqU32)
+#meta(neq)
 pub fun !=(a: u32, b: u32): bool
 
-#meta(neqI64)
+#meta(neq)
 pub fun !=(a: i64, b: i64): bool
 
-#meta(neqU64)
+#meta(neq)
 pub fun !=(a: u64, b: u64): bool
 
 pub fun even(n: i32): bool {

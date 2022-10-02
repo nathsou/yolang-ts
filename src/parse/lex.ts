@@ -1,3 +1,5 @@
+import { DataType } from "itsamatch";
+import { Error } from "../errors/errors";
 import { last } from "../utils/array";
 import { error, ok, Result } from "../utils/result";
 import { Char, isAlpha, isAlphaNum, isDigit } from "../utils/strings";
@@ -5,7 +7,11 @@ import { Const, Keyword, Position, Token } from "./token";
 
 const INSERT_SEMICOLONS = false;
 
-export const lex = (source: string, path: string): Result<Token[], string> => {
+export type LexerError = DataType<{
+  InvalidToken: { char: Char },
+}, 'type'>;
+
+export const lex = (source: string, path: string): Result<Token[], Error> => {
   return Lexer(source, path).lex();
 };
 
@@ -299,7 +305,7 @@ const Lexer = (source: string, path: string) => {
     }
   };
 
-  const lex = (): Result<Token[], string> => {
+  const lex = (): Result<Token[], Error> => {
     while (true) {
       const shouldContinue = nextToken();
       if (!shouldContinue) {
@@ -308,7 +314,10 @@ const Lexer = (source: string, path: string) => {
     }
 
     if (index < source.length) {
-      return error(`Invalid token '${peek()}' at ${Position.show(pos)}`);
+      return error(Error.Lexer(
+        { type: 'InvalidToken', char: source[index - 1] },
+        { ...pos, column: pos.column - 1 }
+      ));
     }
 
     return ok(tokens);

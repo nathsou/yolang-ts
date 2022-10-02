@@ -1,12 +1,10 @@
 import { DataType, genConstructors, match } from "itsamatch";
 import { Decl, Imports, Module, Prog } from "../ast/sweet";
 import { Error } from "../errors/errors";
-import { lex } from "../parse/lex";
 import { parse } from '../parse/parse';
 import { groupBy, last } from '../utils/array';
 import { block, pushMap } from '../utils/misc';
 import { error, ok, Result } from "../utils/result";
-import { Slice } from '../utils/slice';
 import { FileSystem } from "./fileSystem";
 
 export type ResolutionError = DataType<{
@@ -71,16 +69,18 @@ export const resolve = async (path: string, fs: FileSystem): Promise<Result<Prog
     };
 
     const source = await fs.readFile(path);
+    const [originalDecls, parsingErrors] = parse(source, path);
+    if (parsingErrors.length > 0) {
+      errors.push(...parsingErrors);
+      return error(errors);
+    }
 
     // implicitly import the foundations
     const decls = block(() => {
-      const tokens = lex(source, path).unwrap();
-      const [decls, errs] = parse(Slice.from(tokens));
-      errors.push(...errs.map(Error.Parser));
-      mod.decls = decls;
+      mod.decls = originalDecls;
 
       // collect module attributes
-      decls.forEach(decl => {
+      originalDecls.forEach(decl => {
         if (decl.variant === 'Attributes') {
           for (const { name, args } of decl.attributes) {
             mod.attributes.set(name, args);
@@ -96,10 +96,10 @@ export const resolve = async (path: string, fs: FileSystem): Promise<Result<Prog
             path: 'std/foundations',
             resolvedPath: fs.resolve('std/foundations'),
           }),
-          ...decls,
+          ...originalDecls,
         ];
       } else {
-        return decls;
+        return originalDecls;
       }
     });
 
