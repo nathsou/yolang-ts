@@ -10,7 +10,7 @@ import { error, ok, Result } from '../utils/result';
 import { Slice } from '../utils/slice';
 import { isLowerCase, isUpperCase } from '../utils/strings';
 import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserError, ParserResult, pos, satisfy, satisfyBy, seq, squareBrackets, symbol, uninitialized } from './combinators';
-import { Const, Position, Token } from './token';
+import { Const, Token } from './token';
 
 export const expr = uninitialized<Expr>();
 const stmt = uninitialized<Stmt>();
@@ -597,7 +597,7 @@ const attribute = map(
   ([name, args]) => Attribute.make(name, args)
 );
 
-const attributeList = map(seq(
+const outerAttributeList = map(seq(
   symbol('#'),
   alt(
     squareBrackets(commas(attribute)),
@@ -607,10 +607,37 @@ const attributeList = map(seq(
   snd
 );
 
+const innerAttributeList = map(seq(
+  symbol('#'),
+  symbol('!'),
+  alt(
+    squareBrackets(commas(attribute)),
+    map(attribute, attr => [attr])
+  ),
+),
+  ([_1, _2, attrs]) => attrs,
+);
+
+const innerAttributeDecl = map(seq(
+  symbol('#'),
+  symbol('!'),
+  alt(
+    squareBrackets(commas(attribute)),
+    map(attribute, attr => [attr])
+  ),
+),
+  ([_1, _2, attrs]) => attrs,
+);
+
+const innerAttributesDecl: Parser<VariantOf<Decl, 'Attributes'>> = map(
+  innerAttributeList,
+  attrs => Decl.Attributes({ attributes: attrs })
+);
+
 const memberVisibility = optionalOrDefault(map(keyword('pub'), () => true), false);
 
-const funcDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
-  optionalOrDefault(attributeList, []),
+const funDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
+  optionalOrDefault(outerAttributeList, []),
   memberVisibility,
   keyword('fun'),
   expectOrDefault(
@@ -695,7 +722,8 @@ const importDecl = map(
 );
 
 initParser(decl, alt(
-  funcDecl,
+  innerAttributesDecl,
+  funDecl,
   typeAliasDecl,
   importDecl,
 ));

@@ -9,7 +9,7 @@ export type Position = {
 };
 
 export const Position = {
-  DONT_CARE: { line: 0, column: 0, path: '' } as Readonly<Position>,
+  DONT_CARE: Object.freeze<Position>({ line: 0, column: 0, path: '' }),
   show: ({ line, column, path }: Position): string => `${path}:${line}:${column}`,
   showWithShortPath: ({ line, column, path }: Position, fs: FileSystem): string => {
     const shortPath = fs.relative(process.cwd(), path);
@@ -56,7 +56,7 @@ export const Token = {
 };
 
 const symbols = [
-  '->', '=>', '(', ')', ',', ';', '{', '}',
+  '->', '=>', '(', ')', ',', ';', '{', '}', '!',
   '[', ']', ':', '.', '\'', '"', '_', '..', '...', '#',
 ] as const;
 

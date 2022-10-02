@@ -1,3 +1,5 @@
+#![noImplicitFoundationsImport]
+
 import std/ops
 import std/arrays
 

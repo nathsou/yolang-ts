@@ -1,4 +1,5 @@
-import std/ops
+#![noImplicitFoundationsImport]
+import std/ops [-]
 
 pub type Array<T> = {
   len: u32,

@@ -460,6 +460,7 @@ export const Decl = {
         return [Decl.TypeAlias({ pub, name, typeParams, alias: NameEnv.resolveType(nameEnv, alias) })];
       },
       Import: () => [],
+      Attributes: () => [],
       Error: ({ message }) => [Decl.Error(message)],
     }),
   show: (decl: Decl): string => match(decl, {
@@ -512,6 +513,7 @@ export type Module = {
   imports: Map<string, { sourceMod: string, isExport: boolean }>,
   typeContext: TypeContext,
   typeChecked: boolean,
+  attributes: Map<string, string[]>,
 };
 
 const Module = {
@@ -525,6 +527,7 @@ const Module = {
       members: new Map(),
       typeContext: TypeContext.make(modules),
       typeChecked: false,
+      attributes: mod.attributes,
     };
 
     for (const decl of decls) {
@@ -549,6 +552,7 @@ const Module = {
     imports: mapMap(mod.imports, s => ({ ...s })),
     typeContext: TypeContext.clone(mod.typeContext),
     typeChecked: mod.typeChecked,
+    attributes: new Map(mod.attributes),
   }),
 };
 

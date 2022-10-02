@@ -191,7 +191,7 @@ const Lexer = (source: string, path: string) => {
     const c = advance();
 
     if (c === undefined) {
-      tokens.push(Token.EOF(pos));
+      tokens.push(Token.EOF({ ...pos }));
       return false;
     }
 
@@ -274,7 +274,10 @@ const Lexer = (source: string, path: string) => {
         return true;
       }
       case '!':
-        tokens.push(Token.Identifier(match('=') ? '!=' : '!', { ...pos }));
+        tokens.push(match('=') ?
+          Token.Identifier('!=', { ...pos }) :
+          Token.Symbol('!', { ...pos })
+        );
         return true;
       case '"':
         const str = Const.str(parseString(startIndex));

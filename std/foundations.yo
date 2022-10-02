@@ -1,3 +1,5 @@
+#![noImplicitFoundationsImport]
+
 export ./ops
 export ./strings
 export ./arrays

@@ -63,6 +63,14 @@ export class Result<T, E> {
     return panic(`Tried to unwrap an error result: ${this.show()}`);
   }
 
+  unwrapError(): E {
+    if (this.raw.type === 'error') {
+      return this.raw.data;
+    }
+
+    return panic(`Tried to unwrapError an ok result: ${this.show()}`);
+  }
+
   show(
     showData: (data: T) => string = JSON.stringify,
     showError: (error: E) => string = JSON.stringify

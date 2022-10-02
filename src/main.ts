@@ -1,3 +1,4 @@
+import { execFileSync, spawn } from 'child_process';
 import { program } from 'commander';
 import { match } from "itsamatch";
 import { resolve as resolvePath } from 'path';
@@ -6,6 +7,7 @@ import { Context } from './ast/context';
 import * as core from "./ast/core";
 import { Mono } from "./ast/monomorphize";
 import * as sweet from "./ast/sweet";
+import { buildLLVM } from './codegen/llvm/build';
 import { createLLVMCompiler } from "./codegen/llvm/codegen";
 import { Error } from './errors/errors';
 import { infer } from "./infer/infer";
@@ -14,7 +16,6 @@ import { createNodeFileSystem } from './resolve/nodefs';
 import { resolve } from './resolve/resolve';
 import { sum } from "./utils/array";
 import { block, matchString, panic } from "./utils/misc";
-import { spawn, execFileSync } from 'child_process';
 
 const TARGETS = ['host', 'wasm', 'wasi'] as const;
 
@@ -132,19 +133,19 @@ async function yo(source: string, options: Options): Promise<number> {
     }
   };
 
-  const [[sweetProg, errs1], resolveDuration] = await timeAsync(() => resolve(source, nfs));
+  const [sweetProg, resolveDuration] = await timeAsync(() => resolve(source, nfs));
 
-  if (options['show:sweet']) {
-    console.log('--- sweet ---');
-    console.log(sweet.Prog.show(sweetProg) + '\n');
-  }
-
-  if (errs1.length > 0) {
-    await logErrors(errs1);
+  if (sweetProg.isError()) {
+    await logErrors(sweetProg.unwrapError());
     return 1;
   }
 
-  const [[bitterProg, errs2], bitterDuration] = time(() => bitter.Prog.from(sweetProg));
+  if (options['show:sweet']) {
+    console.log('--- sweet ---');
+    console.log(sweet.Prog.show(sweetProg.unwrap()) + '\n');
+  }
+
+  const [[bitterProg, errs2], bitterDuration] = time(() => bitter.Prog.from(sweetProg.unwrap()));
 
   if (options['show:bitter']) {
     console.log('--- bitter ---');
@@ -212,7 +213,7 @@ async function yo(source: string, options: Options): Promise<number> {
     });
   }));
 
-  const [stdout, buildDuration] = await timeAsync(() => compiler.compileIR(
+  const [stdout, buildDuration] = await timeAsync(() => buildLLVM(
     modules,
     options.target,
     options.artifacts,
@@ -271,7 +272,7 @@ async function yo(source: string, options: Options): Promise<number> {
           const mainFunc = await getWasmMainFunc(outFile);
           return mainFunc();
         case 'wasi':
-          await spawnPromise('wasmtime', outFile, '--invoke', 'main');
+          await spawnPromise('wasmtime', outFile, '--invoke', 'main', '0', '0');
           return 0;
         case 'host':
           try {

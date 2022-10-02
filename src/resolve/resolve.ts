@@ -1,10 +1,11 @@
 import { DataType, genConstructors, match } from "itsamatch";
-import { Module, Prog } from "../ast/sweet";
+import { Decl, Imports, Module, Prog } from "../ast/sweet";
 import { Error } from "../errors/errors";
 import { lex } from "../parse/lex";
 import { parse } from '../parse/parse';
 import { groupBy, last } from '../utils/array';
 import { block, pushMap } from '../utils/misc';
+import { error, ok, Result } from "../utils/result";
 import { Slice } from '../utils/slice';
 import { FileSystem } from "./fileSystem";
 
@@ -12,6 +13,7 @@ export type ResolutionError = DataType<{
   ModuleNotFound: { name: string },
   UnknownMember: { modulePath: string, member: string },
   MemberIsNotPublic: { modulePath: string, member: string },
+  CircularImport: { path: string },
 }>;
 
 const { UnknownMember, MemberIsNotPublic } = genConstructors<ResolutionError>([
@@ -42,15 +44,22 @@ const renameModules = (modules: Module[]): void => {
   }
 };
 
-export const resolve = async (path: string, fs: FileSystem): Promise<[Prog, Error[]]> => {
-  const errors: Error[] = [];
+export const resolve = async (path: string, fs: FileSystem): Promise<Result<Prog, Error[]>> => {
   const modules = new Map<string, Module>();
+  const modulesBeingVisited = new Set<string>();
 
-  const aux = async (path: string): Promise<Module> => {
+  const aux = async (path: string, errors: Error[]): Promise<Result<Module, Error[]>> => {
     const resolvedPath = fs.resolve(path);
     if (modules.has(resolvedPath)) {
-      return modules.get(resolvedPath)!;
+      return ok(modules.get(resolvedPath)!);
     }
+
+    if (modulesBeingVisited.has(path)) {
+      errors.push(Error.Resolution({ variant: 'CircularImport', path }));
+      return error(errors);
+    }
+
+    modulesBeingVisited.add(path);
 
     const mod: Module = {
       name: 'tmp',
@@ -58,64 +67,99 @@ export const resolve = async (path: string, fs: FileSystem): Promise<[Prog, Erro
       decls: [],
       members: new Map(),
       imports: new Map(),
+      attributes: new Map(),
     };
 
     const source = await fs.readFile(path);
-    const tokens = lex(source, path).unwrap();
-    const [decls, errs] = parse(Slice.from(tokens));
-    errors.push(...errs.map(Error.Parser));
+
+    // implicitly import the foundations
+    const decls = block(() => {
+      const tokens = lex(source, path).unwrap();
+      const [decls, errs] = parse(Slice.from(tokens));
+      errors.push(...errs.map(Error.Parser));
+      mod.decls = decls;
+
+      // collect module attributes
+      decls.forEach(decl => {
+        if (decl.variant === 'Attributes') {
+          for (const { name, args } of decl.attributes) {
+            mod.attributes.set(name, args);
+          }
+        }
+      });
+
+      if (!mod.attributes.has('noImplicitFoundationsImport')) {
+        return [
+          Decl.Import({
+            imports: Imports.all(),
+            isExport: false,
+            path: 'std/foundations',
+            resolvedPath: fs.resolve('std/foundations'),
+          }),
+          ...decls,
+        ];
+      } else {
+        return decls;
+      }
+    });
 
     for (const decl of decls) {
+      const prevErrorCount = errors.length;
+
       await match(decl, {
         Import: async imp => {
           const { imports, path: importPath } = imp;
           const fullPath = fullImportPath(importPath, fs.parentDir(path), fs);
           imp.resolvedPath = fullPath;
-          const importedMod = await aux(fullPath);
 
-          const resolveImport = (name: string): void => {
-            if (importedMod.members.has(name)) {
-              const members = importedMod.members.get(name)!;
-              for (const member of members) {
-                if (!member.pub) {
-                  errors.push(Error.Resolution(MemberIsNotPublic({ modulePath: fullPath, member: name })));
-                } else {
-                  mod.imports.set(name, {
-                    sourceMod: importedMod.path,
-                    isExport: imp.isExport
-                  });
-                }
-              }
-            } else if (importedMod.imports.has(name) && importedMod.imports.get(name)!.isExport) {
-              const { sourceMod } = importedMod.imports.get(name)!;
-              mod.imports.set(name, { sourceMod, isExport: imp.isExport });
-            } else {
-              errors.push(Error.Resolution(UnknownMember({ modulePath: fullPath, member: name })));
-            }
-          };
-
-          match(imports, {
-            all: () => {
-              for (const [name, decls] of importedMod.members) {
-                decls.forEach(decl => {
-                  if (decl.pub) {
-                    mod.imports.set(name, { sourceMod: importedMod.path, isExport: imp.isExport });
-                    resolveImport(name);
+          (await aux(fullPath, errors)).match({
+            Ok: importedMod => {
+              const resolveImport = (name: string): void => {
+                if (importedMod.members.has(name)) {
+                  const members = importedMod.members.get(name)!;
+                  for (const member of members) {
+                    if (!member.pub) {
+                      errors.push(Error.Resolution(MemberIsNotPublic({ modulePath: fullPath, member: name })));
+                    } else {
+                      mod.imports.set(name, {
+                        sourceMod: importedMod.path,
+                        isExport: imp.isExport
+                      });
+                    }
                   }
-                });
-              }
-
-              for (const [name, { sourceMod, isExport }] of importedMod.imports) {
-                if (isExport) {
+                } else if (importedMod.imports.has(name) && importedMod.imports.get(name)!.isExport) {
+                  const { sourceMod } = importedMod.imports.get(name)!;
                   mod.imports.set(name, { sourceMod, isExport: imp.isExport });
+                } else {
+                  errors.push(Error.Resolution(UnknownMember({ modulePath: fullPath, member: name })));
                 }
-              }
-            },
-            names: ({ names }) => {
-              names.forEach(name => {
-                resolveImport(name);
+              };
+
+              match(imports, {
+                all: () => {
+                  for (const [name, decls] of importedMod.members) {
+                    decls.forEach(decl => {
+                      if (decl.pub) {
+                        mod.imports.set(name, { sourceMod: importedMod.path, isExport: imp.isExport });
+                        resolveImport(name);
+                      }
+                    });
+                  }
+
+                  for (const [name, { sourceMod, isExport }] of importedMod.imports) {
+                    if (isExport) {
+                      mod.imports.set(name, { sourceMod, isExport: imp.isExport });
+                    }
+                  }
+                },
+                names: ({ names }) => {
+                  names.forEach(name => {
+                    resolveImport(name);
+                  });
+                },
               });
             },
+            Error: () => { },
           });
         },
         Function: f => {
@@ -126,22 +170,26 @@ export const resolve = async (path: string, fs: FileSystem): Promise<[Prog, Erro
         },
         _: () => { },
       });
+
+      if (prevErrorCount !== errors.length) {
+        break;
+      }
     }
 
-    mod.decls = decls;
     modules.set(resolvedPath, mod);
+    modulesBeingVisited.delete(path);
 
-    return mod;
+    return Result.wrap([mod, errors]);
   };
 
-  const mod = await aux(path);
+  return (await aux(path, [])).map(mod => {
+    renameModules([...modules.values()]);
 
-  renameModules([...modules.values()]);
+    const prog: Prog = {
+      modules,
+      entry: mod,
+    };
 
-  const prog: Prog = {
-    modules,
-    entry: mod,
-  };
-
-  return [prog, errors];
+    return prog;
+  });
 };

@@ -507,6 +507,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void =
       TypeContext.declareTypeAlias(ctx, name, typeParams, alias);
     },
     Import: ({ }) => { },
+    Attributes: ({ }) => { },
     Error: ({ message }) => {
       pushError(Error.Typing({ type: 'ParsingError', message }));
     },
@@ -563,7 +564,6 @@ const declareImports = (mod: Module, errors: Error[]): void => {
 export const infer = (prog: Prog): Error[] => {
   const errors: Error[] = [];
 
-  // TODO: build dependency graph (in resolve?) and check for circular dependencies
   for (const mod of prog.modules.values()) {
     inferModule(mod, errors);
   }

@@ -1,4 +1,3 @@
-import std/foundations
 
 type Vec2 = { x: i32, y: i32 }
 

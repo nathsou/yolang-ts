@@ -62,6 +62,7 @@ export const Error = {
         ModuleNotFound: ({ name }) => `Module '${name}' not found`,
         UnknownMember: ({ modulePath, member }) => `Module '${modulePath}' has no exported member '${member}'`,
         MemberIsNotPublic: ({ modulePath, member }) => `Member '${member}' from module '${modulePath}' is not public`,
+        CircularImport: ({ path }) => `Module '${path}' circularly imports itself`,
       }),
     });
 

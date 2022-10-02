@@ -10,6 +10,10 @@ export class Maybe<T> {
     this.raw = value;
   }
 
+  static noneAs<T>(): Maybe<T> {
+    return Maybe.none;
+  }
+
   static some<T>(val: T): Maybe<T> {
     return new Maybe({ type: 'some', data: val });
   }
@@ -113,4 +117,4 @@ export class Maybe<T> {
   }
 }
 
-export const { none, some } = Maybe;
+export const { none, noneAs, some } = Maybe;

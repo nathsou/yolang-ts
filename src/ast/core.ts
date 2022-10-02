@@ -12,6 +12,7 @@ import { assert, block, panic, proj, pushMap } from "../utils/misc";
 import * as bitter from './bitter';
 import type { Mono } from "./monomorphize";
 import { FuncName, VarName } from "./name";
+import * as sweet from './sweet';
 
 type Typed<T> = {
   [K in keyof T]: T[K] & { ty: MonoTy }
@@ -234,6 +235,7 @@ export type Module = {
   members: Map<string, VariantOf<Decl, 'Function'>[]>,
   imports: Map<string, { sourceMod: string, isExport: boolean }>,
   typeContext: TypeContext,
+  attributes: Map<string, string[]>,
 };
 
 export const Module = {
@@ -254,10 +256,10 @@ export const Module = {
         returnTy: some(MonoTy.i32()),
         body: some(bitter.Expr.Block(
           [
-            bitter.Stmt.Expr(bitter.Expr.NamedFuncCall(Either.right(main.name), [], [], main.body.unwrap().sweet))
+            bitter.Stmt.Expr(bitter.Expr.NamedFuncCall(Either.right(main.name), [], [], sweet.Expr.generated))
           ],
-          some(bitter.Expr.Const(Const.i32(0), main.body.unwrap().sweet)),
-          main.body.unwrap().sweet,
+          some(bitter.Expr.Const(Const.i32(0), sweet.Expr.generated)),
+          sweet.Expr.generated,
         )),
       });
 
@@ -272,6 +274,7 @@ export const Module = {
       imports: mod.imports,
       members: new Map(),
       typeContext: mod.typeContext,
+      attributes: mod.attributes,
     };
 
     for (const decl of decls) {

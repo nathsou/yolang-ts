@@ -41,8 +41,8 @@ export const Attribute = {
 
     return `${name}(${args.join(', ')})`;
   },
-  showMany: (attrs: Attribute[]): string => {
-    return `#[${attrs.map(Attribute.show).join(', ')}]`;
+  showMany: (attrs: Attribute[], type: 'inner' | 'outer' = 'outer'): string => {
+    return (type === 'inner' ? '#!' : '#') + `[${attrs.map(Attribute.show).join(', ')}]`;
   },
 };
 
@@ -93,6 +93,7 @@ export const Expr = {
   Struct: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], pos: Position = Position.DONT_CARE): Expr => ({ variant: 'Struct', name, typeParams, fields, pos }),
   TupleIndexing: (lhs: Expr, index: number, pos: Position = Position.DONT_CARE): Expr => ({ variant: 'TupleIndexing', lhs, index, pos }),
   LetIn: (pattern: Pattern, annotation: Maybe<MonoTy>, value: Expr, body: Expr, pos: Position = Position.DONT_CARE): Expr => ({ variant: 'LetIn', pattern, annotation, value, body, pos }),
+  generated: Object.freeze<Expr>({ variant: 'Const', value: Const.str('<generated>'), pos: Position.DONT_CARE }),
   show: (expr: Expr): string => match(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
@@ -234,11 +235,12 @@ export type Decl = DataType<{
     pub: boolean, name: string, typeParams: TypeParam[], alias: MonoTy
   },
   Import: { isExport: boolean, readonly path: string, resolvedPath: string, imports: Imports },
+  Attributes: { attributes: Attribute[] },
   Error: { message: string },
 }>;
 
 export const Decl = {
-  ...genConstructors<Decl>(['Function', 'TypeAlias', 'Import', 'Error']),
+  ...genConstructors<Decl>(['Function', 'TypeAlias', 'Import', 'Attributes', 'Error']),
   show: (decl: Decl): string => match(decl, {
     Function: ({ attributes, name, typeParams, args, returnTy, body }) => {
       const attrsFmt = attributes.length > 0 ? Attribute.showMany(attributes) + '\n' : '';
@@ -248,6 +250,7 @@ export const Decl = {
       return `${attrsFmt}fun ${name}${argsFmt}${retTyFmt} ${bodyFmt}`;
     },
     TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)} `,
+    Attributes: ({ attributes }) => Attribute.showMany(attributes),
     Import: ({ path, imports }) => `import ${path}${Imports.show(imports)} `,
     Error: ({ message }) => `< Error: ${message}> `,
   }),
@@ -259,6 +262,7 @@ export type Module = {
   decls: Decl[],
   members: Map<string, VariantOf<Decl, 'Function' | 'TypeAlias'>[]>,
   imports: Map<string, { sourceMod: string, isExport: boolean }>,
+  attributes: Map<string, string[]>,
 };
 
 export type Prog = {

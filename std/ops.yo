@@ -1,3 +1,4 @@
+#![noImplicitFoundationsImport]
 
 #meta(addI32)
 pub fun +(a: i32, b: i32): i32
