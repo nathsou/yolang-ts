@@ -86,7 +86,7 @@ export const ArrayInit = {
 export type Expr = DataType<WithSweetRefAndType<{
   Const: { value: Const },
   Variable: { name: VarName },
-  NamedFuncCall: { name: Either<string, FuncName>, typeParams: MonoTy[], args: Expr[] },
+  NamedFunCall: { name: Either<string, FuncName>, typeParams: MonoTy[], args: Expr[] },
   Call: { lhs: Expr, args: Expr[] },
   Error: { message: string },
   Closure: { args: Argument[], body: Expr },
@@ -109,7 +109,7 @@ const typed = <T extends {}>(obj: T, sweet: sweet.Expr): T & { ty: MonoTy, sweet
 export const Expr = {
   Const: (c: Const, sweet: sweet.Expr): Expr => ({ variant: 'Const', value: c, sweet, ty: Const.type(c) }),
   Variable: (name: VarName, sweet: sweet.Expr): Expr => typed({ variant: 'Variable', name }, sweet),
-  NamedFuncCall: (name: Either<string, FuncName>, typeParams: MonoTy[], args: Expr[], sweet: sweet.Expr): Expr => typed({ variant: 'NamedFuncCall', name, typeParams, args }, sweet),
+  NamedFunCall: (name: Either<string, FuncName>, typeParams: MonoTy[], args: Expr[], sweet: sweet.Expr): Expr => typed({ variant: 'NamedFunCall', name, typeParams, args }, sweet),
   Call: (lhs: Expr, args: Expr[], sweet: sweet.Expr): Expr => typed({ variant: 'Call', lhs, args }, sweet),
   Error: (message: string, sweet: sweet.Expr): Expr => ({ variant: 'Error', message, sweet, ty: MonoTy.void() }),
   Closure: (args: Argument[], body: Expr, sweet: sweet.Expr): Expr => typed({ variant: 'Closure', args, body }, sweet),
@@ -129,7 +129,7 @@ export const Expr = {
       Const: ({ value }) => Expr.Const(value, sweet),
       Variable: ({ name }) => Expr.Variable(NameEnv.resolveVar(nameEnv, name), sweet),
       Call: ({ lhs, typeParams, args }) => match(lhs, {
-        Variable: ({ name }) => Expr.NamedFuncCall(
+        Variable: ({ name }) => Expr.NamedFunCall(
           Either.left(name),
           typeParams.map(resolveTy),
           args.map(arg => go(arg)),
@@ -225,7 +225,7 @@ export const Expr = {
   show: (expr: Expr): string => match(expr, {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => VarName.show(name),
-    NamedFuncCall: ({ name, typeParams, args }) => {
+    NamedFunCall: ({ name, typeParams, args }) => {
       const funcName: string = name.match({ left: id, right: FuncName.show });
       const params = `${typeParams.length > 0 ? `<${joinWith(typeParams, MonoTy.show)}>` : ''}`;
       return `${funcName}${params}(${joinWith(args, Expr.show, ', ')})`;
@@ -252,7 +252,7 @@ export const Expr = {
     return rewriteExpr(match(expr, {
       Const: ({ value }) => Expr.Const(value, expr.sweet),
       Variable: ({ name }) => Expr.Variable(NameEnv.resolveVar(nameEnv, name.original), expr.sweet),
-      NamedFuncCall: ({ name, typeParams, args }) => Expr.NamedFuncCall(name, typeParams.map(rewriteTy), args.map(arg => go(arg)), expr.sweet),
+      NamedFunCall: ({ name, typeParams, args }) => Expr.NamedFunCall(name, typeParams.map(rewriteTy), args.map(arg => go(arg)), expr.sweet),
       Call: ({ lhs, args }) => Expr.Call(go(lhs), args.map(arg => go(arg)), expr.sweet),
       Error: ({ message }) => Expr.Error(message, expr.sweet),
       Closure: ({ args, body }) => Expr.Closure(
@@ -359,7 +359,7 @@ export type Decl = DataType<{
     attributes: sweet.Attribute[],
     pub: boolean,
     name: FuncName,
-    typeParams: { name: string, ty: Maybe<MonoTy> }[],
+    typeParams: (TypeParam & { inst: MonoTy })[],
     args: FuncArg[],
     returnTy: Maybe<MonoTy>,
     body: Maybe<Expr>,
@@ -377,21 +377,25 @@ export type Decl = DataType<{
 
 const { TypeAlias } = genConstructors<Decl>(['TypeAlias']);
 
-type FuncConstructorParams = {
+type FunConstructorParams = {
   attributes: sweet.Attribute[],
   pub: boolean,
   name: FuncName,
-  typeParams: { name: string, ty: Maybe<MonoTy> }[],
+  typeParams: TypeParam[],
   args: FuncArg[],
   returnTy: Maybe<MonoTy>,
   body: Maybe<Expr>,
 };
 
 export const Decl = {
-  Function: ({ attributes, pub, name, typeParams, args, returnTy, body }: FuncConstructorParams): Decl => {
+  Function: ({ attributes, pub, name, typeParams, args, returnTy, body }: FunConstructorParams): Decl => {
     const quantifiedVars = typeParams.map(Context.freshTyVarIndex);
-    const newParams = zip(typeParams, quantifiedVars).map(([{ name }, id]) => ({ name, ty: some(MonoTy.Var(TyVar.Unbound(id))) }));
-    const subst = new Map<string, MonoTy>(newParams.map(({ name, ty }) => [name, ty.unwrap()]));
+    const newParams = zip(typeParams, quantifiedVars).map(([{ name, constraints }, id]) => ({
+      name,
+      constraints,
+      inst: MonoTy.Var(TyVar.Unbound(id))
+    }));
+    const subst = new Map<string, MonoTy>(newParams.map(({ name, inst }) => [name, inst]));
     const funTy = PolyTy.make(quantifiedVars, MonoTy.substituteTyParams(MonoTy.Fun(
       args.map(a => a.annotation.orDefault(MonoTy.fresh)),
       returnTy.orDefault(body.mapWithDefault(proj('ty'), MonoTy.fresh))
@@ -428,8 +432,8 @@ export const Decl = {
     match(decl, {
       Function: ({ attributes, pub, name, typeParams, args, returnTy, body }) => {
         const nameRef = NameEnv.declareFunc(nameEnv, name);
-        typeParams.forEach(({ name, ty }) => {
-          NameEnv.declareTypeParam(nameEnv, name, ty.orDefault(() => MonoTy.Param(name)));
+        typeParams.forEach(({ name }) => {
+          NameEnv.declareTypeParam(nameEnv, name, MonoTy.Param(name));
         });
 
         const withoutPatterns = rewriteFuncArgsPatternMatching(
@@ -453,8 +457,8 @@ export const Decl = {
         })];
       },
       TypeAlias: ({ pub, name, typeParams, alias }) => {
-        typeParams.forEach(({ name, ty }) => {
-          NameEnv.declareTypeParam(nameEnv, name, ty.orDefault(() => MonoTy.Param(name)));
+        typeParams.forEach(({ name }) => {
+          NameEnv.declareTypeParam(nameEnv, name, MonoTy.Param(name));
         });
 
         return [Decl.TypeAlias({ pub, name, typeParams, alias: NameEnv.resolveType(nameEnv, alias) })];
@@ -481,7 +485,7 @@ export const Decl = {
         attributes,
         pub,
         name: NameEnv.declareFunc(nameEnv, name.original, name.mangled),
-        typeParams: typeParams.map(p => ({ name: p.name, ty: p.ty.map(rewriteTy) })),
+        typeParams: typeParams.map(p => ({ ...p, ty: rewriteTy(p.inst) })),
         args: args.map(arg => ({
           mutable: arg.mutable,
           annotation: arg.annotation.map(rewriteTy),
@@ -494,7 +498,7 @@ export const Decl = {
     TypeAlias: ({ pub, name, typeParams, alias }) => Decl.TypeAlias({
       pub,
       name,
-      typeParams: typeParams.map(p => ({ name: p.name, ty: p.ty.map(rewriteTy) })),
+      typeParams: typeParams.map(p => ({ ...p })),
       alias: rewriteTy(alias),
     }),
     Error: ({ message }) => Decl.Error(message),

@@ -48,7 +48,7 @@ export const TypeContext = {
       params: typeParams,
     });
   },
-  declareTypeParams: (ctx: TypeContext, ...ps: TypeParam[]): void => {
+  declareTypeParams: (ctx: TypeContext, ...ps: { name: string, ty: Maybe<MonoTy> }[]): void => {
     ps.forEach(p => {
       p.ty.do(ty => {
         ctx.typeParamsEnv.set(p.name, ty);

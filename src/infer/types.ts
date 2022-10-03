@@ -394,10 +394,10 @@ export const PolyTy = {
   isPolymorphic: ([quantified, _]: PolyTy): boolean => quantified.length > 0,
 };
 
-export type TypeParam = { name: string, ty: Maybe<MonoTy> };
+export type TypeParam = { name: string, constraints: MonoTy[] };
 
 export const TypeParams = {
-  show: (params: TypeParam[]) => params.length > 0 ? `<${joinWith(params, p => p.ty.match({ None: () => p.name, Some: ty => `${p.name}: ${MonoTy.show(ty)}` }))}>` : '',
+  show: (params: TypeParam[]) => params.length > 0 ? `<${joinWith(params, p => p.constraints.length === 0 ? p.name : `${p.name}: ${joinWith(p.constraints, MonoTy.show, ' + ')}`)}>` : '',
   hash: (params: MonoTy[]) => `<${joinWith(params, MonoTy.show)}>`,
 };
 

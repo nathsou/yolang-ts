@@ -45,12 +45,11 @@ const monomorphize = (
   // in the generic version of the function with their instances
   const subst = block(() => {
     const subst = Subst.make();
-    for (const [{ ty }, inst] of zip(f.typeParams, typeParams)) {
-      ty.map(MonoTy.deref).do(ty => {
-        if (ty.variant === 'Var' && ty.value.kind === 'Unbound') {
-          subst.set(ty.value.id, inst);
-        }
-      });
+    for (const [p, inst] of zip(f.typeParams, typeParams)) {
+      const t = MonoTy.deref(p.inst);
+      if (t.variant === 'Var' && t.value.kind === 'Unbound') {
+        subst.set(t.value.id, inst);
+      }
     }
 
     return subst;
@@ -69,11 +68,16 @@ const monomorphize = (
   f.typeParams.forEach((_, index) => {
     inst.typeParams.push({
       name: f.typeParams[index]?.name ?? showTyVarId(index),
-      ty: some(typeParams[index])
+      inst: typeParams[index],
+      constraints: f.typeParams[index]?.constraints ?? [],
     });
   });
 
-  TypeContext.declareTypeParams(newTyCtx, ...inst.typeParams);
+  TypeContext.declareTypeParams(
+    newTyCtx,
+    ...inst.typeParams.map(p => ({ name: p.name, ty: some(p.inst) })),
+  );
+
   inst.funTy = MonoTy.toPoly(instanceTy);
   inferDecl(inst, newTyCtx, errors);
 

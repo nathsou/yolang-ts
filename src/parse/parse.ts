@@ -156,9 +156,21 @@ const arrayTy = map(
 initParser(monoTy, arrayTy);
 
 const typeParams: Parser<TypeParam[]> = map(
-  angleBrackets(commas(upperIdent)),
-  ps => ps.map(p => ({ name: p, ty: none }))
+  angleBrackets(commas(
+    seq(
+      upperIdent,
+      map(
+        optional(seq(
+          symbol(':'),
+          expectOrDefault(sepBy(ident2('+'))(monoTy), "Expected type constraints after ':'", []),
+        )),
+        constraints => constraints.mapWithDefault(snd, []),
+      ),
+    ),
+  )),
+  ps => ps.map(([name, constraints]) => ({ name, constraints })),
 );
+
 const typeParamsInst: Parser<MonoTy[]> = angleBrackets(commas(monoTy));
 
 const scopedTypeParams = <T>(p: Parser<T>): Parser<[TypeParam[], T]> =>

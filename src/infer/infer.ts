@@ -6,6 +6,7 @@ import { gen, groupBy, zip } from '../utils/array';
 import { Either } from '../utils/either';
 import { Maybe, none, some } from '../utils/maybe';
 import { assert, block, proj } from '../utils/misc';
+import { error, ok, Result } from '../utils/result';
 import { diffSet } from '../utils/set';
 import { Env, FunDecl } from './env';
 import { Row } from './structs';
@@ -34,13 +35,14 @@ export type TypingError = DataType<{
 }, 'type'>;
 
 const ASSIGNABLE_EXPRESSIONS = new Set<Expr['variant']>(['Variable', 'FieldAccess']);
+const MAIN_FUN_SIGNATURE = MonoTy.toPoly(MonoTy.Fun([], MonoTy.void()));
 
 const resolveOverloading = (
   name: string,
   f: MonoTy,
   candidates: FunDecl[],
   ctx: TypeContext
-): Either<FunDecl, TypingError> => {
+): Result<FunDecl, TypingError> => {
   const matches = candidates.map(func => {
     const gInst = PolyTy.instantiate(func.funTy);
     const score = unifyPure(f, gInst.ty, ctx).match({
@@ -52,16 +54,16 @@ const resolveOverloading = (
   }).filter(({ score }) => score > 0);
 
   if (matches.length === 0) {
-    return Either.right({ type: 'NoOverloadMatchesCallSignature', name, f, candidates: candidates.map(proj('funTy')) });
+    return error({ type: 'NoOverloadMatchesCallSignature', name, f, candidates: candidates.map(proj('funTy')) });
   }
 
   const maxScore = Math.max(...matches.map(m => m.score));
   const bestMatches = matches.filter(m => m.score === maxScore);
   if (bestMatches.length === 1) {
-    return Either.left(bestMatches[0].func);
+    return ok(bestMatches[0].func);
   }
 
-  return Either.right({ type: 'AmbiguousOverload', name, funTy: MonoTy.show(f), matches: bestMatches.map(f => f.func.funTy) });
+  return error({ type: 'AmbiguousOverload', name, funTy: MonoTy.show(f), matches: bestMatches.map(f => f.func.funTy) });
 };
 
 const inferExpr = (
@@ -124,7 +126,7 @@ const inferExpr = (
         unify(instTy.ty, tau);
       });
     },
-    NamedFuncCall: call => {
+    NamedFunCall: call => {
       const { name, args } = call;
 
       resolveFuncs(name).do(funcs => {
@@ -141,7 +143,7 @@ const inferExpr = (
         const actualFunTy = MonoTy.Fun(argTys, tau);
 
         resolveOverloading(funcName, actualFunTy, funcs, ctx).match({
-          left: resolvedFunc => {
+          Ok: resolvedFunc => {
             zip(resolvedFunc.args, args).forEach(([funcArg, receivedArg]) => {
               if (funcArg.mutable && !Expr.isMutable(receivedArg)) {
                 pushError(Error.Typing({
@@ -164,6 +166,7 @@ const inferExpr = (
             });
 
             unify(funTy, actualFunTy);
+
             if (paramsInst.length > 0 && call.typeParams.length > 0) {
               if (call.typeParams.length !== paramsInst.length) {
                 pushError(Error.Typing({
@@ -179,13 +182,20 @@ const inferExpr = (
               });
             }
 
+            // verify type parameters constraints
+            zip(resolvedFunc.typeParams, paramsInst).forEach(([{ constraints }, p]) => {
+              constraints.forEach(constraint => {
+                unify(constraint, p);
+              });
+            });
+
             call.typeParams = paramsInst;
 
             if (paramsInst.length > 0) {
               resolvedFunc.instances.push(paramsInst);
             }
           },
-          right: err => {
+          Error: err => {
             pushError(Error.Typing(err));
           },
         });
@@ -466,7 +476,17 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void =
       Env.declareFunc(ctx.env, f);
 
       const bodyCtx = TypeContext.clone(ctx);
-      TypeContext.declareTypeParams(bodyCtx, ...typeParams);
+
+      typeParams.forEach(({ inst, constraints }) => {
+        constraints.forEach(constraint => {
+          unify(constraint, inst);
+        });
+      });
+
+      TypeContext.declareTypeParams(
+        bodyCtx,
+        ...typeParams.map(p => ({ name: p.name, ty: some(p.inst) }))
+      );
 
       args.forEach(({ annotation, name }) => {
         annotation.do(ann => {
@@ -496,7 +516,7 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void =
         f.funTy = genFunTy;
       });
 
-      if (f.name.original === 'main' && !PolyTy.eq(f.funTy, MonoTy.toPoly(MonoTy.Fun([], MonoTy.void())))) {
+      if (f.name.original === 'main' && !PolyTy.eq(f.funTy, MAIN_FUN_SIGNATURE)) {
         pushError(Error.Typing({
           type: 'InvalidMainFunSignature',
           ty: f.funTy,

@@ -1,7 +1,11 @@
 
-type Int = u8 | i8 | u32 | i32 | u64 | i64
+type Int = i32 | i64
+
+fun add<T: u32>(a: T, b: T): T {
+  a + b
+}
 
 fun main() {
-  let n: Int = 3.pow(7)
+  let n = 7
   log(n)
 }

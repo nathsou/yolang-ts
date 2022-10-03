@@ -86,9 +86,9 @@ export const Expr = {
     return match(expr, {
       Const: ({ value, ty }) => Expr.Const({ value, ty }),
       Variable: ({ name, ty }) => Expr.Variable({ name, ty }),
-      NamedFuncCall: ({ name, typeParams, args, ty }) => {
+      NamedFunCall: ({ name, typeParams, args, ty }) => {
         const resolvedName = block<FuncName>(() => {
-          const overloadName = name.unwrapRight('core.Expr.from: NamedFuncCall');
+          const overloadName = name.unwrapRight('core.Expr.from: NamedFunCall');
           if (typeParams.length > 0) {
             const key = TypeParams.hash(typeParams);
             assert(ctx.instances.has(overloadName.mangled), `missing instance '${overloadName.mangled}${key}'`);
@@ -256,7 +256,7 @@ export const Module = {
         returnTy: some(MonoTy.i32()),
         body: some(bitter.Expr.Block(
           [
-            bitter.Stmt.Expr(bitter.Expr.NamedFuncCall(Either.right(main.name), [], [], sweet.Expr.generated))
+            bitter.Stmt.Expr(bitter.Expr.NamedFunCall(Either.right(main.name), [], [], sweet.Expr.generated))
           ],
           some(bitter.Expr.Const(Const.int(0, 'i32'), sweet.Expr.generated)),
           sweet.Expr.generated,

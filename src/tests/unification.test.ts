@@ -13,7 +13,7 @@ const testContext = (() => {
   TypeContext.declareTypeAlias(ctx, 'Yolo', [], MonoTy.u32());
   TypeContext.declareTypeAlias(ctx, 'Hola', [], MonoTy.bool());
   const pairTy = MonoTy.Tuple(Tuple.fromArray([MonoTy.Param('A'), MonoTy.Param('B')]));
-  TypeContext.declareTypeAlias(ctx, 'Pair', [{ name: 'A', ty: none }, { name: 'B', ty: none }], pairTy);
+  TypeContext.declareTypeAlias(ctx, 'Pair', [{ name: 'A', constraints: [] }, { name: 'B', constraints: [] }], pairTy);
   return ctx;
 })();
 
