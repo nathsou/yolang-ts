@@ -69,7 +69,7 @@ const monomorphize = (
     inst.typeParams.push({
       name: f.typeParams[index]?.name ?? showTyVarId(index),
       inst: typeParams[index],
-      constraints: f.typeParams[index]?.constraints ?? [],
+      constraints: [],
     });
   });
 

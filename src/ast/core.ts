@@ -67,7 +67,7 @@ function resolveAnonymousStruct(ty: VariantOf<MonoTy, 'Struct'>, ctx: TypeContex
 export type Expr = DataType<Typed<{
   Const: { value: Const },
   Variable: { name: VarName },
-  NamedFuncCall: { name: FuncName, args: Expr[] },
+  NamedFunCall: { name: FuncName, args: Expr[] },
   IfThenElse: { condition: Expr, then: Expr, else_: Maybe<Expr> },
   StructAccess: { struct: VariantOf<MonoTy, 'Struct'>, lhs: Expr, field: string },
   Struct: { structTy: VariantOf<MonoTy, 'Struct'>, fields: { name: string, value: Expr }[] },
@@ -78,7 +78,7 @@ export type Expr = DataType<Typed<{
 
 export const Expr = {
   ...genConstructors<Expr>([
-    'Const', 'Variable', 'NamedFuncCall', 'IfThenElse',
+    'Const', 'Variable', 'NamedFunCall', 'IfThenElse',
     'StructAccess', 'Struct', 'Block', 'Array',
   ]),
   from: (expr: bitter.Expr, f: VariantOf<Decl, 'Function'>, ctx: Mono['Context']): Expr => {
@@ -100,7 +100,7 @@ export const Expr = {
           }
         });
 
-        return Expr.NamedFuncCall({
+        return Expr.NamedFunCall({
           name: resolvedName,
           args: args.map(go),
           ty,

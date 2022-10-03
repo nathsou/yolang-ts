@@ -23,8 +23,8 @@ export type TypingError = DataType<{
   UnassignableExpression: { expr: Expr },
   TupleIndexTooBig: { index: number },
   ParsingError: { message: string },
-  NoOverloadMatchesCallSignature: { name: string, f: MonoTy, candidates: PolyTy[] },
-  AmbiguousOverload: { name: string, funTy: string, matches: PolyTy[] },
+  NoOverloadMatchesCallSignature: { name: string, f: MonoTy, candidates: FunDecl[] },
+  AmbiguousOverload: { name: string, funTy: string, matches: FunDecl[] },
   UndeclaredStruct: { name: string },
   MissingStructFields: { name: string, fields: string[] },
   ExtraneoussStructFields: { name: string, fields: string[] },
@@ -46,7 +46,28 @@ const resolveOverloading = (
   const matches = candidates.map(func => {
     const gInst = PolyTy.instantiate(func.funTy);
     const score = unifyPure(f, gInst.ty, ctx).match({
-      Ok: () => MonoTy.specificity(gInst.ty),
+      Ok: subst => {
+        // check type parameter constraints
+        const insts: MonoTy[] = [];
+        func.typeParams.forEach(p => {
+          if (p.inst.variant === 'Var' && p.inst.value.kind === 'Unbound') {
+            const v = gInst.subst.get(p.inst.value.id)!;
+            if (v.variant === 'Var' && v.value.kind === 'Unbound') {
+              insts.push(subst.get(v.value.id)!);
+            }
+          }
+        });
+
+        if (zip(func.typeParams, insts).every(([p, ty]) => {
+          return p.constraints.every(constraint => {
+            return unifyPure(constraint, ty, ctx).isOk();
+          });
+        })) {
+          return MonoTy.specificity(gInst.ty);
+        } else {
+          return 0;
+        }
+      },
       Error: () => 0,
     });
 
@@ -54,7 +75,7 @@ const resolveOverloading = (
   }).filter(({ score }) => score > 0);
 
   if (matches.length === 0) {
-    return error({ type: 'NoOverloadMatchesCallSignature', name, f, candidates: candidates.map(proj('funTy')) });
+    return error({ type: 'NoOverloadMatchesCallSignature', name, f, candidates });
   }
 
   const maxScore = Math.max(...matches.map(m => m.score));
@@ -63,7 +84,7 @@ const resolveOverloading = (
     return ok(bestMatches[0].func);
   }
 
-  return error({ type: 'AmbiguousOverload', name, funTy: MonoTy.show(f), matches: bestMatches.map(f => f.func.funTy) });
+  return error({ type: 'AmbiguousOverload', name, funTy: MonoTy.show(f), matches: bestMatches.map(proj('func')) });
 };
 
 const inferExpr = (
@@ -477,10 +498,8 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void =
 
       const bodyCtx = TypeContext.clone(ctx);
 
-      typeParams.forEach(({ inst, constraints }) => {
-        constraints.forEach(constraint => {
-          unify(constraint, inst);
-        });
+      typeParams.forEach(p => {
+        p.constraints = p.constraints.map(ty => MonoTy.expand(ty, ctx));
       });
 
       TypeContext.declareTypeParams(
@@ -497,9 +516,12 @@ export const inferDecl = (decl: Decl, ctx: TypeContext, errors: Error[]): void =
       });
 
       body.do(body => {
-        bodyCtx.funcStack.push({ returnTy: body.ty });
-        inferExpr(body, bodyCtx, errors);
-        bodyCtx.funcStack.pop();
+        // instanced bodies will get checked during monomorphization
+        if (!typeParams.some(p => p.constraints.length > 0)) {
+          bodyCtx.funcStack.push({ returnTy: body.ty });
+          inferExpr(body, bodyCtx, errors);
+          bodyCtx.funcStack.pop();
+        }
 
         returnTy.do(retTy => {
           unify(body.ty, retTy, bodyCtx);

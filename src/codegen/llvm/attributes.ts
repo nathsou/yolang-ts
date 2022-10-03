@@ -79,7 +79,7 @@ export const meta = (
       builder.CreateStore(valueArg, elemPtr);
       return none;
     }
-    case 'u8FromInt':
+    case 'u8FromSInt':
       return some(builder.CreateIntCast(f.getArg(0), llvm.Type.getInt8Ty(context), true));
     case 'u8FromUInt':
       return some(builder.CreateIntCast(f.getArg(0), llvm.Type.getInt8Ty(context), false));

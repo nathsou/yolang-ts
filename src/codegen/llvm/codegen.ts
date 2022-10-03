@@ -243,7 +243,7 @@ export const createLLVMCompiler = () => {
             });
           });
         },
-        NamedFuncCall: ({ name, args }) => {
+        NamedFunCall: ({ name, args }) => {
           if (funcs.has(name.mangled)) {
             return builder.CreateCall(funcs.get(name.mangled)!, args.map(arg => compileExpr(arg)));
           } else {

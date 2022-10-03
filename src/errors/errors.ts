@@ -1,14 +1,16 @@
 import { DataType, match } from "itsamatch";
 import { BitterConversionError, Expr } from "../ast/bitter";
+import { FunDecl } from "../infer/env";
 import { TypingError } from "../infer/infer";
 import { MAX_TUPLE_INDEX, Tuple } from "../infer/tuples";
-import { MonoTy, PolyTy } from "../infer/types";
+import { MonoTy, PolyTy, showTyVarId } from "../infer/types";
 import { UnificationError } from "../infer/unification";
 import { ParserError } from "../parse/combinators";
 import { LexerError } from "../parse/lex";
 import { Position } from "../parse/token";
 import { FileSystem } from "../resolve/fileSystem";
 import { ResolutionError } from '../resolve/resolve';
+import { joinWith } from "../utils/array";
 
 type WithOptionalPos<T> = { [K in keyof T]: T[K] & { pos?: Position } };
 
@@ -21,8 +23,12 @@ export type Error = DataType<WithOptionalPos<{
   Unification: { err: UnificationError },
 }>>;
 
-const formatOverloadingCandidates = (types: PolyTy[]): string => {
-  return types.map(ty => `  ${PolyTy.show(ty)}`).join('\n');
+const formatOverloadingCandidates = (funcs: FunDecl[]): string => {
+  return funcs.map(f => {
+    const base = `  ${PolyTy.show(f.funTy)}`;
+    const constraints = f.typeParams.map((p, i) => p.constraints.length > 0 ? `${showTyVarId(i)}: ${joinWith(p.constraints, MonoTy.show, ' + ')}` : []).flat();
+    return constraints.length > 0 ? `${base} where ${constraints.join(', ')}` : base;
+  }).join('\n');
 };
 
 export const Error = {

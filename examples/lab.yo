@@ -1,11 +1,11 @@
 
-type Int = i32 | i64
-
-fun add<T: u32>(a: T, b: T): T {
+fun add<T: i32 | u32 | i64 | u64>(a: T, b: T): T {
   a + b
 }
 
 fun main() {
-  let n = 7
-  log(n)
+  let a = add(3, 7)
+  let b = add(1u32, 2u32)
+  let c = add(1i64, 2i64)
+  log(a)
 }
