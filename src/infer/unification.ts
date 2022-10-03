@@ -133,12 +133,7 @@ const unifyMany = (
       })
       .with([{ variant: 'Union' }, P._], ([s, t]) => {
         find(s.tys, ty => unifyPure(ty, t, ctx).isOk()).match({
-          Some: matchingTy => {
-            if (subst == null) {
-              // narrow the union to the first type in s unifiable with t
-              s.tys = [matchingTy];
-            }
-          },
+          Some: () => { },
           None: () => {
             errors.push(Error.Unification({ type: 'Ununifiable', s, t }));
           },
