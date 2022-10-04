@@ -6,7 +6,7 @@ import { uniq } from '../../utils/array';
 import { lowerIdent } from './common.arb';
 
 const voidTy = fc.constant(MonoTy.void());
-const i32Ty = fc.constant(MonoTy.i32());
+const i32Ty = fc.constant(MonoTy.int('i32'));
 const boolTy = fc.constant(MonoTy.bool());
 const varTy = fc.integer({ min: 0, max: 10 }).map(n => MonoTy.Var({ kind: 'Unbound', id: n }));
 

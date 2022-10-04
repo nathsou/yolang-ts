@@ -1,5 +1,6 @@
 import { DataType, match, matchMany, VariantOf } from "itsamatch";
 import { Context } from "../ast/context";
+import { IntType } from "../parse/token";
 import { filter, gen, joinWith, sum, zip } from "../utils/array";
 import { Maybe } from "../utils/maybe";
 import { cond, matchString, panic, parenthesized } from "../utils/misc";
@@ -50,12 +51,7 @@ export const MonoTy = {
   Struct: (fields: Readonly<Row>, name?: string, params: MonoTy[] = []): MonoTy => ({ variant: 'Struct', name, params, row: fields }),
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
   ptr: (ty: MonoTy): MonoTy => MonoTy.Const('ptr', ty),
-  u32: () => MonoTy.Const('u32'),
-  i32: () => MonoTy.Const('i32'),
-  u64: () => MonoTy.Const('u64'),
-  i64: () => MonoTy.Const('i64'),
-  i8: () => MonoTy.Const('i8'),
-  u8: () => MonoTy.Const('u8'),
+  int: (type: IntType) => MonoTy.Const('int', MonoTy.Const(type)),
   bool: () => MonoTy.Const('bool'),
   str: () => MonoTy.Const('str'), // not primitive
   void: () => MonoTy.Const('void'),
@@ -211,6 +207,7 @@ export const MonoTy = {
       then: () => name,
       else: () => matchString(name, {
         'Array': () => `${MonoTy.show(args[0])}[]`,
+        'int': () => MonoTy.show(args[0]),
         _: () => `${name}<${joinWith(args, MonoTy.show, ', ')}>`,
       }),
     }),
@@ -223,13 +220,13 @@ export const MonoTy = {
     },
     Tuple: ({ tuple }) => Tuple.show(tuple),
     Struct: ({ row, name, params }) => {
-      // if (name != null) {
-      //   if (params.length > 0) {
-      //     return `${name}<${params.map(MonoTy.show).join(', ')}>`;
-      //   } else {
-      //     return name;
-      //   }
-      // }
+      if (name != null) {
+        if (params.length > 0) {
+          return `${name}<${params.map(MonoTy.show).join(', ')}>`;
+        } else {
+          return name;
+        }
+      }
 
       if (row.type === 'empty') {
         return '{}';

@@ -90,7 +90,7 @@ export const Keyword = {
   is: (ident: string): ident is Keyword => Keyword.valuesSet.has(ident),
 };
 
-export type IntType = '?' | `${'i' | 'u'}${8 | 32 | 64}`;
+export type IntType = `${'i' | 'u'}${8 | 32 | 64}`;
 
 export type Const = DataType<{
   int: { value: number, type: IntType },
@@ -103,7 +103,7 @@ const { int, bool, str } = genConstructors<Const>([
 ]);
 
 export const Const = {
-  int: (value: number, type: IntType = '?') => int({ value, type }),
+  int: (value: number, type: IntType) => int({ value, type }),
   bool: (value: boolean) => bool({ value }),
   str: (value: string) => str({ value }),
   show: (c: Const) => match(c, {
@@ -114,7 +114,7 @@ export const Const = {
   }),
   eq: (a: Const, b: Const) => a.variant === b.variant && a.value === b.value,
   type: (c: Const): MonoTy => match(c, {
-    int: ({ type }) => type === '?' ? MonoTy.Const('Int') : MonoTy[type](),
+    int: ({ type }) => MonoTy.int(type),
     bool: MonoTy.bool,
     str: MonoTy.str,
   }),

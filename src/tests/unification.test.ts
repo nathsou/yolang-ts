@@ -10,7 +10,7 @@ import { Arb } from './arbitraries/arb';
 
 const testContext = (() => {
   const ctx = TypeContext.make(new Map());
-  TypeContext.declareTypeAlias(ctx, 'Yolo', [], MonoTy.u32());
+  TypeContext.declareTypeAlias(ctx, 'Yolo', [], MonoTy.int('u32'));
   TypeContext.declareTypeAlias(ctx, 'Hola', [], MonoTy.bool());
   const pairTy = MonoTy.Tuple(Tuple.fromArray([MonoTy.Param('A'), MonoTy.Param('B')]));
   TypeContext.declareTypeAlias(ctx, 'Pair', [{ name: 'A', ty: none }, { name: 'B', ty: none }], pairTy);
@@ -44,10 +44,10 @@ describe('unifyMut', () => {
     expect(errs).toHaveLength(0);
     expect(tyVar).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      to: MonoTy.u32(),
+      to: MonoTy.int('u32'),
     }));
 
-    expect(MonoTy.deref(tyVar)).toMatchObject(MonoTy.u32());
+    expect(MonoTy.deref(tyVar)).toMatchObject(MonoTy.int('u32'));
   });
 
   it('should not take argument order into account', () => {
@@ -59,10 +59,10 @@ describe('unifyMut', () => {
     expect(errs).toHaveLength(0);
     expect(tyVar).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      to: MonoTy.u32(),
+      to: MonoTy.int('u32'),
     }));
 
-    expect(MonoTy.deref(tyVar)).toMatchObject(MonoTy.u32());
+    expect(MonoTy.deref(tyVar)).toMatchObject(MonoTy.int('u32'));
   });
 
   it('should unify type constants correctly', () => {
@@ -77,7 +77,7 @@ describe('unifyMut', () => {
 
     expect(errs).toHaveLength(0);
     expect(tv1).toMatchObject(MonoTy.Var(TyVar.Link(MonoTy.bool())));
-    expect(tv2).toMatchObject(MonoTy.Var(TyVar.Link(MonoTy.u32())));
+    expect(tv2).toMatchObject(MonoTy.Var(TyVar.Link(MonoTy.int('u32'))));
   });
 
   it('should fail to resolve undeclared type aliases', () => {
@@ -116,15 +116,15 @@ describe('unifyMut', () => {
 
     expect(tv2).toMatchObject(MonoTy.Var({
       kind: 'Link',
-      to: MonoTy.u32(),
+      to: MonoTy.int('u32'),
     }));
   });
 
   it('should unify Struct types correctly', () => {
     const tv1 = MonoTy.fresh();
     const tv2 = MonoTy.fresh();
-    const row1 = Row.extend('x', MonoTy.u32(), tv1);
-    const row2 = Row.extend('y', MonoTy.u32(), tv2);
+    const row1 = Row.extend('x', MonoTy.int('u32'), tv1);
+    const row2 = Row.extend('y', MonoTy.int('u32'), tv2);
     const rec1 = MonoTy.Struct(row1);
     const rec2 = MonoTy.Struct(row2);
 
@@ -140,7 +140,7 @@ describe('unifyMut', () => {
           row: {
             type: 'extend',
             field: 'y',
-            ty: MonoTy.u32(),
+            ty: MonoTy.int('u32'),
             tail: expect.any(Object),
           }
         },
@@ -155,7 +155,7 @@ describe('unifyMut', () => {
           row: {
             type: 'extend',
             field: 'x',
-            ty: MonoTy.u32(),
+            ty: MonoTy.int('u32'),
             tail: expect.any(Object),
           }
         },
@@ -179,7 +179,7 @@ describe('unifyPure', () => {
     const tv2 = MonoTy.Var({ kind: 'Unbound', id: 1 });
 
     const ty1 = MonoTy.Tuple(Tuple.fromArray([tv1, tv2]));
-    const ty2 = MonoTy.Tuple(Tuple.fromArray([MonoTy.bool(), MonoTy.u32()]));
+    const ty2 = MonoTy.Tuple(Tuple.fromArray([MonoTy.bool(), MonoTy.int('u32')]));
 
     const subst = unifyPure(ty1, ty2, TypeContext.make(new Map()));
 
@@ -188,6 +188,6 @@ describe('unifyPure', () => {
     expect(tv2).toMatchObject(MonoTy.Var({ kind: 'Unbound', id: 1 }));
 
     expect(subst.unwrap().get(0)).toMatchObject(MonoTy.bool());
-    expect(subst.unwrap().get(1)).toMatchObject(MonoTy.u32());
+    expect(subst.unwrap().get(1)).toMatchObject(MonoTy.int('u32'));
   });
 });

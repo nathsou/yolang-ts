@@ -6,6 +6,7 @@ import { VarName } from '../../ast/name';
 import { Row } from '../../infer/structs';
 import { TypeContext } from '../../infer/typeContext';
 import { MonoTy } from '../../infer/types';
+import { IntType } from '../../parse/token';
 import { last, zip } from '../../utils/array';
 import { Maybe } from '../../utils/maybe';
 import { array, assert, block, matchString, panic, proj } from '../../utils/misc';
@@ -211,7 +212,6 @@ export const createLLVMCompiler = () => {
             i32: () => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
             u64: () => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),
             i64: () => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),
-            '?': () => panic('Found untyped int literal during codegen'),
           }),
           unit: () => llvm.UndefValue.get(llvm.Type.getInt1Ty(context)),
           str: ({ value }) => {
@@ -219,7 +219,7 @@ export const createLLVMCompiler = () => {
             const int8Ty = llvm.Type.getInt8Ty(context);
             const bytes = Array.from(buffer).map(b => llvm.ConstantInt.get(int8Ty, b));
 
-            return createArray(MonoTy.u8(), bytes);
+            return createArray(MonoTy.int('u8'), bytes);
           },
         }),
         Variable: ({ name }) => {
@@ -414,13 +414,18 @@ export const createLLVMCompiler = () => {
     function llvmTy(ty: MonoTy): llvm.Type {
       return match(MonoTy.expand(ty, module.typeContext), {
         Const: c => matchString<string, llvm.Type>(c.name, {
+          'int': () => {
+            assert(c.args[0].variant === 'Const');
+            return matchString(c.args[0].name as IntType, {
+              'i8': () => llvm.Type.getInt8Ty(context),
+              'u8': () => llvm.Type.getInt8Ty(context),
+              'i32': () => llvm.Type.getInt32Ty(context),
+              'u32': () => llvm.Type.getInt32Ty(context),
+              'i64': () => llvm.Type.getInt64Ty(context),
+              'u64': () => llvm.Type.getInt64Ty(context),
+            });
+          },
           'void': () => llvm.Type.getVoidTy(context),
-          'u32': () => llvm.Type.getInt32Ty(context),
-          'i32': () => llvm.Type.getInt32Ty(context),
-          'u64': () => llvm.Type.getInt64Ty(context),
-          'i64': () => llvm.Type.getInt64Ty(context),
-          'u8': () => llvm.Type.getInt8Ty(context),
-          'i8': () => llvm.Type.getInt8Ty(context),
           'bool': () => llvm.Type.getInt1Ty(context),
           'ptr': () => llvm.PointerType.get(llvmTy(c.args[0]), 0),
           _: () => {

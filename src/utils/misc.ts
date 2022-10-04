@@ -42,6 +42,7 @@ export const matchString = <S extends string, T>(
   str: S,
   cases: ({ [str in S]: () => T }) | (Partial<{ [str in S]: () => T }> & { _: () => T })
 ): T => {
+  assert(str in cases || '_' in cases, () => `unhandled key in 'matchString': ${str}`);
   /// @ts-ignore
   return cases[str in cases ? str : '_']();
 };

@@ -253,7 +253,7 @@ export const Module = {
         attributes: [],
         pub: true,
         typeParams: [],
-        returnTy: some(MonoTy.i32()),
+        returnTy: some(MonoTy.int('i32')),
         body: some(bitter.Expr.Block(
           [
             bitter.Stmt.Expr(bitter.Expr.NamedFuncCall(Either.right(main.name), [], [], sweet.Expr.generated))
