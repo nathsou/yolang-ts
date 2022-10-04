@@ -1,7 +1,12 @@
-import { DataType, match, VariantOf } from "itsamatch";
+import { DataType, match } from "itsamatch";
+import { Error } from "../errors/errors";
 import { reverse, zip } from "../utils/array";
 import { Maybe, none, some } from "../utils/maybe";
+import { panic } from "../utils/misc";
+import { Subst } from "./subst";
+import { TypeContext } from "./typeContext";
 import { MonoTy } from "./types";
+import { unifyMut } from "./unification";
 
 // https://github.com/tomprimozic/type-systems/tree/master/extensible_rows
 
@@ -91,5 +96,47 @@ export const Row = {
     }
 
     return base;
+  },
+  // https://github.com/tomprimozic/type-systems/blob/master/extensible_rows/infer.ml
+  rewrite: (
+    row2: MonoTy,
+    field1: string,
+    fieldTy1: MonoTy,
+    ctx: TypeContext,
+    subst: Subst | undefined,
+    errors: Error[],
+  ): MonoTy => {
+    return match(row2, {
+      Struct: ({ row: row2 }) => match(row2, {
+        empty: () => {
+          errors.push(Error.Unification({ type: 'UnknownStructField', field: field1, row: row2 }));
+          return MonoTy.Struct(Row.empty());
+        },
+        extend: ({ field: field2, ty: fieldTy2, tail: row2Tail }) => {
+          if (field1 === field2) {
+            errors.push(...unifyMut(fieldTy1, fieldTy2, ctx));
+            return row2Tail;
+          }
+
+          return MonoTy.Struct(Row.extend(
+            field2,
+            fieldTy2,
+            Row.rewrite(row2Tail, field1, fieldTy1, ctx, subst, errors)
+          ));
+        },
+      }, 'type'),
+      Var: v => match(v.value, {
+        Unbound: () => {
+          const row2Tail = MonoTy.fresh();
+          const ty2 = MonoTy.Struct(Row.extend(field1, fieldTy1, row2Tail));
+          MonoTy.link(v, ty2, subst);
+          return row2Tail;
+        },
+        Link: ({ to }) => Row.rewrite(to, field1, fieldTy1, ctx, subst, errors),
+      }, 'kind'),
+      _: () => {
+        return panic(`expected row type, got ${MonoTy.show(row2)}`);
+      },
+    });
   },
 };

@@ -1,4 +1,4 @@
-import { DataType, match, matchMany } from "itsamatch";
+import { DataType, match, matchMany, VariantOf } from "itsamatch";
 import { Context } from "../ast/context";
 import { filter, gen, joinWith, sum, zip } from "../utils/array";
 import { Maybe } from "../utils/maybe";
@@ -6,6 +6,7 @@ import { cond, matchString, panic, parenthesized } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./structs";
+import { Subst } from "./subst";
 import { Tuple } from "./tuples";
 import { TypeContext } from "./typeContext";
 
@@ -102,6 +103,17 @@ export const MonoTy = {
       },
       Integer: () => fvs,
     }),
+  link: (v: VariantOf<MonoTy, 'Var'>, to: MonoTy, subst?: Subst): void => {
+    if (subst) {
+      if (v.value.kind === 'Link') {
+        return panic('cannot link to a bound type variable');
+      }
+
+      subst.set(v.value.id, MonoTy.deref(to));
+    } else {
+      v.value = TyVar.Link(MonoTy.deref(to));
+    }
+  },
   generalize: (env: Env, ty: MonoTy): PolyTy => {
     // can be optimized using (block instead of let) levels
     // https://github.com/tomprimozic/type-systems/tree/master/algorithm_w
