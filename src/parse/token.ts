@@ -90,7 +90,7 @@ export const Keyword = {
   is: (ident: string): ident is Keyword => Keyword.valuesSet.has(ident),
 };
 
-export type IntKind = `${'i' | 'u'}${8 | 32 | 64}`;
+export type IntKind = `${'i' | 'u'}${8 | 16 | 32 | 64 | 128}`;
 
 type Typed<T> = { [K in keyof T]: T[K] & { ty: MonoTy } };
 

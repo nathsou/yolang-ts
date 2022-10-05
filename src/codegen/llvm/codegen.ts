@@ -415,10 +415,14 @@ export const createLLVMCompiler = () => {
             return matchString(kind.name as IntKind, {
               i8: () => llvm.Type.getInt8Ty(context),
               u8: () => llvm.Type.getInt8Ty(context),
+              i16: () => llvm.Type.getInt16Ty(context),
+              u16: () => llvm.Type.getInt16Ty(context),
               i32: () => llvm.Type.getInt32Ty(context),
               u32: () => llvm.Type.getInt32Ty(context),
               i64: () => llvm.Type.getInt64Ty(context),
               u64: () => llvm.Type.getInt64Ty(context),
+              i128: () => llvm.Type.getInt128Ty(context),
+              u128: () => llvm.Type.getInt128Ty(context),
             });
           },
           void: () => llvm.Type.getVoidTy(context),

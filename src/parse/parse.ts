@@ -69,16 +69,25 @@ export const monoTy = uninitialized<MonoTy>();
 const parenthesizedTy = map(parens(monoTy), ty => ty);
 const voidTy = map(keyword('void'), MonoTy.void);
 const boolTy = map(ident2('bool'), MonoTy.bool);
-const u32Ty = map(ident2('u32'), () => MonoTy.int('u32'));
-const i32Ty = map(ident2('i32'), () => MonoTy.int('i32'));
-const u64Ty = map(ident2('u64'), () => MonoTy.int('u64'));
-const i64Ty = map(ident2('i64'), () => MonoTy.int('i64'));
-const u8Ty = map(ident2('u8'), () => MonoTy.int('u8'));
 const i8Ty = map(ident2('i8'), () => MonoTy.int('i8'));
+const u8Ty = map(ident2('u8'), () => MonoTy.int('u8'));
+const i16Ty = map(ident2('i16'), () => MonoTy.int('i16'));
+const u16Ty = map(ident2('u16'), () => MonoTy.int('u16'));
+const i32Ty = map(ident2('i32'), () => MonoTy.int('i32'));
+const u32Ty = map(ident2('u32'), () => MonoTy.int('u32'));
+const i64Ty = map(ident2('i64'), () => MonoTy.int('i64'));
+const u64Ty = map(ident2('u64'), () => MonoTy.int('u64'));
+const i128Ty = map(ident2('i128'), () => MonoTy.int('i128'));
+const u128Ty = map(ident2('u128'), () => MonoTy.int('u128'));
 const strTy = map(seq(ident2('str')), MonoTy.str);
 
 const constTy = alt(
-  voidTy, boolTy, u8Ty, i8Ty, u32Ty, i32Ty, u64Ty, i64Ty, strTy,
+  voidTy, boolTy, strTy,
+  u8Ty, i8Ty,
+  u16Ty, i16Ty,
+  u32Ty, i32Ty,
+  u64Ty, i64Ty,
+  u128Ty, i128Ty,
   parenthesizedTy,
 );
 

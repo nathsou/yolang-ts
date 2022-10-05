@@ -106,19 +106,27 @@ const Lexer = (source: string, path: string) => {
       case 'u':
         if (matchString('u8')) {
           type = 'u8';
+        } else if (matchString('u16')) {
+          type = 'u16';
         } else if (matchString('u32')) {
           type = 'u32';
         } else if (matchString('u64')) {
           type = 'u64';
+        } else if (matchString('u128')) {
+          type = 'u128';
         }
         break;
       case 'i':
         if (matchString('i8')) {
           type = 'i8';
+        } else if (matchString('i16')) {
+          type = 'i16';
         } else if (matchString('i32')) {
           type = 'i32';
         } else if (matchString('i64')) {
           type = 'i64';
+        } else if (matchString('i128')) {
+          type = 'i128';
         }
         break;
     }

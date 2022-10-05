@@ -1,5 +1,9 @@
 
+fun f(n: u128) {
+  n
+}
+
 fun main() {
-  let a = 7
-  log(a.pow(a))
+  let a: u128 = 7
+  f(a);
 }

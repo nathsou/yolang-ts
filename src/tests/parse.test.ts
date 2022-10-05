@@ -133,7 +133,7 @@ describe('Parser', () => {
         ]),
       ]));
 
-      expectExpr(tuple, '(1i8, (2u8, 3i32), 4u32, (5i64, (6u64, (7i32, 8i32))))', Expr.Tuple([
+      expectExpr(tuple, '(1i8, (2u8, 3i32), 4u32, (5i64, (6u64, (7i16, 8u16))))', Expr.Tuple([
         Expr.Const(Const.int(1, 'i8')),
         Expr.Tuple([
           Expr.Const(Const.int(2, 'u8')),
@@ -145,8 +145,8 @@ describe('Parser', () => {
           Expr.Tuple([
             Expr.Const(Const.int(6, 'u64')),
             Expr.Tuple([
-              Expr.Const(Const.int(7, 'i32')),
-              Expr.Const(Const.int(8, 'i32')),
+              Expr.Const(Const.int(7, 'i16')),
+              Expr.Const(Const.int(8, 'u16')),
             ]),
           ]),
         ]),
