@@ -1,73 +1,28 @@
 #![noImplicitFoundationsImport]
 
 #meta(add)
-pub fun +(a: i32, b: i32): i32
-
-#meta(add)
-pub fun +(a: u32, b: u32): u32
-
-#meta(add)
-pub fun +(a: i64, b: i64): i64
-
-#meta(add)
-pub fun +(a: u64, b: u64): u64
+pub fun +<T in [i8, u8, i16, u16, i32, u32, i64, u64, i128, u128]>(a: T, b: T): T
 
 #meta(sub)
-pub fun -(a: i32, b: i32): i32
-
-#meta(sub)
-pub fun -(a: u32, b: u32): u32
-
-#meta(sub)
-pub fun -(a: i64, b: i64): i64
-
-#meta(sub)
-pub fun -(a: u64, b: u64): u64
+pub fun -<T in [i8, u8, i16, u16, i32, u32, i64, u64, i128, u128]>(a: T, b: T): T
 
 #meta(neg)
-pub fun -(n: i32): i32
-
-#meta(neg)
-pub fun -(n: i64): i64
+pub fun -<T in [i8, i16, i32, i64, i128]>(n: T): T
 
 #meta(not)
 pub fun not(q: bool): bool
 
 #meta(mul)
-pub fun *(a: i32, b: i32): i32
-
-#meta(mul)
-pub fun *(a: u32, b: u32): u32
-
-#meta(mul)
-pub fun *(a: i64, b: i64): i64
-
-#meta(mul)
-pub fun *(a: u64, b: u64): u64
+pub fun *<T in [i8, u8, i16, u16, i32, u32, i64, u64, i128, u128]>(a: T, b: T): T
 
 #meta(signedDiv)
-pub fun /(a: i32, b: i32): i32
+pub fun /<T in [i8, i16, i32, i64, i128]>(a: T, b: T): T
 
 #meta(unsignedDiv)
-pub fun /(a: u32, b: u32): u32
-
-#meta(signedDiv)
-pub fun /(a: i64, b: i64): i64
-
-#meta(unsignedDiv)
-pub fun /(a: u64, b: u64): u64
+pub fun /<T in [u8, u16, u32, u64, u128]>(a: T, b: T): T
 
 #meta(mod)
-pub fun mod(a: i32, b: i32): i32
-
-#meta(mod)
-pub fun mod(a: u32, b: u32): u32
-
-#meta(mod)
-pub fun mod(a: i64, b: i64): i64
-
-#meta(mod)
-pub fun mod(a: u64, b: u64): u64
+pub fun mod<T in [i8, u8, i16, u16, i32, u32, i64, u64, i128, u128]>(a: T, b: T): T
 
 #meta(logicalAnd)
 pub fun and(a: bool, b: bool): bool
@@ -92,110 +47,50 @@ pub fun xnor(a: bool, b: bool): bool {
 }
 
 #meta(bitwiseAnd)
-pub fun and(a: i32, b: i32): i32
-
-#meta(bitwiseAnd)
-pub fun and(a: u32, b: u32): u32
-
-#meta(bitwiseAnd)
-pub fun and(a: i64, b: i64): i64
-
-#meta(bitwiseAnd)
-pub fun and(a: u64, b: u64): u64
+pub fun and<T in [i8, u8, i16, u16, i32, u32, i64, u64, i128, u128]>(a: T, b: T): T
 
 #meta(bitwiseOr)
-pub fun or(a: i32, b: i32): i32
-
-#meta(bitwiseOr)
-pub fun or(a: u32, b: u32): u32
-
-#meta(bitwiseOr)
-pub fun or(a: i64, b: i64): i64
-
-#meta(bitwiseOr)
-pub fun or(a: u64, b: u64): u64
+pub fun or<T in [i8, u8, i16, u16, i32, u32, i64, u64, i128, u128]>(a: T, b: T): T
 
 #meta(signedLss)
-pub fun <(a: i32, b: i32): bool
+pub fun <<T in [i8, i16, i32, i64, i128]>(a: T, b: T): bool
 
 #meta(unsignedLss)
-pub fun <(a: u32, b: u32): bool
-
-#meta(signedLss)
-pub fun <(a: i64, b: i64): bool
-
-#meta(unsignedLss)
-pub fun <(a: u64, b: u64): bool
+pub fun <<T in [u8, u16, u32, u64, u128]>(a: T, b: T): bool
 
 #meta(signedLeq)
-pub fun <=(a: i32, b: i32): bool
+pub fun <=<T in [i8, i16, i32, i64, i128]>(a: T, b: T): bool
 
 #meta(unsignedLeq)
-pub fun <=(a: u32, b: u32): bool
-
-#meta(signedLeq)
-pub fun <=(a: i64, b: i64): bool
-
-#meta(unsignedLeq)
-pub fun <=(a: u64, b: u64): bool
+pub fun <=<T in [u8, u16, u32, u64, u128]>(a: T, b: T): bool
 
 #meta(signedGtr)
-pub fun >(a: i32, b: i32): bool
+pub fun ><T in [i8, i16, i32, i64, i128]>(a: T, b: T): bool
 
 #meta(unsignedGtr)
-pub fun >(a: u32, b: u32): bool
-
-#meta(signedGtr)
-pub fun >(a: i64, b: i64): bool
-
-#meta(unsignedGtr)
-pub fun >(a: u64, b: u64): bool
+pub fun ><T in [u8, u16, u32, u64, u128]>(a: T, b: T): bool
 
 #meta(signedGeq)
-pub fun >=(a: i32, b: i32): bool
+pub fun >=<T in [i8, i16, i32, i64, i128]>(a: T, b: T): bool
 
 #meta(unsignedGeq)
-pub fun >=(a: u32, b: u32): bool
-
-#meta(signedGeq)
-pub fun >=(a: i64, b: i64): bool
-
-#meta(unsignedGeq)
-pub fun >=(a: u64, b: u64): bool
+pub fun >=<T in [u8, u16, u32, u64, u128]>(a: T, b: T): bool
 
 #meta(eq)
-pub fun ==(a: i32, b: i32): bool
-
-#meta(eq)
-pub fun ==(a: u32, b: u32): bool
-
-#meta(eq)
-pub fun ==(a: i64, b: i64): bool
-
-#meta(eq)
-pub fun ==(a: u64, b: u64): bool
+pub fun ==<T in [i8, u8, i16, u16, i32, u32, i64, u64, i128, u128]>(a: T, b: T): bool
 
 #meta(neq)
-pub fun !=(a: i32, b: i32): bool
+pub fun !=<T in [i8, u8, i16, u16, i32, u32, i64, u64, i128, u128]>(a: T, b: T): bool
 
-#meta(neq)
-pub fun !=(a: u32, b: u32): bool
-
-#meta(neq)
-pub fun !=(a: i64, b: i64): bool
-
-#meta(neq)
-pub fun !=(a: u64, b: u64): bool
-
-pub fun even(n: i32): bool {
+pub fun even<T in [i8, u8, i16, u16, i32, u32, i64, u64, i128, u128]>(n: T): bool {
   n and 1 == 0
 }
 
-pub fun odd(n: i32): bool {
+pub fun odd<T in [i8, u8, i16, u16, i32, u32, i64, u64, i128, u128]>(n: T): bool {
   n and 1 == 1
 }
 
-pub fun pow(a: i32, n: i32): i32 {
+pub fun pow<T in [i8, u8, i16, u16, i32, u32, i64, u64, i128, u128]>(a: T, n: T): T {
   if n == 0 {
     1
   } else {
@@ -207,9 +102,16 @@ pub fun pow(a: i32, n: i32): i32 {
   }
 }
 
-pub fun abs(x: i32): i32 {
+pub fun abs<T in [i8, i16, i32, i64, i128]>(x: T): T {
   if x < 0 { -x } else { x }
 }
 
+pub fun abs<T in [u8, u16, u32, u64, u128]>(x: T): T {
+  x
+}
+
 #meta(u8FromInt)
-pub fun u8(n: i32): u8
+pub fun u8<T in [i8, i16, i32, i64, i128]>(n: T): u8
+
+#meta(u8FromUInt)
+pub fun u8<T in [u8, u16, u32, u64, u128]>(n: T): u8

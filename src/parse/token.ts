@@ -92,20 +92,23 @@ export const Keyword = {
 
 export type IntKind = `${'i' | 'u'}${8 | 16 | 32 | 64 | 128}`;
 
-type Typed<T> = { [K in keyof T]: T[K] & { ty: MonoTy } };
-
-export type Const = DataType<Typed<{
-  int: { value: number, kind: IntKind | '?' },
+export type Const = DataType<{
+  int: { value: bigint, kind: IntKind | '?' },
   bool: { value: boolean },
   str: { value: string },
-}>>;
+}>;
 
 const { int, bool, str } = genConstructors<Const>(['int', 'bool', 'str']);
 
 export const Const = {
-  int: (value: number, kind: IntKind | '?') => int({ value, kind, ty: MonoTy.int(kind) }),
-  bool: (value: boolean) => bool({ value, ty: MonoTy.bool() }),
-  str: (value: string) => str({ value, ty: MonoTy.str() }),
+  int: (n: bigint | number, kind: IntKind | '?') => int({ value: BigInt(n), kind }),
+  bool: (value: boolean) => bool({ value }),
+  str: (value: string) => str({ value }),
+  type: (c: Const): MonoTy => match(c, {
+    bool: MonoTy.bool,
+    int: ({ kind }) => MonoTy.int(kind),
+    str: MonoTy.str,
+  }),
   show: (c: Const): string => match(c, {
     int: ({ value, kind }) => kind === '?' ? `${value}` : `${value}${kind}`,
     bool: ({ value }) => `${value}`,

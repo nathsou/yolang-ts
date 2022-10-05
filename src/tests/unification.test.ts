@@ -5,7 +5,6 @@ import { Tuple } from "../infer/tuples";
 import { TypeContext } from "../infer/typeContext";
 import { MonoTy, TyVar } from "../infer/types";
 import { unifyMut, unifyPure } from "../infer/unification";
-import { none } from "../utils/maybe";
 import { Arb } from './arbitraries/arb';
 
 const testContext = (() => {
@@ -13,7 +12,7 @@ const testContext = (() => {
   TypeContext.declareTypeAlias(ctx, 'Yolo', [], MonoTy.int('u32'));
   TypeContext.declareTypeAlias(ctx, 'Hola', [], MonoTy.bool());
   const pairTy = MonoTy.Tuple(Tuple.fromArray([MonoTy.Param('A'), MonoTy.Param('B')]));
-  TypeContext.declareTypeAlias(ctx, 'Pair', [{ name: 'A', ty: none }, { name: 'B', ty: none }], pairTy);
+  TypeContext.declareTypeAlias(ctx, 'Pair', [{ name: 'A', ty: MonoTy.Param('A') }, { name: 'B', ty: MonoTy.Param('B') }], pairTy);
   return ctx;
 })();
 

@@ -1,6 +1,7 @@
 import { DataType } from "itsamatch";
 import { Error } from "../errors/errors";
 import { last } from "../utils/array";
+import { panic } from "../utils/misc";
 import { error, ok, Result } from "../utils/result";
 import { Char, isAlpha, isAlphaNum, isDigit } from "../utils/strings";
 import { Const, IntKind, Keyword, Position, Token } from "./token";
@@ -131,7 +132,13 @@ const Lexer = (source: string, path: string) => {
         break;
     }
 
-    return Const.int(Number(lexeme), type);
+    const n = BigInt(lexeme);
+
+    if (n > Number.MAX_SAFE_INTEGER) {
+      panic('Cannot represent integers bigger than 2 ** 53 - 1 (LLVM APInt not fully supported by the bindings)');
+    }
+
+    return Const.int(n, type);
   };
 
   const parseString = (startIndex: number): string => {

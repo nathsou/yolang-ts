@@ -1,9 +1,9 @@
 import { DataType, genConstructors, match, VariantOf } from 'itsamatch';
-import { MonoTy, TypeParam, TypeParams } from '../infer/types';
+import { MonoTy } from '../infer/types';
 import { Const, operators, Position, WithPos } from '../parse/token';
 import { joinWith, last } from '../utils/array';
 import { Maybe, none } from '../utils/maybe';
-import { parenthesized } from '../utils/misc';
+import { id, parenthesized } from '../utils/misc';
 
 // Sweet expressions are *sugared* representations
 // of the structure of yolang source code.
@@ -221,18 +221,32 @@ export const Imports = {
   }),
 };
 
+export type TypeParamConstraint = DataType<{
+  None: {},
+  List: { tys: MonoTy[] },
+}, 'kind'>;
+
+export const TypeParamConstraint = {
+  none: (): TypeParamConstraint => ({ kind: 'None' }),
+  list: (tys: MonoTy[]): TypeParamConstraint => ({ kind: 'List', tys }),
+  show: (name: string, constraint: TypeParamConstraint): string => match(constraint, {
+    None: () => name,
+    List: ({ tys }) => `${name} in [${joinWith(tys, MonoTy.show, ', ')}]`,
+  }, 'kind'),
+};
+
 export type Decl = DataType<{
   Function: {
     attributes: Attribute[],
     pub: boolean,
     name: string,
-    typeParams: TypeParam[],
+    typeParams: { name: string, constraint: TypeParamConstraint }[],
     args: Argument[],
     returnTy: Maybe<MonoTy>,
     body: Maybe<Expr>,
   },
   TypeAlias: {
-    pub: boolean, name: string, typeParams: TypeParam[], alias: MonoTy
+    pub: boolean, name: string, typeParams: string[], alias: MonoTy
   },
   Import: { isExport: boolean, readonly path: string, resolvedPath: string, imports: Imports },
   Attributes: { attributes: Attribute[] },
@@ -244,12 +258,13 @@ export const Decl = {
   show: (decl: Decl): string => match(decl, {
     Function: ({ attributes, name, typeParams, args, returnTy, body }) => {
       const attrsFmt = attributes.length > 0 ? Attribute.showMany(attributes, 'outer') + '\n' : '';
-      const argsFmt = `${TypeParams.show(typeParams)}(${joinWith(args, Argument.show, ', ')})`;
+      const tyParamsFmt = typeParams.length === 0 ? '' : `<${joinWith(typeParams, p => TypeParamConstraint.show(p.name, p.constraint), ', ')}>`;
+      const argsFmt = `${tyParamsFmt}(${joinWith(args, Argument.show, ', ')})`;
       const retTyFmt = returnTy.mapWithDefault(ty => ': ' + MonoTy.show(ty) + ' ', '');
       const bodyFmt = body.mapWithDefault(Expr.show, '');
       return `${attrsFmt}fun ${name}${argsFmt}${retTyFmt} ${bodyFmt}`;
     },
-    TypeAlias: ({ name, typeParams, alias }) => `type ${name}${TypeParams.show(typeParams)} = ${MonoTy.show(alias)} `,
+    TypeAlias: ({ name, typeParams, alias }) => `type ${name}${typeParams.length === 0 ? '' : typeParams.join(', ')} = ${MonoTy.show(alias)} `,
     Attributes: ({ attributes }) => Attribute.showMany(attributes, 'inner'),
     Import: ({ path, imports }) => `import ${path}${Imports.show(imports)} `,
     Error: ({ message }) => `< Error: ${message}> `,

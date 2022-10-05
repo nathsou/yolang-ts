@@ -1,4 +1,3 @@
-import std/foundations
 
 fun main() {
   log("Yo Yolang! 🥳")

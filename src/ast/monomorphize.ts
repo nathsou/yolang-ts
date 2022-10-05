@@ -46,11 +46,10 @@ const monomorphize = (
   const subst = block(() => {
     const subst = Subst.make();
     for (const [{ ty }, inst] of zip(f.typeParams, typeParams)) {
-      ty.map(MonoTy.deref).do(ty => {
-        if (ty.variant === 'Var' && ty.value.kind === 'Unbound') {
-          subst.set(ty.value.id, inst);
-        }
-      });
+      const dTy = MonoTy.deref(ty);
+      if (dTy.variant === 'Var' && dTy.value.kind === 'Unbound') {
+        subst.set(dTy.value.id, inst);
+      }
     }
 
     return subst;
@@ -69,7 +68,7 @@ const monomorphize = (
   f.typeParams.forEach((_, index) => {
     inst.typeParams.push({
       name: f.typeParams[index]?.name ?? showTyVarId(index),
-      ty: some(typeParams[index])
+      ty: typeParams[index],
     });
   });
 

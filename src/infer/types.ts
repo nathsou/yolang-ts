@@ -2,7 +2,6 @@ import { DataType, match, matchMany, VariantOf } from "itsamatch";
 import { Context } from "../ast/context";
 import { IntKind } from "../parse/token";
 import { filter, gen, joinWith, sum, zip } from "../utils/array";
-import { Maybe } from "../utils/maybe";
 import { assert, cond, letIn, matchString, panic, parenthesized } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
@@ -379,10 +378,10 @@ export const PolyTy = {
   isPolymorphic: ([quantified, _]: PolyTy): boolean => quantified.length > 0,
 };
 
-export type TypeParam = { name: string, ty: Maybe<MonoTy> };
+export type TypeParam = { name: string, ty: MonoTy };
 
 export const TypeParams = {
-  show: (params: TypeParam[]) => params.length > 0 ? `<${joinWith(params, p => p.ty.match({ None: () => p.name, Some: ty => `${p.name}: ${MonoTy.show(ty)}` }))}>` : '',
+  show: (params: TypeParam[]) => params.length > 0 ? `<${joinWith(params, p => `${p.name}: ${MonoTy.show(p.ty)}`)}>` : '',
   hash: (params: MonoTy[]) => `<${joinWith(params, MonoTy.show)}>`,
 };
 

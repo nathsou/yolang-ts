@@ -61,7 +61,6 @@ export const NameEnv = {
     return fresh;
   },
   declareTypeParam: (env: NameEnv, name: string, ty: MonoTy = MonoTy.Param(name)): MonoTy => {
-
     env.params[name] = ty;
     return ty;
   },

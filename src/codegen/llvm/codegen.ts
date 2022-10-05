@@ -9,7 +9,7 @@ import { MonoTy } from '../../infer/types';
 import { IntKind } from '../../parse/token';
 import { last, zip } from '../../utils/array';
 import { Maybe } from '../../utils/maybe';
-import { array, assert, block, fst, getMap, matchString, panic, proj } from '../../utils/misc';
+import { array, assert, block, getMap, matchString, panic, proj } from '../../utils/misc';
 import { meta } from './attributes';
 
 type LocalVar =
@@ -205,7 +205,7 @@ export const createLLVMCompiler = () => {
       return match(expr, {
         Const: ({ value: c }) => match(c, {
           bool: ({ value }) => llvm.ConstantInt[value ? 'getTrue' : 'getFalse'](context),
-          int: ({ value, ty }) => llvm.ConstantInt.get(llvmTy(ty), value),
+          int: ({ value }) => llvm.ConstantInt.get(llvmTy(expr.ty), Number(value)),
           str: ({ value }) => {
             const buffer = new TextEncoder().encode(value);
             const int8Ty = llvm.Type.getInt8Ty(context);

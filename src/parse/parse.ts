@@ -1,5 +1,5 @@
 import { match, VariantOf } from 'itsamatch';
-import { Argument, ArrayInit, Attribute, Decl, Expr, Imports, Pattern, Stmt } from '../ast/sweet';
+import { Argument, ArrayInit, Attribute, Decl, Expr, Imports, Pattern, Stmt, TypeParamConstraint } from '../ast/sweet';
 import { Error } from '../errors/errors';
 import { Row } from '../infer/structs';
 import { Tuple } from '../infer/tuples';
@@ -152,16 +152,40 @@ const arrayTy = map(
 
 initParser(monoTy, arrayTy);
 
-const typeParams: Parser<TypeParam[]> = map(
-  angleBrackets(commas(upperIdent)),
-  ps => ps.map(p => ({ name: p, ty: none }))
+const typeParamConstraint: Parser<{ name: string, constraint: TypeParamConstraint }> = map(
+  seq(
+    upperIdent,
+    map(
+      optional(seq(
+        keyword('in'),
+        squareBrackets(commas(monoTy, true)),
+      )),
+      c => c.match({
+        None: () => TypeParamConstraint.none(),
+        Some: ([_, tys]) => TypeParamConstraint.list(tys),
+      })
+    )
+  ),
+  ([name, constraint]) => ({ name, constraint }),
 );
+
+const typeParams: Parser<string[]> = angleBrackets(commas(upperIdent));
+const typeParamsWithConstraints: Parser<{ name: string, constraint: TypeParamConstraint }[]> =
+  angleBrackets(commas(typeParamConstraint));
+
 const typeParamsInst: Parser<MonoTy[]> = angleBrackets(commas(monoTy));
 
-const scopedTypeParams = <T>(p: Parser<T>): Parser<[TypeParam[], T]> =>
+const scopedTypeParams = <T>(p: Parser<T>): Parser<[string[], T]> =>
   flatMap(optionalOrDefault(typeParams, []), params =>
     ref((tokens: Slice<Token>) =>
-      map<T, [TypeParam[], T]>(p, t => [params, t]).ref(tokens)
+      map<T, [string[], T]>(p, t => [params, t]).ref(tokens)
+    )
+  );
+
+const scopedTypeParamsWithConstraints = <T>(p: Parser<T>): Parser<[{ name: string, constraint: TypeParamConstraint }[], T]> =>
+  flatMap(optionalOrDefault(typeParamsWithConstraints, []), params =>
+    ref((tokens: Slice<Token>) =>
+      map<T, [{ name: string, constraint: TypeParamConstraint }[], T]>(p, t => [params, t]).ref(tokens)
     )
   );
 
@@ -189,7 +213,7 @@ const argumentList = map(parens(optional(commas(argument))), args => args.orDefa
 
 // EXPRESSIONS
 
-const integerConst = satisfyBy<Const & { value: number }>(token =>
+const integerConst = satisfyBy<VariantOf<Const, 'int'>>(token =>
   token.variant === 'Const' && Const.isInt(token.value) ? some(token.value) : none
 );
 
@@ -276,7 +300,7 @@ export const tuple = alt(
 const array = alt(
   map(squareBrackets(
     alt<ArrayInit>(
-      map(seq(expr, symbol(';'), integerConst), ([value, _, count]) => ArrayInit.fill({ value, count: count.value })),
+      map(seq(expr, symbol(';'), integerConst), ([value, _, count]) => ArrayInit.fill({ value, count: Number(count.value) })),
       map(commas(expr, true), elems => ArrayInit.elems({ elems })),
     )
   ), (init, pos) => Expr.Array(init, pos)),
@@ -309,7 +333,7 @@ const fieldAccess = chainLeft(
   seq(
     expectOrDefault(alt<{ variant: 'ident', name: string } | { variant: 'int', value: number }>(
       map(ident, name => ({ variant: 'ident', name })),
-      map(integerConst, n => ({ variant: 'int', value: n.value })),
+      map(integerConst, n => ({ variant: 'int', value: Number(n.value) })),
     ), `Expected identifier or integer after '.'`, { variant: 'ident', name: '<?>' }),
     optional(parens(map(optional(commas(expr)), args => args.orDefault([])))),
   ),
@@ -667,7 +691,7 @@ const funDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
     `Expected identifier after 'fun' keyword`,
     '<?>'
   ),
-  scopedTypeParams(seq(
+  scopedTypeParamsWithConstraints(seq(
     expectOrDefault(argumentList, 'Expected arguments after function name', []),
     optional(seq(
       symbol(':'),
