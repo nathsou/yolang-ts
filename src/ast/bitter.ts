@@ -42,7 +42,7 @@ export const Pattern = {
     Error: ({ message }): Pattern => Pattern.Error(message),
   }),
   type: (pattern: Pattern): MonoTy => match(pattern, {
-    Const: ({ value }) => Const.type(value),
+    Const: ({ value }) => value.ty,
     Variable: ({ name }) => name.ty,
     Tuple: ({ elements }) => MonoTy.Tuple(Tuple.fromArray(elements.map(Pattern.type))),
     Any: (): MonoTy => MonoTy.fresh(),
@@ -78,7 +78,7 @@ export type ArrayInit = DataType<{
 export const ArrayInit = {
   ...genConstructors<ArrayInit>(['elems', 'fill']),
   show: (init: ArrayInit): string => match(init, {
-    elems: ({ elems }) => `[${elems.map(Expr.show).join(', ')}]`,
+    elems: ({ elems }) => `[${elems.map(e => Expr.show(e)).join(', ')}]`,
     fill: ({ value, count }) => `[${Expr.show(value)}; ${count}]`,
   }),
 };
@@ -107,7 +107,7 @@ const typed = <T extends {}>(obj: T, sweet: sweet.Expr): T & { ty: MonoTy, sweet
 });
 
 export const Expr = {
-  Const: (c: Const, sweet: sweet.Expr): Expr => ({ variant: 'Const', value: c, sweet, ty: Const.type(c) }),
+  Const: (c: Const, sweet: sweet.Expr): Expr => ({ variant: 'Const', value: c, sweet, ty: c.ty }),
   Variable: (name: VarName, sweet: sweet.Expr): Expr => typed({ variant: 'Variable', name }, sweet),
   NamedFuncCall: (name: Either<string, FuncName>, typeParams: MonoTy[], args: Expr[], sweet: sweet.Expr): Expr => typed({ variant: 'NamedFuncCall', name, typeParams, args }, sweet),
   Call: (lhs: Expr, args: Expr[], sweet: sweet.Expr): Expr => typed({ variant: 'Call', lhs, args }, sweet),
@@ -226,7 +226,7 @@ export const Expr = {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => VarName.show(name),
     NamedFuncCall: ({ name, typeParams, args }) => {
-      const funcName: string = name.match({ left: id, right: FuncName.show });
+      const funcName: string = name.match({ Left: id, Right: FuncName.show });
       const params = `${typeParams.length > 0 ? `<${joinWith(typeParams, MonoTy.show)}>` : ''}`;
       return `${funcName}${params}(${joinWith(args, Expr.show, ', ')})`;
     },

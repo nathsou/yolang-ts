@@ -73,11 +73,6 @@ program.parse();
 // <string> -> parse -> <sweet> -> desugar -> <bitter> -> infer ->
 // monomorphize -> inject reference counting -> <core> -> codegen
 
-const typeCheck = (prog: bitter.Prog): Error[] => {
-  Context.clear();
-  return infer(prog);
-};
-
 const getWasmMainFunc = async (source: string): Promise<() => number> => {
   const { readFile } = await import('fs/promises');
   const wasm = await readFile(source);
@@ -157,7 +152,7 @@ async function yo(source: string, options: Options): Promise<number> {
     return 1;
   }
 
-  const [errs3, inferDuration] = time(() => typeCheck(bitterProg));
+  const [errs3, inferDuration] = time(() => infer(bitterProg));
 
   if (errs3.length > 0) {
     await logErrors(errs3);

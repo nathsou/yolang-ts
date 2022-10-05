@@ -1,4 +1,5 @@
 
 fun main() {
-  log(3.pow(7))
+  let a = 7
+  log(a.pow(a))
 }

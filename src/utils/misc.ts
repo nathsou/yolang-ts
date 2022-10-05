@@ -1,3 +1,4 @@
+import { Maybe } from "./maybe";
 
 export type Ref<T> = { ref: T };
 
@@ -42,9 +43,10 @@ export const matchString = <S extends string, T>(
   str: S,
   cases: ({ [str in S]: () => T }) | (Partial<{ [str in S]: () => T }> & { _: () => T })
 ): T => {
-  assert(str in cases || '_' in cases, () => `unhandled key in 'matchString': ${str}`);
+  const keyInCases = str in cases;
+  assert(keyInCases || '_' in cases, () => `unhandled key in matchString: '${str}'`);
   /// @ts-ignore
-  return cases[str in cases ? str : '_']();
+  return cases[keyInCases ? str : '_']();
 };
 
 export const parenthesized = (str: string, showParens = true): string => showParens ? `(${str})` : str;
@@ -53,7 +55,7 @@ export const mapRecord = <T, U>(obj: Record<string, T>, f: (value: T) => U): Rec
   return Object.fromEntries(Object.entries(obj).map(([key, value]) => [key, f(value)]));
 };
 
-export const mapMap = <T, U>(obj: Map<string, T>, f: (value: T) => U): Map<string, U> => {
+export const mapMap = <K, T, U>(obj: Map<K, T>, f: (value: T) => U): Map<K, U> => {
   return new Map(Array.from(obj.entries()).map(([key, value]) => [key, f(value)]));
 };
 
@@ -65,12 +67,16 @@ export const pushRecord = <T>(obj: Record<string, T[]>, key: string, value: T): 
   }
 };
 
-export const pushMap = <T>(obj: Map<string, T[]>, key: string, value: T): void => {
-  if (obj.has(key)) {
-    obj.get(key)!.push(value);
+export const pushMap = <K, V>(map: Map<K, V[]>, key: K, value: V): void => {
+  if (map.has(key)) {
+    map.get(key)!.push(value);
   } else {
-    obj.set(key, [value]);
+    map.set(key, [value]);
   }
+};
+
+export const getMap = <K, V>(map: Map<K, V>, key: K): Maybe<V> => {
+  return Maybe.wrap(map.get(key));
 };
 
 export const compose = <A, B, C>(f: (a: A) => B, g: (b: B) => C) => (x: A) => g(f(x));

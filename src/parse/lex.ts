@@ -3,7 +3,7 @@ import { Error } from "../errors/errors";
 import { last } from "../utils/array";
 import { error, ok, Result } from "../utils/result";
 import { Char, isAlpha, isAlphaNum, isDigit } from "../utils/strings";
-import { Const, IntType, Keyword, Position, Token } from "./token";
+import { Const, IntKind, Keyword, Position, Token } from "./token";
 
 const INSERT_SEMICOLONS = false;
 
@@ -100,7 +100,7 @@ const Lexer = (source: string, path: string) => {
     }
 
     const lexeme = source.slice(startIndex, index);
-    let type: IntType = 'i32';
+    let type: IntKind | '?' = '?';
 
     switch (peek()) {
       case 'u':

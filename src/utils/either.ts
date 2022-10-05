@@ -17,18 +17,18 @@ export class Either<L, R> {
     return new Either<L, R>({ type: 'right', value });
   }
 
-  public match<T>(handler: { left: (value: L) => T, right: (value: R) => T }): T {
+  public match<T>(handler: { Left: (value: L) => T, Right: (value: R) => T }): T {
     if (this.raw.type === 'left') {
-      return handler.left(this.raw.value);
+      return handler.Left(this.raw.value);
     }
 
-    return handler.right(this.raw.value);
+    return handler.Right(this.raw.value);
   }
 
   public map<A, B>(mapper: { left: (value: L) => A, right: (value: R) => B }): Either<A, B> {
     return this.match({
-      left: value => Either.left(mapper.left(value)),
-      right: value => Either.right(mapper.right(value)),
+      Left: value => Either.left(mapper.left(value)),
+      Right: value => Either.right(mapper.right(value)),
     });
   }
 

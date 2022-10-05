@@ -275,8 +275,8 @@ const array = alt(
 );
 
 const structField = map(seq(
-  expectOrDefault(ident, `Expected field name`, '<?>'),
-  expectOrDefault(symbol(':'), `Expected ':' after field name`, Token.Symbol(':')),
+  ident,
+  symbol(':'),
   expect(expr, `Expected expression after ':'`),
 ),
   ([name, _, value]) => ({ name, value })

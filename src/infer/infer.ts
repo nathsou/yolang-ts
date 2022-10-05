@@ -102,8 +102,8 @@ const inferExpr = (
 
   const resolveFuncs = (name: Either<string, FuncName>): Maybe<FunDecl[]> => {
     const funcName = name.match({
-      left: name => name,
-      right: name => name.original,
+      Left: name => name,
+      Right: name => name.original,
     });
 
     const funcs = Env.lookupFuncs(env, funcName);
@@ -127,21 +127,21 @@ const inferExpr = (
     NamedFuncCall: call => {
       const { name, args } = call;
 
+      args.forEach(arg => {
+        inferExpr(arg, ctx, errors);
+      });
+
+      const funcName = name.match({
+        Left: name => name,
+        Right: ({ original }) => original,
+      });
+
+      const argTys = args.map(proj('ty'));
+      const actualFunTy = MonoTy.Fun(argTys, tau);
+
       resolveFuncs(name).do(funcs => {
-        args.forEach(arg => {
-          inferExpr(arg, ctx, errors);
-        });
-
-        const funcName = name.match({
-          left: name => name,
-          right: ({ original }) => original,
-        });
-
-        const argTys = args.map(proj('ty'));
-        const actualFunTy = MonoTy.Fun(argTys, tau);
-
         resolveOverloading(funcName, actualFunTy, funcs, ctx).match({
-          left: resolvedFunc => {
+          Left: resolvedFunc => {
             zip(resolvedFunc.args, args).forEach(([funcArg, receivedArg]) => {
               if (funcArg.mutable && !Expr.isMutable(receivedArg)) {
                 pushError(Error.Typing({
@@ -164,6 +164,7 @@ const inferExpr = (
             });
 
             unify(funTy, actualFunTy);
+
             if (paramsInst.length > 0 && call.typeParams.length > 0) {
               if (call.typeParams.length !== paramsInst.length) {
                 pushError(Error.Typing({
@@ -182,10 +183,11 @@ const inferExpr = (
             call.typeParams = paramsInst;
 
             if (paramsInst.length > 0) {
+              // register a new monomorphized instance
               resolvedFunc.instances.push(paramsInst);
             }
           },
-          right: err => {
+          Right: err => {
             pushError(Error.Typing(err));
           },
         });
@@ -392,13 +394,14 @@ const inferStmt = (stmt: Stmt, ctx: TypeContext, errors: Error[]): void => {
 
   match(stmt, {
     Let: ({ name, expr, annotation }) => {
-      inferExpr(expr, ctx, errors);
-
       annotation.do(ann => {
         unifyMut(expr.ty, ann, ctx).forEach(pushError);
       });
 
+      inferExpr(expr, ctx, errors);
+
       const genTy = MonoTy.generalize(ctx.env, expr.ty);
+
       unifyMut(name.ty, expr.ty, ctx);
       Env.addPolyVar(ctx.env, name, genTy);
     },

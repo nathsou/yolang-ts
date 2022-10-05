@@ -6,10 +6,10 @@ import { VarName } from '../../ast/name';
 import { Row } from '../../infer/structs';
 import { TypeContext } from '../../infer/typeContext';
 import { MonoTy } from '../../infer/types';
-import { IntType } from '../../parse/token';
+import { IntKind } from '../../parse/token';
 import { last, zip } from '../../utils/array';
 import { Maybe } from '../../utils/maybe';
-import { array, assert, block, matchString, panic, proj } from '../../utils/misc';
+import { array, assert, block, fst, getMap, matchString, panic, proj } from '../../utils/misc';
 import { meta } from './attributes';
 
 type LocalVar =
@@ -46,7 +46,7 @@ export const createLLVMCompiler = () => {
     };
 
     function declareImports() {
-      for (const [name, { sourceMod: sourceModPath, isExport }] of module.imports) {
+      for (const [name, { sourceMod: sourceModPath }] of module.imports) {
         const sourceMod = modules.get(sourceModPath)!;
         const decls = sourceMod.members.get(name);
         decls?.forEach(d => {
@@ -66,8 +66,8 @@ export const createLLVMCompiler = () => {
     }
 
     type ResolvedVar =
-      | { kind: 'immut', value: LLVM.Value, ty: MonoTy }
-      | { kind: 'mut', ptr: LLVM.AllocaInst, ty: MonoTy };
+      | { kind: 'mut', ptr: LLVM.AllocaInst, ty: MonoTy }
+      | { kind: 'immut', value: LLVM.Value, ty: MonoTy };
 
     function resolveVar(name: VarName): ResolvedVar {
       for (let i = scopes.length - 1; i >= 0; i--) {
@@ -87,7 +87,7 @@ export const createLLVMCompiler = () => {
 
     function currentScope(): LexicalScope {
       if (scopes.length === 0) {
-        panic('scope list is empty');
+        panic('Scope list is empty');
       }
 
       return last(scopes);
@@ -205,15 +205,7 @@ export const createLLVMCompiler = () => {
       return match(expr, {
         Const: ({ value: c }) => match(c, {
           bool: ({ value }) => llvm.ConstantInt[value ? 'getTrue' : 'getFalse'](context),
-          int: ({ value, type }) => matchString(type, {
-            u8: () => llvm.ConstantInt.get(llvm.Type.getInt8Ty(context), value),
-            i8: () => llvm.ConstantInt.get(llvm.Type.getInt8Ty(context), value),
-            u32: () => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
-            i32: () => llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), value),
-            u64: () => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),
-            i64: () => llvm.ConstantInt.get(llvm.Type.getInt64Ty(context), value),
-          }),
-          unit: () => llvm.UndefValue.get(llvm.Type.getInt1Ty(context)),
+          int: ({ value, ty }) => llvm.ConstantInt.get(llvmTy(ty), value),
           str: ({ value }) => {
             const buffer = new TextEncoder().encode(value);
             const int8Ty = llvm.Type.getInt8Ty(context);
@@ -244,11 +236,10 @@ export const createLLVMCompiler = () => {
           });
         },
         NamedFuncCall: ({ name, args }) => {
-          if (funcs.has(name.mangled)) {
-            return builder.CreateCall(funcs.get(name.mangled)!, args.map(arg => compileExpr(arg)));
-          } else {
-            return panic(`undeclared function in call: '${name.mangled}'`);
-          }
+          return getMap(funcs, name.mangled).match({
+            Some: f => builder.CreateCall(f, args.map(arg => compileExpr(arg))),
+            None: () => panic(`undeclared function in call: '${name.mangled}'`),
+          });
         },
         IfThenElse: ({ condition, then, else_, ty }) => {
           const parent = builder.GetInsertBlock()!.getParent()!;
@@ -266,6 +257,8 @@ export const createLLVMCompiler = () => {
               builder.SetInsertPoint(thenBB);
               const thenValue = compileExpr(then);
               builder.CreateBr(mergeBB);
+              // Codegen of 'then' can change the current block, update thenBB for the PHI. 
+              // Codegen of 'then' can change the current block, update thenBB for the PHI. 
               // Codegen of 'then' can change the current block, update thenBB for the PHI. 
               thenBB = builder.GetInsertBlock()!;
 
@@ -329,7 +322,6 @@ export const createLLVMCompiler = () => {
         Array: ({ init, elemTy }) => {
           const { arrayStructPtr, arrayTy, arrayData } = allocateArray(elemTy, ArrayInit.len(init));
 
-          // TODO: use a loop when len is large
           match(init, {
             elems: ({ elems }) => {
               elems.forEach((elem, index) => {
@@ -349,6 +341,8 @@ export const createLLVMCompiler = () => {
                 const elemPtr = arrayElementPtr(arrayTy, arrayData, counterDeref);
                 builder.CreateStore(elem, elemPtr);
 
+                // counter += 1                
+                // counter += 1                
                 // counter += 1                
                 builder.CreateStore(
                   builder.CreateAdd(
@@ -414,23 +408,23 @@ export const createLLVMCompiler = () => {
     function llvmTy(ty: MonoTy): llvm.Type {
       return match(MonoTy.expand(ty, module.typeContext), {
         Const: c => matchString<string, llvm.Type>(c.name, {
-          'int': () => {
-            assert(c.args[0].variant === 'Const');
-            return matchString(c.args[0].name as IntType, {
-              'i8': () => llvm.Type.getInt8Ty(context),
-              'u8': () => llvm.Type.getInt8Ty(context),
-              'i32': () => llvm.Type.getInt32Ty(context),
-              'u32': () => llvm.Type.getInt32Ty(context),
-              'i64': () => llvm.Type.getInt64Ty(context),
-              'u64': () => llvm.Type.getInt64Ty(context),
+          int: () => {
+            const kind = MonoTy.deref(c.args[0]);
+            assert(kind.variant === 'Const', 'Underconstrained integer literal');
+
+            return matchString(kind.name as IntKind, {
+              i8: () => llvm.Type.getInt8Ty(context),
+              u8: () => llvm.Type.getInt8Ty(context),
+              i32: () => llvm.Type.getInt32Ty(context),
+              u32: () => llvm.Type.getInt32Ty(context),
+              i64: () => llvm.Type.getInt64Ty(context),
+              u64: () => llvm.Type.getInt64Ty(context),
             });
           },
-          'void': () => llvm.Type.getVoidTy(context),
-          'bool': () => llvm.Type.getInt1Ty(context),
-          'ptr': () => llvm.PointerType.get(llvmTy(c.args[0]), 0),
-          _: () => {
-            return panic(`Unknown type representation for const type: ${c.name}`);
-          },
+          void: () => llvm.Type.getVoidTy(context),
+          bool: () => llvm.Type.getInt1Ty(context),
+          ptr: () => llvm.PointerType.get(llvmTy(c.args[0]), 0),
+          _: () => panic(`Unknown type representation for const type: ${c.name}`),
         }),
         Var: v => match(v.value, {
           Link: ({ to }) => llvmTy(MonoTy.deref(to)),
@@ -506,6 +500,8 @@ export const createLLVMCompiler = () => {
                 const retTy = llvmTy(f.returnTy);
                 // if f contains at least one early return statement
                 // then allocate the space for the return value 
+                // then allocate the space for the return value 
+                // then allocate the space for the return value 
                 const returnVal = block(() => {
                   if (f.canReturnEarly && !returnsVoid) {
                     return builder.CreateAlloca(retTy, null, 'return_val');
@@ -569,7 +565,7 @@ export const createLLVMCompiler = () => {
           });
 
           if (llvm.verifyFunction(proto)) {
-            panic('function verification failed');
+            panic('Function verification failed');
           }
         },
         TypeAlias: () => { },

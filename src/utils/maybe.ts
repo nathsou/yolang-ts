@@ -115,6 +115,10 @@ export class Maybe<T> {
 
     return none;
   }
+
+  static wrap<T>(value?: T): Maybe<T> {
+    return value === undefined ? none : some(value);
+  }
 }
 
 export const { none, noneAs, some } = Maybe;

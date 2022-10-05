@@ -1,9 +1,9 @@
 import { DataType, match, matchMany, VariantOf } from "itsamatch";
 import { Context } from "../ast/context";
-import { IntType } from "../parse/token";
+import { IntKind } from "../parse/token";
 import { filter, gen, joinWith, sum, zip } from "../utils/array";
 import { Maybe } from "../utils/maybe";
-import { cond, matchString, panic, parenthesized } from "../utils/misc";
+import { assert, cond, letIn, matchString, panic, parenthesized } from "../utils/misc";
 import { diffSet } from "../utils/set";
 import { Env } from "./env";
 import { Row } from "./structs";
@@ -51,7 +51,7 @@ export const MonoTy = {
   Struct: (fields: Readonly<Row>, name?: string, params: MonoTy[] = []): MonoTy => ({ variant: 'Struct', name, params, row: fields }),
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
   ptr: (ty: MonoTy): MonoTy => MonoTy.Const('ptr', ty),
-  int: (type: IntType) => MonoTy.Const('int', MonoTy.Const(type)),
+  int: (kind: IntKind | '?') => MonoTy.Const('int', kind === '?' ? MonoTy.Var(TyVar.fresh()) : MonoTy.Const(kind)),
   bool: () => MonoTy.Const('bool'),
   str: () => MonoTy.Const('str'), // not primitive
   void: () => MonoTy.Const('void'),
@@ -100,27 +100,33 @@ export const MonoTy = {
       Integer: () => fvs,
     }),
   link: (v: VariantOf<MonoTy, 'Var'>, to: MonoTy, subst?: Subst): void => {
-    if (subst) {
-      if (v.value.kind === 'Link') {
-        return panic('cannot link to a bound type variable');
-      }
+    assert(v.value.kind === 'Unbound', 'cannot link to a bound type variable');
 
+    if (subst) {
       subst.set(v.value.id, MonoTy.deref(to));
     } else {
       v.value = TyVar.Link(MonoTy.deref(to));
     }
   },
   generalize: (env: Env, ty: MonoTy): PolyTy => {
+    const dTy = MonoTy.deref(ty);
+    // unconstrainted int types contain a variable but should not be generalized
+    if (dTy.variant === 'Const' && dTy.name === 'int') {
+      return PolyTy.make([], dTy);
+    }
+
     // can be optimized using (block instead of let) levels
     // https://github.com/tomprimozic/type-systems/tree/master/algorithm_w
     // https://okmij.org/ftp/ML/generalization.html
-    const fvsTy = MonoTy.freeTypeVars(ty);
+    const fvsTy = MonoTy.freeTypeVars(dTy);
     const fvsEnv = Env.freeTypeVars(env);
     const quantified = [...diffSet(fvsTy, fvsEnv)];
 
-    return PolyTy.make(quantified, ty);
+    return PolyTy.make(quantified, dTy);
   },
-  fresh: () => MonoTy.Var(TyVar.Unbound(Context.freshTyVarIndex())),
+  fresh: () => {
+    return MonoTy.Var(TyVar.Unbound(Context.freshTyVarIndex()));
+  },
   occurs: (x: TyVarId, t: MonoTy): boolean => match(t, {
     Var: ({ value }) => {
       if (value.kind === 'Unbound') {
@@ -207,7 +213,7 @@ export const MonoTy = {
       then: () => name,
       else: () => matchString(name, {
         'Array': () => `${MonoTy.show(args[0])}[]`,
-        'int': () => MonoTy.show(args[0]),
+        'int': () => letIn(MonoTy.deref(args[0]), t => t.variant === 'Var' ? 'Int' : MonoTy.show(t)),
         _: () => `${name}<${joinWith(args, MonoTy.show, ', ')}>`,
       }),
     }),

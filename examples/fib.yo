@@ -8,7 +8,7 @@ fun fibRec(n: i32): i32 {
 }
 
 fun fibIter(n: i32): i32 {
-  mut a = 1
+  mut a = 1i32
   mut b = 1
   mut i = 0
 

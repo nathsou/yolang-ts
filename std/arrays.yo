@@ -21,5 +21,5 @@ pub fun []=<T>(mut a: T[], index: u32, value: T): void {
 }
 
 pub fun last<T>(a: T[]): T {
-  a[a.len - 1u32]
+  a[a.len - 1]
 }
