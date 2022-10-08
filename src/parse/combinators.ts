@@ -36,7 +36,7 @@ export const uninitialized = <T>(): Parser<T> => {
   return ref(tokens => [error(Error.Parser({ message: 'uninitialized' }, pos(tokens.start))), tokens, []]);
 };
 
-export const initParser = <T>(l: Parser<T>, r: Parser<T>): void => {
+export const init = <T>(l: Parser<T>, r: Parser<T>): void => {
   l.ref = r.ref;
 };
 

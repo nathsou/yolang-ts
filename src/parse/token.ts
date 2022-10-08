@@ -34,7 +34,7 @@ export const Token = {
   Symbol: (value: Symbol, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Symbol', value, pos }),
   Operator: (value: Operator, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Operator', value, pos }),
   Keyword: (value: Keyword, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Keyword', value, pos }),
-  Const: (value: Const, pos: Position): Token => ({ variant: 'Const', value, pos }),
+  Const: (value: Const, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Const', value, pos }),
   Identifier: (name: string, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Identifier', name, pos }),
   Invalid: (lexeme: string, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Invalid', lexeme, pos }),
   EOF: (pos: Position = Position.DONT_CARE): Token => ({ variant: 'EOF', pos }),
@@ -72,13 +72,17 @@ export const Symbol = {
 };
 
 const specialOperators = Object.freeze([
-  '=', '+', '-', '*', '/', '==', '!=', '<', '>', '<=', '>=',
-  '+=', '-=', '*=', '/=', 'not=', 'mod=', 'and=', 'or=',
-  'nand=', 'nor=', 'xor=', 'xnor=', '[]', '[]=',
+  '=', '+', '-', '*', '/', '**',
+  '&', '|', '~', '^', '<<', '>>',
+  '==', '!=', '<', '>', '<=', '>=',
+  '+=', '-=', '*=', '/=',
+  'not=', 'mod=', 'and=', 'or=', 'nand=', 'nor=', 'xor=', 'xnor=',
+  '&=', '|=', '^=', '<<=', '>>=',
+  '[]', '[]=',
 ] as const);
 
 const allLetterOperators = Object.freeze([
-  'not', 'mod', 'and', 'or', 'nand', 'nor', 'xor', 'xnor',
+  'not', 'and', 'or', 'nand', 'nor', 'xor', 'xnor', 'mod',
 ] as const);
 
 export type SpecialOperator = (typeof specialOperators)[number];

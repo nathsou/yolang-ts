@@ -6,10 +6,10 @@ pub type Array<T> = {
   data: ptr<T>,
 }
 
-#meta(getUnchecked)
+#meta
 fun getUnchecked<T>(elems: ptr<T>, index: u32): T
 
-#meta(setUnchecked)
+#meta
 fun setUnchecked<T>(mut elems: ptr<T>, index: u32, value: T): void
 
 pub fun `[]`<T>(a: T[], index: u32): T {

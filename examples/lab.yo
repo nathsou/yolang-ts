@@ -1,5 +1,14 @@
 
+fun lhs() {
+  log("lhs")
+  true
+}
+
+fun rhs() {
+  log("rhs")
+  true
+}
+
 fun main() {
-  let n: u128 = 26.pow(26)
-  log(n)
+  log(lhs() nor rhs())
 }

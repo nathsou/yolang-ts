@@ -16,8 +16,6 @@ export const meta = (
       return some(builder.CreateSub(f.getArg(0), f.getArg(1)));
     case 'neg':
       return some(builder.CreateNeg(f.getArg(0)));
-    case 'not':
-      return some(builder.CreateNot(f.getArg(0)));
     case '*':
       return some(builder.CreateMul(f.getArg(0), f.getArg(1)));
     case 'signedDiv':
@@ -26,12 +24,20 @@ export const meta = (
       return some(builder.CreateUDiv(f.getArg(0), f.getArg(1)));
     case 'mod':
       return some(builder.CreateURem(f.getArg(0), f.getArg(1)));
-    case 'logicalAnd':
-    case 'bitwiseAnd':
+    case '&':
       return some(builder.CreateAnd(f.getArg(0), f.getArg(1)));
-    case 'logicalOr':
-    case 'bitwiseOr':
+    case '|':
       return some(builder.CreateOr(f.getArg(0), f.getArg(1)));
+    case '^':
+      return some(builder.CreateXor(f.getArg(0), f.getArg(1)));
+    case '<<':
+      return some(builder.CreateShl(f.getArg(0), f.getArg(1)));
+    case 'arithmeticShiftRight':
+      return some(builder.CreateAShr(f.getArg(0), f.getArg(1)));
+    case 'logicalShiftRight':
+      return some(builder.CreateLShr(f.getArg(0), f.getArg(1)));
+    case '~':
+      return some(builder.CreateNot(f.getArg(0)));
     case 'signedLss':
       return some(builder.CreateICmpSLT(f.getArg(0), f.getArg(1)));
     case 'unsignedLss':

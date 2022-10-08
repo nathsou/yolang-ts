@@ -8,7 +8,7 @@ import { deconsLast, last } from '../utils/array';
 import { Maybe, none, some } from '../utils/maybe';
 import { proj, ref, snd } from '../utils/misc';
 import { Slice } from '../utils/slice';
-import { alt, angleBrackets, anyIdent, anyKeyword, anyOperator, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, ident, initParser, invalid, keyword, leftAssoc, lexerContext, lookahead, many, map, operator, optional, optionalOrDefault, parens, Parser, satisfyBy, seq, squareBrackets, symbol, uninitialized, upperIdent } from './combinators';
+import { alt, angleBrackets, anyIdent, anyKeyword, anyOperator, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, ident, init, invalid, keyword, leftAssoc, lexerContext, lookahead, many, map, operator, optional, optionalOrDefault, parens, Parser, satisfyBy, seq, squareBrackets, symbol, uninitialized, upperIdent } from './combinators';
 import { lex } from './lex';
 import { Const, Token } from './token';
 
@@ -104,7 +104,7 @@ const arrayTy = map(
   }),
 );
 
-initParser(monoTy, arrayTy);
+init(monoTy, arrayTy);
 
 const typeParamConstraint: Parser<{ name: string, constraint: TypeParamConstraint }> = map(
   seq(
@@ -325,16 +325,24 @@ const factor = indexing;
 
 export const unary = alt(
   map(seq(
-    alt(operator('-'), ident('not')),
+    alt(operator('-', `~`), ident('not')),
     expectOrDefault(factor, `Expected expression after unary operator`, Expr.Error)
   ), ([op, expr], pos) => Expr.Call(Expr.Variable(op, pos), [], [expr], pos)),
   factor
 );
 
+const exponent = alt(
+  map(
+    seq(unary, operator('**'), unary),
+    ([a, _, b], pos) => Expr.Call(Expr.Variable('**'), [], [a, b], pos)
+  ),
+  unary
+);
+
 const multiplicative = chainLeft(
-  unary,
+  exponent,
   alt(operator('*', '/'), ident('mod')),
-  expect(unary, 'Expected expression after multiplicative operator'),
+  expect(exponent, 'Expected expression after multiplicative operator'),
   (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
 );
 
@@ -345,10 +353,38 @@ const additive = chainLeft(
   (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
 );
 
-const comparison = chainLeft(
+const shift = chainLeft(
   additive,
+  operator('<<', '>>'),
+  expect(additive, 'Expected expression after shift operator'),
+  (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
+);
+
+const bitwiseAnd = chainLeft(
+  shift,
+  operator('&'),
+  expect(shift, "Expected expression after '&' operator"),
+  (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
+);
+
+const bitwiseXor = chainLeft(
+  bitwiseAnd,
+  operator('^'),
+  expect(bitwiseAnd, "Expected expression after '^' operator"),
+  (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
+);
+
+const bitwiseOr = chainLeft(
+  bitwiseXor,
+  operator('|'),
+  expect(bitwiseXor, "Expected expression after '|' operator"),
+  (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
+);
+
+const comparison = chainLeft(
+  bitwiseOr,
   operator('<=', '>=', '<', '>'),
-  expect(additive, 'Expected expression after relational operator'),
+  expect(bitwiseOr, 'Expected expression after relational operator'),
   (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
 );
 
@@ -479,7 +515,7 @@ const closure = alt(
   matchExpr
 );
 
-initParser(expr, closure);
+init(expr, closure);
 
 // PATTERNS
 
@@ -504,7 +540,7 @@ const tupleOrParenthesizedPat = map(
   })
 );
 
-initParser(pattern, alt(anyPat, constPat, varPat, tupleOrParenthesizedPat));
+init(pattern, alt(anyPat, constPat, varPat, tupleOrParenthesizedPat));
 
 // STATEMENTS
 
@@ -541,7 +577,7 @@ const assignmentStmt = alt(
       ifThenElse,
       alt(
         operator(
-          '=', '+=', '-=', '*=', '/=',
+          '=', '+=', '-=', '*=', '/=', '&=', '|=', '^=', '<<=', '>>=',
           'mod=', 'and=', 'or=', 'nand=', 'nor=', 'xor=', 'xnor='
         ),
       ),
@@ -566,7 +602,7 @@ const returnStmt = alt(
   assignmentStmt
 );
 
-initParser(
+init(
   stmt,
   map(
     // seq(exprStmt, expectOrDefault(symbol(';'), 'Expected semicolon after statement', Token.symbol(';'))),
@@ -575,7 +611,7 @@ initParser(
   )
 );
 
-initParser(
+init(
   stmt2,
   map(
     seq(returnStmt, optional(symbol(';'))),
@@ -695,7 +731,7 @@ const importDecl = map(
   ([isExport, path, imports]) => Decl.Import({ isExport, path, resolvedPath: '', imports })
 );
 
-initParser(decl, alt(
+init(decl, alt(
   innerAttributesDecl,
   funDecl,
   typeAliasDecl,
