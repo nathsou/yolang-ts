@@ -4,7 +4,7 @@ import { last } from "../utils/array";
 import { panic } from "../utils/misc";
 import { error, ok, Result } from "../utils/result";
 import { Char, isAlpha, isAlphaNum, isDigit } from "../utils/strings";
-import { Const, IntKind, Keyword, Position, Token } from "./token";
+import { Const, IntKind, Keyword, Operator, Position, Token } from "./token";
 
 const INSERT_SEMICOLONS = false;
 
@@ -158,7 +158,24 @@ const Lexer = (source: string, path: string) => {
     return source.slice(startIndex + 1, index - 1);
   };
 
-  const parseIdentOrKeyword = (startIndex: number): Token => {
+  const parseOperatorIdent = (startIndex: number): string => {
+    while (true) {
+      const c = peek();
+      if (c === undefined) {
+        break;
+      }
+
+      advance();
+
+      if (c === '`') {
+        break;
+      }
+    }
+
+    return source.slice(startIndex + 1, index - 1);
+  };
+
+  const parseIdentOrKeywordOrOperator = (startIndex: number): Token => {
     while (true) {
       const c = peek();
       if (c === undefined) {
@@ -174,7 +191,7 @@ const Lexer = (source: string, path: string) => {
 
     let lexeme = source.slice(startIndex, index);
     if (match('=') && compoundOpIdents.has(lexeme)) {
-      lexeme += '=';
+      return Token.Operator((lexeme + '=') as Operator, { ...pos });
     }
 
     if (lexeme === 'true' || lexeme === 'false') {
@@ -249,35 +266,35 @@ const Lexer = (source: string, path: string) => {
         return true;
       }
       case '+':
-        tokens.push(Token.Identifier(match('=') ? '+=' : '+', { ...pos }));
+        tokens.push(Token.Operator(match('=') ? '+=' : '+', { ...pos }));
         return true;
       case '*':
-        tokens.push(Token.Identifier(match('=') ? '*=' : '*', { ...pos }));
+        tokens.push(Token.Operator(match('=') ? '*=' : '*', { ...pos }));
         return true;
       case '=': {
         let token: Token;
         if (match('>')) {
           token = Token.Symbol('=>', { ...pos });
         } else if (match('=')) {
-          token = Token.Identifier('==', { ...pos });
+          token = Token.Operator('==', { ...pos });
         } else {
-          token = Token.Identifier('=', { ...pos });
+          token = Token.Operator('=', { ...pos });
         }
 
         tokens.push(token);
         return true;
       }
       case '<':
-        tokens.push(Token.Identifier(match('=') ? '<=' : '<', { ...pos }));
+        tokens.push(Token.Operator(match('=') ? '<=' : '<', { ...pos }));
         return true;
       case '>':
-        tokens.push(Token.Identifier(match('=') ? '>=' : '>', { ...pos }));
+        tokens.push(Token.Operator(match('=') ? '>=' : '>', { ...pos }));
         return true;
       case '/':
         if (match('/')) {
           skipLine();
         } else {
-          tokens.push(Token.Identifier(match('=') ? '/=' : '/', { ...pos }));
+          tokens.push(Token.Operator(match('=') ? '/=' : '/', { ...pos }));
         }
 
         return true;
@@ -286,11 +303,11 @@ const Lexer = (source: string, path: string) => {
         if (match('>')) {
           token = Token.Symbol('->', { ...pos });
         } else if (match('=')) {
-          token = Token.Identifier('-=', { ...pos });
+          token = Token.Operator('-=', { ...pos });
         } else if (isDigit(peek()!)) {
           token = Token.Const(parseNumber(startIndex), { ...pos });
         } else {
-          token = Token.Identifier('-', { ...pos });
+          token = Token.Operator('-', { ...pos });
         }
 
         tokens.push(token);
@@ -298,14 +315,20 @@ const Lexer = (source: string, path: string) => {
       }
       case '!':
         tokens.push(match('=') ?
-          Token.Identifier('!=', { ...pos }) :
+          Token.Operator('!=', { ...pos }) :
           Token.Symbol('!', { ...pos })
         );
         return true;
-      case '"':
+      case '"': {
         const str = Const.str(parseString(startIndex));
         tokens.push(Token.Const(str, { ...pos }));
         return true;
+      }
+      case '`': {
+        const op = parseOperatorIdent(startIndex);
+        tokens.push(Token.Identifier(op, { ...pos }));
+        return true;
+      }
       default:
         if (isDigit(c)) {
           const n = parseNumber(startIndex);
@@ -314,7 +337,7 @@ const Lexer = (source: string, path: string) => {
         }
 
         if (isAlpha(c)) {
-          tokens.push(parseIdentOrKeyword(startIndex));
+          tokens.push(parseIdentOrKeywordOrOperator(startIndex));
           return true;
         }
 

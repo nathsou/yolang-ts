@@ -10,7 +10,7 @@ export const meta = (
   context: LLVM.LLVMContext,
 ): Maybe<LLVM.Value> => {
   switch (name) {
-    case 'add':
+    case '+':
       return some(builder.CreateAdd(f.getArg(0), f.getArg(1)));
     case 'sub':
       return some(builder.CreateSub(f.getArg(0), f.getArg(1)));
@@ -18,7 +18,7 @@ export const meta = (
       return some(builder.CreateNeg(f.getArg(0)));
     case 'not':
       return some(builder.CreateNot(f.getArg(0)));
-    case 'mul':
+    case '*':
       return some(builder.CreateMul(f.getArg(0), f.getArg(1)));
     case 'signedDiv':
       return some(builder.CreateSDiv(f.getArg(0), f.getArg(1)));
@@ -48,9 +48,9 @@ export const meta = (
       return some(builder.CreateICmpSGE(f.getArg(0), f.getArg(1)));
     case 'unsignedGeq':
       return some(builder.CreateICmpUGE(f.getArg(0), f.getArg(1)));
-    case 'eq':
+    case '==':
       return some(builder.CreateICmpEQ(f.getArg(0), f.getArg(1)));
-    case 'neq':
+    case '!=':
       return some(builder.CreateICmpNE(f.getArg(0), f.getArg(1)));
     case 'getUnchecked': {
       const arrayArg = f.getArg(0);

@@ -5,7 +5,7 @@ fun dot(u: Vec2, v: Vec2) {
   u.x * v.x + u.y * v.y
 }
 
-fun ==(a: Vec2, b: Vec2) {
+fun `==`(a: Vec2, b: Vec2) {
   (a.x == b.x) and (a.y == b.y)
 }
 

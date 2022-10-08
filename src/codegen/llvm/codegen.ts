@@ -503,9 +503,7 @@ export const createLLVMCompiler = () => {
               Some: body => {
                 const retTy = llvmTy(f.returnTy);
                 // if f contains at least one early return statement
-                // then allocate the space for the return value 
-                // then allocate the space for the return value 
-                // then allocate the space for the return value 
+                // then allocate the space for the return value
                 const returnVal = block(() => {
                   if (f.canReturnEarly && !returnsVoid) {
                     return builder.CreateAlloca(retTy, null, 'return_val');
@@ -543,27 +541,24 @@ export const createLLVMCompiler = () => {
                 return ret;
               },
               None: () => {
-                if (f.attributes.has('meta')) {
-                  const ret = meta(
-                    f.attributes.get('meta')!.args[0],
-                    proto,
-                    builder,
-                    llvm,
-                    context,
-                  );
+                getMap(f.attributes, 'meta').match({
+                  Some: ({ args }) => {
+                    const ret = meta(args[0] ?? f.name.original, proto, builder, llvm, context);
+                    assert(ret.isNone() ? returnsVoid : !returnsVoid);
 
-                  assert(ret.isNone() ? returnsVoid : !returnsVoid);
-                  ret.match({
-                    Some: ret => {
-                      builder.CreateRet(ret);
-                    },
-                    None: () => {
-                      builder.CreateRetVoid();
-                    },
-                  });
-                } else {
-                  return panic(`Function prototype for '${f.name.original}' is missing a meta or extern attribute`);
-                }
+                    ret.match({
+                      Some: ret => {
+                        builder.CreateRet(ret);
+                      },
+                      None: () => {
+                        builder.CreateRetVoid();
+                      },
+                    });
+                  },
+                  None: () => {
+                    panic(`Function prototype for '${f.name.original}' is missing a meta or extern attribute`);
+                  }
+                });
               },
             });
           });

@@ -22,6 +22,7 @@ export type WithPos<T> = { [K in keyof T]: T[K] & { pos: Position } };
 
 export type Token = DataType<WithPos<{
   Symbol: { value: Symbol },
+  Operator: { value: Operator },
   Keyword: { value: Keyword },
   Const: { value: Const },
   Identifier: { name: string },
@@ -31,6 +32,7 @@ export type Token = DataType<WithPos<{
 
 export const Token = {
   Symbol: (value: Symbol, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Symbol', value, pos }),
+  Operator: (value: Operator, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Operator', value, pos }),
   Keyword: (value: Keyword, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Keyword', value, pos }),
   Const: (value: Const, pos: Position): Token => ({ variant: 'Const', value, pos }),
   Identifier: (name: string, pos: Position = Position.DONT_CARE): Token => ({ variant: 'Identifier', name, pos }),
@@ -38,6 +40,7 @@ export const Token = {
   EOF: (pos: Position = Position.DONT_CARE): Token => ({ variant: 'EOF', pos }),
   show: (token: Token) => match(token, {
     Symbol: ({ value }) => value,
+    Operator: ({ value }) => value,
     Keyword: ({ value }) => value,
     Const: ({ value }) => Const.show(value),
     Identifier: ({ name }) => name,
@@ -46,6 +49,7 @@ export const Token = {
   }),
   eq: (a: Token, b: Token) => matchMany([a, b], {
     'Symbol Symbol': (a, b) => Symbol.eq(a.value, b.value),
+    'Operator Operator': (a, b) => Operator.eq(a.value, b.value),
     'Keyword Keyword': (a, b) => Keyword.eq(a.value, b.value),
     'Const Const': (a, b) => Const.eq(a.value, b.value),
     'Identifier Identifier': (a, b) => a.name === b.name,
@@ -55,17 +59,10 @@ export const Token = {
   }),
 };
 
-const symbols = [
+const symbols = Object.freeze([
   '->', '=>', '(', ')', ',', ';', '{', '}', '!',
   '[', ']', ':', '.', '\'', '"', '_', '..', '...', '#',
-] as const;
-
-export const operators = new Set([
-  '=', '+', '-', '*', '/', '==', '!=', 'not', 'mod', 'and', 'or', 'nand',
-  'nor', 'xor', 'xnor', '<', '>', '<=', '>=',
-  '+=', '-=', '*=', '/=', 'not=', 'mod=', 'and=', 'or=',
-  'nand=', 'nor=', 'xor=', 'xnor=',
-]);
+] as const);
 
 export type Symbol = (typeof symbols)[number];
 
@@ -74,12 +71,34 @@ export const Symbol = {
   eq: (a: Symbol, b: Symbol) => a === b,
 };
 
-const keywords = [
+const specialOperators = Object.freeze([
+  '=', '+', '-', '*', '/', '==', '!=', '<', '>', '<=', '>=',
+  '+=', '-=', '*=', '/=', 'not=', 'mod=', 'and=', 'or=',
+  'nand=', 'nor=', 'xor=', 'xnor=', '[]', '[]=',
+] as const);
+
+const allLetterOperators = Object.freeze([
+  'not', 'mod', 'and', 'or', 'nand', 'nor', 'xor', 'xnor',
+] as const);
+
+export type SpecialOperator = (typeof specialOperators)[number];
+export type Operator = (typeof allLetterOperators)[number] | SpecialOperator;
+
+const specialOperatorsSet = new Set<string>(specialOperators);
+const allLetterOperatorsSet = new Set<string>(allLetterOperators);
+
+export const Operator = {
+  eq: (a: Operator, b: Operator) => a === b,
+  isAny: (str: string): str is Operator => specialOperatorsSet.has(str) || allLetterOperatorsSet.has(str),
+  isSpecial: (str: string): str is SpecialOperator => specialOperatorsSet.has(str),
+};
+
+const keywords = Object.freeze([
   'let', 'mut', 'in', 'if', 'else', 'fun', 'while',
   'return', 'as', 'unsafe', 'impl',
   'module', 'match', 'type', 'trait', 'for',
   'import', 'export', 'sugar', 'pub', 'void',
-] as const;
+] as const);
 
 export type Keyword = (typeof keywords)[number];
 

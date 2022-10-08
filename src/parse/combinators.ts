@@ -1,10 +1,13 @@
+import { match, VariantOf } from "itsamatch";
+import { Expr } from "../ast/sweet";
 import { Error } from "../errors/errors";
 import { Maybe, none, some } from "../utils/maybe";
 import { panic, Ref, ref, snd } from "../utils/misc";
 import { error, ok, Result } from "../utils/result";
 import { Slice } from "../utils/slice";
+import { isLowerCase, isUpperCase } from "../utils/strings";
 import { RecoveryStrategy } from "./recovery";
-import { Keyword, Position, Symbol, Token } from "./token";
+import { Keyword, Position, SpecialOperator, Symbol, Token } from "./token";
 
 // Syntax Error Recovery in Parsing Expression Grammars - https://arxiv.org/abs/1806.11150
 
@@ -71,6 +74,47 @@ export const token = (token: Token): Parser<Token> => {
 export const symbol = (symb: Symbol) => token(Token.Symbol(symb));
 export const keyword = (keyword: Keyword) => token(Token.Keyword(keyword));
 
+export const anyIdent = satisfyBy<string>(token => match(token, {
+  Identifier: ({ name }) => isLowerCase(name[0]) ? some(name) : none,
+  _: () => none
+}));
+
+export const anyOperator = satisfyBy<string>(token => match(token, {
+  Operator: ({ value }) => some(value),
+  _: () => none
+}));
+
+export const anyKeyword = satisfyBy<string>(token => match(token, {
+  Keyword: ({ value }) => some(value),
+  _: () => none
+}));
+
+export const ident = <S extends string>(...names: S[]): S extends SpecialOperator | Keyword ? never : Parser<S> => {
+  return map(
+    satisfy(token => token.variant === 'Identifier' && names.includes(token.name as S)),
+    token => (token as VariantOf<Token, 'Identifier'>).name as S
+  ) as any;
+};
+
+export const operator = <S extends SpecialOperator>(...names: S[]) => map(
+  satisfy(token => token.variant === 'Operator' && names.includes(token.value as S)),
+  token => (token as VariantOf<Token, 'Operator'>).value as S
+);
+
+export const upperIdent = satisfyBy<string>(token => match(token, {
+  Identifier: ({ name }) => isUpperCase(name[0]) ? some(name) : none,
+  _: () => none
+}));
+
+export const angleBrackets = <T>(p: Parser<T>) => map(
+  seq(
+    operator('<'),
+    p,
+    expect(operator('>'), `expected closing '>'`),
+  ),
+  ([_1, r, _2]) => r
+);
+
 export const map = <T, U>(p: Parser<T>, f: (t: T, pos: Position, tokens: Slice<Token>) => U): Parser<U> => {
   return ref(tokens => {
     const [t, rem, errs] = p.ref(tokens);
@@ -94,6 +138,22 @@ export const mapParserResult = <T, U>(p: Parser<T>, f: (r: ParserResult<T>) => P
     return f(p.ref(tokens));
   });
 };
+
+export const invalid = mapParserResult(
+  satisfy(token => token.variant === 'Invalid'),
+  ([token, rem, errs]) => {
+    return token.match({
+      Ok: token => [
+        ok(Expr.Error(Token.show(token), token.pos)),
+        rem,
+        [...errs, Error.Parser({
+          message: Token.show(token),
+        }, pos(rem.start))],
+      ],
+      Error: err => [error(err), rem, errs] as ParserResult<Expr>,
+    });
+  }
+);
 
 type MapP<Ts extends readonly any[]> =
   Ts extends [Parser<infer A>, ...infer As] ?

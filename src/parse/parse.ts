@@ -3,14 +3,12 @@ import { Argument, ArrayInit, Attribute, Decl, Expr, Imports, Pattern, Stmt, Typ
 import { Error } from '../errors/errors';
 import { Row } from '../infer/structs';
 import { Tuple } from '../infer/tuples';
-import { MonoTy, TypeParam } from '../infer/types';
+import { MonoTy } from '../infer/types';
 import { deconsLast, last } from '../utils/array';
 import { Maybe, none, some } from '../utils/maybe';
 import { proj, ref, snd } from '../utils/misc';
-import { error, ok } from '../utils/result';
 import { Slice } from '../utils/slice';
-import { isLowerCase, isUpperCase } from '../utils/strings';
-import { alt, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, initParser, keyword, leftAssoc, lexerContext, lookahead, many, map, mapParserResult, optional, optionalOrDefault, parens, Parser, ParserResult, pos, satisfy, satisfyBy, seq, squareBrackets, symbol, uninitialized } from './combinators';
+import { alt, angleBrackets, anyIdent, anyKeyword, anyOperator, chainLeft, commas, consumeAll, curlyBrackets, expect, expectOrDefault, flatMap, ident, initParser, invalid, keyword, leftAssoc, lexerContext, lookahead, many, map, operator, optional, optionalOrDefault, parens, Parser, satisfyBy, seq, squareBrackets, symbol, uninitialized, upperIdent } from './combinators';
 import { lex } from './lex';
 import { Const, Token } from './token';
 
@@ -20,66 +18,22 @@ const stmt2 = uninitialized<{ stmt: Stmt, discarded: boolean }>();
 const decl = uninitialized<Decl>();
 const pattern = uninitialized<Pattern>();
 
-// MISC
-
-const ident = satisfyBy<string>(token => match(token, {
-  Identifier: ({ name }) => isLowerCase(name[0]) ? some(name) : none,
-  _: () => none
-}));
-
-const ident2 = (name: string) => satisfy(token => token.variant === 'Identifier' && token.name === name);
-
-const string = <S extends string>(...names: S[]) => map(
-  satisfy(token => token.variant === 'Identifier' && names.includes(token.name as S)),
-  token => (token as VariantOf<Token, 'Identifier'>).name as S
-);
-
-const upperIdent = satisfyBy<string>(token => match(token, {
-  Identifier: ({ name }) => isUpperCase(name[0]) ? some(name) : none,
-  _: () => none
-}));
-
-const invalid = mapParserResult(
-  satisfy(token => token.variant === 'Invalid'),
-  ([token, rem, errs]) => {
-    return token.match({
-      Ok: token => [
-        ok(Expr.Error(Token.show(token), token.pos)),
-        rem,
-        [...errs, Error.Parser({
-          message: Token.show(token),
-        }, pos(rem.start))],
-      ],
-      Error: err => [error(err), rem, errs] as ParserResult<Expr>,
-    });
-  }
-);
-
-const angleBrackets = <T>(p: Parser<T>) => map(
-  seq(
-    ident2('<'),
-    p,
-    expect(ident2('>'), `expected closing '>'`),
-  ),
-  ([_1, r, _2]) => r
-);
-
 // TYPES
 export const monoTy = uninitialized<MonoTy>();
 const parenthesizedTy = map(parens(monoTy), ty => ty);
 const voidTy = map(keyword('void'), MonoTy.void);
-const boolTy = map(ident2('bool'), MonoTy.bool);
-const i8Ty = map(ident2('i8'), () => MonoTy.int('i8'));
-const u8Ty = map(ident2('u8'), () => MonoTy.int('u8'));
-const i16Ty = map(ident2('i16'), () => MonoTy.int('i16'));
-const u16Ty = map(ident2('u16'), () => MonoTy.int('u16'));
-const i32Ty = map(ident2('i32'), () => MonoTy.int('i32'));
-const u32Ty = map(ident2('u32'), () => MonoTy.int('u32'));
-const i64Ty = map(ident2('i64'), () => MonoTy.int('i64'));
-const u64Ty = map(ident2('u64'), () => MonoTy.int('u64'));
-const i128Ty = map(ident2('i128'), () => MonoTy.int('i128'));
-const u128Ty = map(ident2('u128'), () => MonoTy.int('u128'));
-const strTy = map(seq(ident2('str')), MonoTy.str);
+const boolTy = map(ident('bool'), MonoTy.bool);
+const i8Ty = map(ident('i8'), () => MonoTy.int('i8'));
+const u8Ty = map(ident('u8'), () => MonoTy.int('u8'));
+const i16Ty = map(ident('i16'), () => MonoTy.int('i16'));
+const u16Ty = map(ident('u16'), () => MonoTy.int('u16'));
+const i32Ty = map(ident('i32'), () => MonoTy.int('i32'));
+const u32Ty = map(ident('u32'), () => MonoTy.int('u32'));
+const i64Ty = map(ident('i64'), () => MonoTy.int('i64'));
+const u64Ty = map(ident('u64'), () => MonoTy.int('u64'));
+const i128Ty = map(ident('i128'), () => MonoTy.int('i128'));
+const u128Ty = map(ident('u128'), () => MonoTy.int('u128'));
+const strTy = map(seq(ident('str')), MonoTy.str);
 
 const constTy = alt(
   voidTy, boolTy, strTy,
@@ -94,7 +48,7 @@ const constTy = alt(
 const namedTy = alt(
   map(
     seq(
-      alt(upperIdent, string('ptr')),
+      alt(upperIdent, ident('ptr')),
       optionalOrDefault(angleBrackets(commas(monoTy)), []),
     ),
     ([name, args]) => MonoTy.Const(name, ...args),
@@ -117,7 +71,7 @@ const tupleTy = alt(
 export const structTy = alt(
   map(
     curlyBrackets(commas(seq(
-      ident,
+      anyIdent,
       symbol(':'),
       expectOrDefault(monoTy, `Expected type in struct type after ':'`, MonoTy.Const('()')),
     ), true)),
@@ -230,7 +184,7 @@ const stringConst = satisfyBy<Const>(token =>
 
 const constVal: Parser<Const> = alt(integerConst, boolConst, stringConst);
 
-const variable = map(ident, (name, pos) => Expr.Variable(name, pos));
+const variable = map(anyIdent, (name, pos) => Expr.Variable(name, pos));
 
 const block: Parser<Expr> = map(
   curlyBrackets(many(stmt2)),
@@ -254,7 +208,6 @@ export const primary = alt(
   parenthesized,
   block,
   invalid,
-  // unexpected
 );
 
 const app = leftAssoc(
@@ -308,7 +261,7 @@ const array = alt(
 );
 
 const structField = map(seq(
-  ident,
+  anyIdent,
   symbol(':'),
   expect(expr, `Expected expression after ':'`),
 ),
@@ -332,7 +285,7 @@ const fieldAccess = chainLeft(
   symbol('.'),
   seq(
     expectOrDefault(alt<{ variant: 'ident', name: string } | { variant: 'int', value: number }>(
-      map(ident, name => ({ variant: 'ident', name })),
+      map(anyIdent, name => ({ variant: 'ident', name })),
       map(integerConst, n => ({ variant: 'int', value: Number(n.value) })),
     ), `Expected identifier or integer after '.'`, { variant: 'ident', name: '<?>' }),
     optional(parens(map(optional(commas(expr)), args => args.orDefault([])))),
@@ -356,7 +309,7 @@ const indexing = alt(
       fieldAccess,
       squareBrackets(commas(expr, true)),
       optional(seq(
-        ident2('='),
+        operator('='),
         expr,
       )),
     ),
@@ -372,7 +325,7 @@ const factor = indexing;
 
 export const unary = alt(
   map(seq(
-    string('-', 'not'),
+    alt(operator('-'), ident('not')),
     expectOrDefault(factor, `Expected expression after unary operator`, Expr.Error)
   ), ([op, expr], pos) => Expr.Call(Expr.Variable(op, pos), [], [expr], pos)),
   factor
@@ -380,42 +333,42 @@ export const unary = alt(
 
 const multiplicative = chainLeft(
   unary,
-  string('*', '/', 'mod'),
+  alt(operator('*', '/'), ident('mod')),
   expect(unary, 'Expected expression after multiplicative operator'),
   (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
 );
 
 const additive = chainLeft(
   multiplicative,
-  string('+', '-'),
+  operator('+', '-'),
   expect(multiplicative, 'Expected expression after additive operator'),
   (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
 );
 
 const comparison = chainLeft(
   additive,
-  string('<=', '>=', '<', '>'),
+  operator('<=', '>=', '<', '>'),
   expect(additive, 'Expected expression after relational operator'),
   (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
 );
 
 const and = chainLeft(
   comparison,
-  string('and', 'nand'),
+  ident('and', 'nand'),
   expect(comparison, 'Expected expression after logical operator'),
   (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos),
 );
 
 const or = chainLeft(
   and,
-  string('or', 'nor', 'xor', 'xnor'),
+  ident('or', 'nor', 'xor', 'xnor'),
   expect(and, 'Expected expression after logical operator'),
   (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos),
 );
 
 const equality = chainLeft(
   or,
-  string('==', '!='),
+  operator('==', '!='),
   expect(or, 'Expected expression after equality operator'),
   (a, op, b, pos) => Expr.Call(Expr.Variable(op, pos), [], [a, b], pos)
 );
@@ -452,7 +405,7 @@ const letIn = alt(
     keyword('let'),
     pattern,
     optional(typeAnnotation),
-    ident2('='),
+    operator('='),
     expr,
     keyword('in'),
     expectOrDefault(expr, `Expected expression after 'in' in let expression`, Expr.Error),
@@ -532,7 +485,7 @@ initParser(expr, closure);
 
 const anyPat = map(symbol('_'), Pattern.Any);
 const constPat = map(constVal, Pattern.Const);
-const varPat = map(ident, Pattern.Variable);
+const varPat = map(anyIdent, Pattern.Variable);
 const tupleOrParenthesizedPat = map(
   parens(
     seq(
@@ -557,9 +510,9 @@ initParser(pattern, alt(anyPat, constPat, varPat, tupleOrParenthesizedPat));
 
 const letStmt = map(seq(
   alt(keyword('let'), keyword('mut')),
-  expectOrDefault(ident, `Expected identifier after 'let' or 'mut' keyword`, '<?>'),
+  expectOrDefault(anyIdent, `Expected identifier after 'let' or 'mut' keyword`, '<?>'),
   optional(typeAnnotation),
-  expect(ident2('='), `Expected '=' after identifier`),
+  expect(operator('='), `Expected '=' after identifier`),
   expectOrDefault(expr, `Expected expression after '='`, Expr.Error),
 ),
   ([kw, name, ann, _, expr], pos) => Stmt.Let(name, expr, Token.eq(kw, Token.Keyword('mut', pos)), ann)
@@ -587,7 +540,7 @@ const assignmentStmt = alt(
     seq(
       ifThenElse,
       alt(
-        string(
+        operator(
           '=', '+=', '-=', '*=', '/=',
           'mod=', 'and=', 'or=', 'nand=', 'nor=', 'xor=', 'xnor='
         ),
@@ -632,8 +585,10 @@ initParser(
 
 // DECLARATIONS
 
+const validAttribute = alt(anyIdent, anyOperator, anyKeyword);
+
 const attribute = map(
-  seq(ident, optionalOrDefault(parens(commas(ident)), [])),
+  seq(validAttribute, optionalOrDefault(parens(commas(validAttribute)), [])),
   ([name, args]) => Attribute.make(name, args)
 );
 
@@ -658,17 +613,6 @@ const innerAttributeList = map(seq(
   ([_1, _2, attrs]) => attrs,
 );
 
-const innerAttributeDecl = map(seq(
-  symbol('#'),
-  symbol('!'),
-  alt(
-    squareBrackets(commas(attribute)),
-    map(attribute, attr => [attr])
-  ),
-),
-  ([_1, _2, attrs]) => attrs,
-);
-
 const innerAttributesDecl: Parser<VariantOf<Decl, 'Attributes'>> = map(
   innerAttributeList,
   attrs => Decl.Attributes({ attributes: attrs })
@@ -680,17 +624,7 @@ const funDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
   optionalOrDefault(outerAttributeList, []),
   memberVisibility,
   keyword('fun'),
-  expectOrDefault(
-    alt(
-      ident,
-      map(
-        seq(symbol('['), symbol(']'), optional(ident2('='))),
-        ([_1, _2, eq]) => eq.isNone() ? '[]' : '[]='
-      )
-    ),
-    `Expected identifier after 'fun' keyword`,
-    '<?>'
-  ),
+  expectOrDefault(anyIdent, `Expected identifier after 'fun' keyword`, '<?>'),
   scopedTypeParamsWithConstraints(seq(
     expectOrDefault(argumentList, 'Expected arguments after function name', []),
     optional(seq(
@@ -716,13 +650,13 @@ const typeAliasDecl: Parser<Decl> = map(seq(
   keyword('type'),
   expectOrDefault(alt(
     upperIdent,
-    string('str'),
+    ident('str'),
     map(seq(symbol('['), symbol(']')), () => '[]')
   ),
     `Expected identifier after 'type' keyword`, '<?>'
   ),
   scopedTypeParams(seq(
-    expectOrDefault(ident2('='), `Expected '=' after type name`, Token.Identifier('=')),
+    expectOrDefault(operator('='), `Expected '=' after type name`, '='),
     monoTy,
   )),
 ),
@@ -733,13 +667,13 @@ const importPath = map(
   chainLeft(
     map(seq(
       optional(alt(
-        map(seq(symbol('.'), ident2('/')), () => './'),
-        map(seq(symbol('..'), ident2('/')), () => '../'),
+        map(seq(symbol('.'), operator('/')), () => './'),
+        map(seq(symbol('..'), operator('/')), () => '../'),
       )),
-      ident,
+      anyIdent,
     ), ([l, r]) => [l.orDefault('') + r]),
-    ident2('/'),
-    ident,
+    operator('/'),
+    anyIdent,
     (lhs, _, rhs) => [...lhs, rhs],
   ),
   path => path.join('/')
@@ -753,7 +687,7 @@ const importDecl = map(
     ),
     expect(importPath, `Expected module path after 'import' keyword`),
     optionalOrDefault(
-      map(squareBrackets(commas(alt(upperIdent, ident), true)), Imports.names),
+      map(squareBrackets(commas(alt(upperIdent, anyIdent), true)), Imports.names),
       Imports.all(),
     ),
     optional(symbol(';')),
