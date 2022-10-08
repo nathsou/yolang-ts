@@ -9,12 +9,6 @@ fun rhs() {
   true
 }
 
-type Ref = { a: i64 }
-
 fun main() {
-  let a = Ref { a: 3 }
-  // FIXME:
-  mut b = a
-  b.a += 1
-  log(a.a)
+  log(lhs() nor rhs())
 }

@@ -72,7 +72,7 @@ export const Error = {
       }),
     });
 
-    if (err.pos) {
+    if (err.pos && err.pos.path !== '') {
       const source = await fs.readFile(err.pos.path);
       const lines = source.split('\n');
       const errLine = lines[err.pos.line - 1];

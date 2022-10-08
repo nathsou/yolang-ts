@@ -10,15 +10,13 @@ export const meta = (
   context: LLVM.LLVMContext,
 ): Maybe<LLVM.Value> => {
   switch (name) {
-    case 'add':
+    case '+':
       return some(builder.CreateAdd(f.getArg(0), f.getArg(1)));
     case 'sub':
       return some(builder.CreateSub(f.getArg(0), f.getArg(1)));
     case 'neg':
       return some(builder.CreateNeg(f.getArg(0)));
-    case 'not':
-      return some(builder.CreateNot(f.getArg(0)));
-    case 'mul':
+    case '*':
       return some(builder.CreateMul(f.getArg(0), f.getArg(1)));
     case 'signedDiv':
       return some(builder.CreateSDiv(f.getArg(0), f.getArg(1)));
@@ -26,12 +24,20 @@ export const meta = (
       return some(builder.CreateUDiv(f.getArg(0), f.getArg(1)));
     case 'mod':
       return some(builder.CreateURem(f.getArg(0), f.getArg(1)));
-    case 'logicalAnd':
-    case 'bitwiseAnd':
+    case '&':
       return some(builder.CreateAnd(f.getArg(0), f.getArg(1)));
-    case 'logicalOr':
-    case 'bitwiseOr':
+    case '|':
       return some(builder.CreateOr(f.getArg(0), f.getArg(1)));
+    case '^':
+      return some(builder.CreateXor(f.getArg(0), f.getArg(1)));
+    case '<<':
+      return some(builder.CreateShl(f.getArg(0), f.getArg(1)));
+    case 'arithmeticShiftRight':
+      return some(builder.CreateAShr(f.getArg(0), f.getArg(1)));
+    case 'logicalShiftRight':
+      return some(builder.CreateLShr(f.getArg(0), f.getArg(1)));
+    case '~':
+      return some(builder.CreateNot(f.getArg(0)));
     case 'signedLss':
       return some(builder.CreateICmpSLT(f.getArg(0), f.getArg(1)));
     case 'unsignedLss':
@@ -48,9 +54,9 @@ export const meta = (
       return some(builder.CreateICmpSGE(f.getArg(0), f.getArg(1)));
     case 'unsignedGeq':
       return some(builder.CreateICmpUGE(f.getArg(0), f.getArg(1)));
-    case 'eq':
+    case '==':
       return some(builder.CreateICmpEQ(f.getArg(0), f.getArg(1)));
-    case 'neq':
+    case '!=':
       return some(builder.CreateICmpNE(f.getArg(0), f.getArg(1)));
     case 'getUnchecked': {
       const arrayArg = f.getArg(0);

@@ -1,9 +1,9 @@
 import { DataType, genConstructors, match, VariantOf } from 'itsamatch';
 import { MonoTy } from '../infer/types';
-import { Const, operators, Position, WithPos } from '../parse/token';
+import { Const, Operator, Position, WithPos } from '../parse/token';
 import { joinWith, last } from '../utils/array';
 import { Maybe, none } from '../utils/maybe';
-import { id, parenthesized } from '../utils/misc';
+import { parenthesized } from '../utils/misc';
 
 // Sweet expressions are *sugared* representations
 // of the structure of yolang source code.
@@ -98,7 +98,7 @@ export const Expr = {
     Const: ({ value: expr }) => Const.show(expr),
     Variable: ({ name }) => name,
     Call: ({ lhs, typeParams, args }) => {
-      if (lhs.variant === 'Variable' && operators.has(lhs.name)) {
+      if (lhs.variant === 'Variable' && Operator.isAny(lhs.name)) {
         // unary operator
         if (args.length === 1) {
           if (lhs.name === '-') {

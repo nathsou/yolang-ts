@@ -7,7 +7,7 @@ import { Const } from "../parse/token";
 import { count, find, joinWith, last, zip } from "../utils/array";
 import { Either } from "../utils/either";
 import { Maybe, none, some } from "../utils/maybe";
-import { assert, id, mapMap, panic, proj, pushMap } from "../utils/misc";
+import { assert, block, id, mapMap, matchString, panic, proj, pushMap } from "../utils/misc";
 import { Context } from "./context";
 import { FuncName, NameEnv, VarName } from "./name";
 import * as sweet from "./sweet";
@@ -121,34 +121,54 @@ export const Expr = {
   Match: (expr: Expr, annotation: Maybe<MonoTy>, cases: { pattern: Pattern, annotation: Maybe<MonoTy>, body: Expr }[], sweet: sweet.Expr): Expr => typed({ variant: 'Match', expr, annotation, cases }, sweet),
   Struct: (name: string, typeParams: MonoTy[], fields: { name: string, value: Expr }[], sweet: sweet.Expr): Expr => typed({ variant: 'Struct', name, typeParams, fields }, sweet),
   TupleIndexing: (lhs: Expr, index: number, sweet: sweet.Expr): Expr => typed({ variant: 'TupleIndexing', lhs, index }, sweet),
-  from: (sweet: sweet.Expr, nameEnv: NameEnv, errors: Error[]): Expr => {
+  from: (sweetExpr: sweet.Expr, nameEnv: NameEnv, errors: Error[]): Expr => {
     const go = (expr: sweet.Expr, env = nameEnv) => Expr.from(expr, env, errors);
     const resolveTy = (ty: MonoTy) => NameEnv.resolveType(nameEnv, ty);
 
-    return match(sweet, {
-      Const: ({ value }) => Expr.Const(value, sweet),
-      Variable: ({ name }) => Expr.Variable(NameEnv.resolveVar(nameEnv, name), sweet),
+    return match(sweetExpr, {
+      Const: ({ value }) => Expr.Const(value, sweetExpr),
+      Variable: ({ name }) => Expr.Variable(NameEnv.resolveVar(nameEnv, name), sweetExpr),
       Call: ({ lhs, typeParams, args }) => match(lhs, {
-        Variable: ({ name }) => Expr.NamedFuncCall(
-          Either.left(name),
-          typeParams.map(resolveTy),
-          args.map(arg => go(arg)),
-          sweet
-        ),
-        _: () => Expr.Call(go(lhs), args.map(arg => go(arg)), sweet),
+        Variable: ({ name }) => block(() => {
+          const Not = (q: sweet.Expr) => sweet.Expr.Call(sweet.Expr.Variable('not'), [], [q]);
+          const Block = (expr: sweet.Expr) => sweet.Expr.Block([], some(expr));
+          const False = () => sweet.Expr.Const(Const.bool(false));
+          const True = () => sweet.Expr.Const(Const.bool(true));
+          const IfThenElse = (cond: sweet.Expr, thenExpr: sweet.Expr, elseExpr: sweet.Expr) =>
+            Expr.IfThenElse(
+              go(cond),
+              go(Block(thenExpr)),
+              some(go(Block(elseExpr))),
+              sweet.Expr.generated
+            );
+
+          return matchString(name, {
+            'and': () => IfThenElse(args[0], args[1], False()),
+            'nand': () => IfThenElse(args[0], Not(args[1]), True()),
+            'or': () => IfThenElse(args[0], True(), args[1]),
+            'nor': () => IfThenElse(args[0], False(), Not(args[1])),
+            _: () => Expr.NamedFuncCall(
+              Either.left(name),
+              typeParams.map(resolveTy),
+              args.map(arg => go(arg)),
+              sweetExpr
+            ),
+          });
+        }),
+        _: () => Expr.Call(go(lhs), args.map(arg => go(arg)), sweetExpr),
       }),
-      Error: ({ message }) => Expr.Error(message, sweet),
+      Error: ({ message }) => Expr.Error(message, sweetExpr),
       Closure: ({ args, body }) => {
         const withoutPatterns = rewriteFuncArgsPatternMatching(args, body, nameEnv, errors);
         return Expr.Closure(
           withoutPatterns.args,
           withoutPatterns.body,
-          sweet
+          sweetExpr
         );
       },
       Block: ({ statements, lastExpr }) => {
         const newNameEnv = NameEnv.clone(nameEnv);
-        return Expr.Block(statements.map(s => Stmt.from(s, newNameEnv, errors)), lastExpr.map(e => go(e, newNameEnv)), sweet);
+        return Expr.Block(statements.map(s => Stmt.from(s, newNameEnv, errors)), lastExpr.map(e => go(e, newNameEnv)), sweetExpr);
       },
       IfThenElse: ite => {
         const rewriteElseIfs = (
@@ -162,7 +182,7 @@ export const Expr = {
               go(cond),
               go(then),
               else_.map(go),
-              sweet
+              sweetExpr
             );
           }
 
@@ -177,18 +197,18 @@ export const Expr = {
               tail,
               else_,
             )),
-            sweet,
+            sweetExpr,
           );
         };
 
         return rewriteElseIfs(ite.condition, ite.then, ite.elseifs, ite.else_);
       },
-      FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field, sweet),
+      FieldAccess: ({ lhs, field }) => Expr.FieldAccess(go(lhs), field, sweetExpr),
       Array: ({ init }) => Expr.Array(match(init, {
         elems: ({ elems }) => ArrayInit.elems({ elems: elems.map(e => go(e)) }),
         fill: ({ value, count }) => ArrayInit.fill({ count, value: go(value) }),
-      }), sweet),
-      Tuple: ({ elements }) => Expr.Tuple(elements.map(e => go(e)), sweet),
+      }), sweetExpr),
+      Tuple: ({ elements }) => Expr.Tuple(elements.map(e => go(e)), sweetExpr),
       Match: ({ expr, annotation, cases }) => Expr.Match(
         go(expr),
         annotation.map(resolveTy),
@@ -200,23 +220,23 @@ export const Expr = {
             body: go(c.body, bodyEnv)
           };
         }),
-        sweet
+        sweetExpr
       ),
       Parenthesized: ({ expr }) => go(expr),
       Struct: ({ name, typeParams, fields }) => Expr.Struct(
         name,
         typeParams.map(resolveTy),
         fields.map(f => ({ name: f.name, value: go(f.value) })),
-        sweet
+        sweetExpr
       ),
-      TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index, sweet),
+      TupleIndexing: ({ lhs, index }) => Expr.TupleIndexing(go(lhs), index, sweetExpr),
       LetIn: ({ pattern, annotation, value, body }) => {
         // let pat = v in b --> match v with { pat => body }
         return Expr.Match(
           go(value),
           none,
           [{ pattern: Pattern.from(pattern, nameEnv), annotation: annotation.map(resolveTy), body: go(body) }],
-          sweet
+          sweetExpr
         );
       },
     });

@@ -4,7 +4,7 @@ import { last } from "../utils/array";
 import { panic } from "../utils/misc";
 import { error, ok, Result } from "../utils/result";
 import { Char, isAlpha, isAlphaNum, isDigit } from "../utils/strings";
-import { Const, IntKind, Keyword, Position, Token } from "./token";
+import { Const, IntKind, Keyword, Operator, Position, Token } from "./token";
 
 const INSERT_SEMICOLONS = false;
 
@@ -22,6 +22,12 @@ const Lexer = (source: string, path: string) => {
   const pos: Position = { line: 1, column: 1, path };
   const compoundOpIdents = new Set(['not', 'mod', 'and', 'or', 'nand', 'nor', 'xor', 'xnor']);
 
+  const push = (token: Token): true => {
+    token.pos = { ...pos };
+    tokens.push(token);
+    return true;
+  };
+
   const advance = (): Char | undefined => {
     if (index >= source.length) {
       return undefined;
@@ -36,7 +42,7 @@ const Lexer = (source: string, path: string) => {
       pos.column = 1;
 
       if (INSERT_SEMICOLONS && shouldInsertSemicolon()) {
-        tokens.push(Token.Symbol(';', { ...pos }));
+        push(Token.Symbol(';'));
       }
     }
 
@@ -158,7 +164,24 @@ const Lexer = (source: string, path: string) => {
     return source.slice(startIndex + 1, index - 1);
   };
 
-  const parseIdentOrKeyword = (startIndex: number): Token => {
+  const parseOperatorIdent = (startIndex: number): string => {
+    while (true) {
+      const c = peek();
+      if (c === undefined) {
+        break;
+      }
+
+      advance();
+
+      if (c === '`') {
+        break;
+      }
+    }
+
+    return source.slice(startIndex + 1, index - 1);
+  };
+
+  const parseIdentOrKeywordOrOperator = (startIndex: number): Token => {
     while (true) {
       const c = peek();
       if (c === undefined) {
@@ -174,18 +197,18 @@ const Lexer = (source: string, path: string) => {
 
     let lexeme = source.slice(startIndex, index);
     if (match('=') && compoundOpIdents.has(lexeme)) {
-      lexeme += '=';
+      return Token.Operator((lexeme + '=') as Operator);
     }
 
     if (lexeme === 'true' || lexeme === 'false') {
-      return Token.Const(Const.bool(lexeme === 'true'), { ...pos });
+      return Token.Const(Const.bool(lexeme === 'true'));
     }
 
     if (Keyword.is(lexeme)) {
-      return Token.Keyword(lexeme, { ...pos });
+      return Token.Keyword(lexeme);
     }
 
-    return Token.Identifier(lexeme, { ...pos });
+    return Token.Identifier(lexeme);
   };
 
   // https://medium.com/golangspec/automatic-semicolon-insertion-in-go-1990338f2649
@@ -214,7 +237,7 @@ const Lexer = (source: string, path: string) => {
     const c = advance();
 
     if (c === undefined) {
-      tokens.push(Token.EOF({ ...pos }));
+      push(Token.EOF());
       return false;
     }
 
@@ -231,91 +254,111 @@ const Lexer = (source: string, path: string) => {
       case '\'':
       case '_':
       case '#':
-        tokens.push(Token.Symbol(c, { ...pos }));
-        return true;
+        return push(Token.Symbol(c));
       case '.': {
         let token: Token;
         if (match('.')) {
           if (match('.')) {
-            token = Token.Symbol('...', { ...pos });
+            token = Token.Symbol('...');
           } else {
-            token = Token.Symbol('..', { ...pos });
+            token = Token.Symbol('..');
           }
         } else {
-          token = Token.Symbol('.', { ...pos });
+          token = Token.Symbol('.');
         }
 
-        tokens.push(token);
-        return true;
+        return push(token);
       }
       case '+':
-        tokens.push(Token.Identifier(match('=') ? '+=' : '+', { ...pos }));
-        return true;
+        return push(Token.Operator(match('=') ? '+=' : '+'));
       case '*':
-        tokens.push(Token.Identifier(match('=') ? '*=' : '*', { ...pos }));
-        return true;
+        return push(Token.Operator(match('=') ? '*=' : match('*') ? '**' : '*'));
       case '=': {
         let token: Token;
         if (match('>')) {
-          token = Token.Symbol('=>', { ...pos });
+          token = Token.Symbol('=>');
         } else if (match('=')) {
-          token = Token.Identifier('==', { ...pos });
+          token = Token.Operator('==');
         } else {
-          token = Token.Identifier('=', { ...pos });
+          token = Token.Operator('=');
         }
 
-        tokens.push(token);
-        return true;
+        return push(token);
       }
-      case '<':
-        tokens.push(Token.Identifier(match('=') ? '<=' : '<', { ...pos }));
-        return true;
-      case '>':
-        tokens.push(Token.Identifier(match('=') ? '>=' : '>', { ...pos }));
-        return true;
+      case '<': {
+        let token: Token;
+        if (match('<')) {
+          token = Token.Operator(match('=') ? '<<=' : '<<');
+        } else if (match('=')) {
+          token = Token.Operator('<=');
+        } else {
+          token = Token.Operator('<');
+        }
+
+        return push(token);
+      }
+      case '>': {
+        let token: Token;
+        if (match('>')) {
+          token = Token.Operator(match('=') ? '>>=' : '>>');
+        } else if (match('=')) {
+          token = Token.Operator('>=');
+        } else {
+          token = Token.Operator('>');
+        }
+
+        return push(token);
+      }
       case '/':
         if (match('/')) {
           skipLine();
         } else {
-          tokens.push(Token.Identifier(match('=') ? '/=' : '/', { ...pos }));
+          return push(Token.Operator(match('=') ? '/=' : '/'));
         }
 
         return true;
       case '-': {
         let token: Token;
         if (match('>')) {
-          token = Token.Symbol('->', { ...pos });
+          token = Token.Symbol('->');
         } else if (match('=')) {
-          token = Token.Identifier('-=', { ...pos });
+          token = Token.Operator('-=');
         } else if (isDigit(peek()!)) {
-          token = Token.Const(parseNumber(startIndex), { ...pos });
+          token = Token.Const(parseNumber(startIndex));
         } else {
-          token = Token.Identifier('-', { ...pos });
+          token = Token.Operator('-');
         }
 
-        tokens.push(token);
-        return true;
+        return push(token);
       }
+      case '&':
+        return push(Token.Operator('&'));
+      case '|':
+        return push(Token.Operator('|'));
+      case '~':
+        return push(Token.Operator('~'));
+      case '^':
+        return push(Token.Operator('^'));
       case '!':
-        tokens.push(match('=') ?
-          Token.Identifier('!=', { ...pos }) :
-          Token.Symbol('!', { ...pos })
-        );
-        return true;
-      case '"':
-        const str = Const.str(parseString(startIndex));
-        tokens.push(Token.Const(str, { ...pos }));
-        return true;
+        return push(match('=') ?
+          Token.Operator('!=') :
+          Token.Symbol('!')
+        ); case '"': {
+          const str = Const.str(parseString(startIndex));
+          return push(Token.Const(str));
+        }
+      case '`': {
+        const op = parseOperatorIdent(startIndex);
+        return push(Token.Identifier(op));
+      }
       default:
         if (isDigit(c)) {
           const n = parseNumber(startIndex);
-          tokens.push(Token.Const(n, { ...pos }));
-          return true;
+          return push(Token.Const(n));
         }
 
         if (isAlpha(c)) {
-          tokens.push(parseIdentOrKeyword(startIndex));
-          return true;
+          return push(parseIdentOrKeywordOrOperator(startIndex));
         }
 
         return false;

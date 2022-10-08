@@ -1,22 +1,22 @@
 #![noImplicitFoundationsImport]
-import std/ops [-]
+import std/ops [`-`]
 
 pub type Array<T> = {
   len: u32,
   data: ptr<T>,
 }
 
-#meta(getUnchecked)
+#meta
 fun getUnchecked<T>(elems: ptr<T>, index: u32): T
 
-#meta(setUnchecked)
+#meta
 fun setUnchecked<T>(mut elems: ptr<T>, index: u32, value: T): void
 
-pub fun []<T>(a: T[], index: u32): T {
+pub fun `[]`<T>(a: T[], index: u32): T {
   a.data.getUnchecked(index)
 }
 
-pub fun []=<T>(mut a: T[], index: u32, value: T): void {
+pub fun `[]=`<T>(mut a: T[], index: u32, value: T): void {
   a.data.setUnchecked(index, value)
 }
 
