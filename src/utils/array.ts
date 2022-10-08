@@ -170,3 +170,15 @@ export const swapRemove = <T>(elems: T[], index: number): void => {
   [elems[index], elems[elems.length - 1]] = [elems[elems.length - 1], elems[index]];
   elems.pop();
 };
+
+export const count = <T>(elems: Iterable<T>, pred: (elem: T) => boolean): number => {
+  let c = 0;
+
+  for (const elem of elems) {
+    if (pred(elem)) {
+      c += 1;
+    }
+  }
+
+  return c;
+};

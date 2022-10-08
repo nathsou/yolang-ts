@@ -103,21 +103,21 @@ const unifyMany = (
           subst: Subst | undefined,
           errors: Error[]
         ): boolean => {
-          if (a.kind === 'EmptyTuple' && a.extension.isSome()) {
+          if (a.kind === 'Empty' && a.extension.isSome()) {
             errors.push(...unifyMany([[a.extension.unwrap(), MonoTy.Tuple(b)]], ctx, subst));
             return true;
           }
 
-          if (b.kind === 'EmptyTuple' && b.extension.isSome()) {
+          if (b.kind === 'Empty' && b.extension.isSome()) {
             errors.push(...unifyMany([[MonoTy.Tuple(a), b.extension.unwrap()]], ctx, subst));
             return true;
           }
 
-          if (a.kind === 'EmptyTuple' && b.kind === 'EmptyTuple') {
+          if (a.kind === 'Empty' && b.kind === 'Empty') {
             return true;
           }
 
-          if (a.kind === 'ExtendTuple' && b.kind === 'ExtendTuple') {
+          if (a.kind === 'Extend' && b.kind === 'Extend') {
             errors.push(...unifyMany([[a.head, b.head]], ctx, subst));
             unifyTuples(a.tail, b.tail, ctx, subst, errors);
             return true;

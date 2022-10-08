@@ -26,11 +26,6 @@ pub fun log(b: bool) {
   log(if b { "true" } else { "false" })
 }
 
-pub fun log(ch: u8): void {
-  putchar(ch)
-  newline()
-}
-
 pub fun reverse(mut buf: str, start: u32, end: u32): void {
   mut i = start
   mut j = end

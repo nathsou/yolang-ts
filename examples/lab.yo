@@ -1,5 +1,20 @@
 
+fun lhs() {
+  log("lhs")
+  true
+}
+
+fun rhs() {
+  log("rhs")
+  true
+}
+
+type Ref = { a: i64 }
+
 fun main() {
-  let n: u128 = 26.pow(26)
-  log(n)
+  let a = Ref { a: 3 }
+  // FIXME:
+  mut b = a
+  b.a += 1
+  log(a.a)
 }

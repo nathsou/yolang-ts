@@ -4,10 +4,10 @@ import { Tuple } from "../infer/tuples";
 import { TypeContext } from "../infer/typeContext";
 import { MonoTy, PolyTy, TypeParam, TypeParams, TyVar } from "../infer/types";
 import { Const } from "../parse/token";
-import { joinWith, last, zip } from "../utils/array";
+import { count, find, joinWith, last, zip } from "../utils/array";
 import { Either } from "../utils/either";
 import { Maybe, none, some } from "../utils/maybe";
-import { assert, id, mapMap, proj, pushMap } from "../utils/misc";
+import { assert, id, mapMap, panic, proj, pushMap } from "../utils/misc";
 import { Context } from "./context";
 import { FuncName, NameEnv, VarName } from "./name";
 import * as sweet from "./sweet";
@@ -429,42 +429,49 @@ export const Decl = {
       Function: f => {
         const { attributes, pub, name, typeParams, args, returnTy, body } = f;
 
-        if (typeParams.length > 0 && typeParams[0].constraint.kind === 'List') {
-          const tyParamName = typeParams[0].name;
-          const tys = typeParams[0].constraint.tys;
+        // prevent cartesian product explosion
+        if (count(typeParams, tp => tp.constraint.kind === 'List') > 1) {
+          panic(`At most one list-constrained type parameter can be defined per function: ${name}`);
+        }
+
+        // expand list-constrained type parameters into new copies of the function
+        return find(typeParams, tp => tp.constraint.kind === 'List').map(tp => {
+          const tyParamName = tp.name;
+          const { tys } = tp.constraint as VariantOf<sweet.TypeParamConstraint, 'List', 'kind'>;
+          const otherTyParams = typeParams.filter(p => p.name !== tp.name);
 
           return tys.flatMap(ty => {
             const instNameEnv = NameEnv.clone(nameEnv);
             NameEnv.declareTypeParam(instNameEnv, tyParamName, ty);
-            const inst: VariantOf<sweet.Decl, 'Function'> = { ...f, typeParams: [] };
+            const inst: VariantOf<sweet.Decl, 'Function'> = { ...f, typeParams: [...otherTyParams] };
             return Decl.from(inst, instNameEnv, errors);
           });
-        }
+        }).orDefault(() => {
+          const nameRef = NameEnv.declareFunc(nameEnv, name);
+          typeParams.forEach(({ name }) => {
+            NameEnv.declareTypeParam(nameEnv, name, MonoTy.Param(name));
+          });
 
-        const nameRef = NameEnv.declareFunc(nameEnv, name);
-        typeParams.forEach(({ name }) => {
-          NameEnv.declareTypeParam(nameEnv, name, MonoTy.Param(name));
+          const withoutPatterns = rewriteFuncArgsPatternMatching(
+            args,
+            body.orDefault(sweet.Expr.Block([])),
+            nameEnv,
+            errors
+          );
+
+          return [Decl.Function({
+            attributes,
+            pub,
+            name: nameRef,
+            typeParams: typeParams.map(({ name }) => ({ name, ty: MonoTy.Param(name) })),
+            args: withoutPatterns.args,
+            returnTy: returnTy.map(ty => NameEnv.resolveType(nameEnv, ty)),
+            body: body.match({
+              Some: () => some(withoutPatterns.body),
+              None: () => none,
+            }),
+          })];
         });
-
-        const withoutPatterns = rewriteFuncArgsPatternMatching(
-          args,
-          body.orDefault(sweet.Expr.Block([])),
-          nameEnv,
-          errors
-        );
-
-        return [Decl.Function({
-          attributes,
-          pub,
-          name: nameRef,
-          typeParams: typeParams.map(({ name }) => ({ name, ty: MonoTy.Param(name) })),
-          args: withoutPatterns.args,
-          returnTy: returnTy.map(ty => NameEnv.resolveType(nameEnv, ty)),
-          body: body.match({
-            Some: () => some(withoutPatterns.body),
-            None: () => none,
-          }),
-        })];
       },
       TypeAlias: ({ pub, name, typeParams, alias }) => {
         typeParams.forEach(name => {

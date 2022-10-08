@@ -6,13 +6,13 @@ import { MonoTy, TyVar } from "./types";
 export const MAX_TUPLE_INDEX = 1000;
 
 export type Tuple = DataType<{
-  EmptyTuple: { extension: Maybe<MonoTy> },
-  ExtendTuple: { head: MonoTy, tail: Tuple },
+  Empty: { extension: Maybe<MonoTy> },
+  Extend: { head: MonoTy, tail: Tuple },
 }, 'kind'>;
 
 export const Tuple = {
-  Empty: (extension: Maybe<MonoTy> = none): Tuple => ({ kind: 'EmptyTuple', extension }),
-  Extend: (head: MonoTy, tail: Tuple): Tuple => ({ kind: 'ExtendTuple', head, tail }),
+  Empty: (extension: Maybe<MonoTy> = none): Tuple => ({ kind: 'Empty', extension }),
+  Extend: (head: MonoTy, tail: Tuple): Tuple => ({ kind: 'Extend', head, tail }),
   fromArray: (arr: MonoTy[], extensible = false): Tuple => {
     if (arr.length === 0) {
       return Tuple.Empty(extensible ? some(MonoTy.Var(TyVar.fresh())) : none);
@@ -22,7 +22,7 @@ export const Tuple = {
     return Tuple.Extend(head, Tuple.fromArray(tail, extensible));
   },
   toArray: (tuple: Tuple): MonoTy[] => {
-    if (tuple.kind === 'EmptyTuple') {
+    if (tuple.kind === 'Empty') {
       return tuple.extension.match({
         Some: ty => Tuple.from(ty).match({
           Some: t => Tuple.toArray(t),
@@ -35,13 +35,13 @@ export const Tuple = {
     return [tuple.head, ...Tuple.toArray(tuple.tail)];
   },
   iter: function* (tuple: Tuple): IterableIterator<MonoTy> {
-    if (tuple.kind === 'ExtendTuple') {
+    if (tuple.kind === 'Extend') {
       yield tuple.head;
       yield* Tuple.iter(tuple.tail);
     }
   },
   map: (tuple: Tuple, f: (t: MonoTy) => MonoTy): Tuple => {
-    if (tuple.kind === 'EmptyTuple') {
+    if (tuple.kind === 'Empty') {
       return Tuple.Empty(tuple.extension.map(f));
     }
 
@@ -58,7 +58,7 @@ export const Tuple = {
     return zip(as, bs).every(([a, b]) => MonoTy.eq(a, b));
   },
   isExtensible: (tuple: Tuple): boolean => {
-    if (tuple.kind === 'EmptyTuple') {
+    if (tuple.kind === 'Empty') {
       return tuple.extension.isSome();
     }
 
