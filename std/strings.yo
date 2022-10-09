@@ -3,11 +3,8 @@
 import std/ops
 import std/arrays
 
-pub type str = u8[]
-pub type cstr = ptr<u8>
-
 #extern
-fun putchar(char: u8): u32
+fun putchar(c: u8): u32
 
 pub fun newline(): void {
   putchar(10);
@@ -26,14 +23,23 @@ pub fun print(msg: str): void {
 #meta(printCString)
 pub fun print(s: cstr): void
 
-#meta(printUInt)
-pub fun print<T in [u8, u16, u32, u64]>(n: T): void
+#meta(printU32)
+pub fun print<T in [u8, u16, u32]>(n: T): void
 
-#meta(printInt)
-pub fun print<T in [i8, i16, i32, i64]>(n: T): void
+#meta(printU64)
+pub fun print(n: u64): void
 
-#meta(printFloat)
-pub fun print<T in [f16, f32, f64]>(x: T): void
+#meta(printI32)
+pub fun print<T in [i8, i16, i32]>(n: T): void
+
+#meta(printI64)
+pub fun print(n: i64): void
+
+#meta(printF32)
+pub fun print(x: f32): void
+
+#meta(printF64)
+pub fun print(x: f64): void
 
 pub fun print(q: bool): void {
   print(if q { c"true" } else { c"false" })

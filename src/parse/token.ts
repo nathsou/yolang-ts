@@ -114,7 +114,7 @@ export const Keyword = {
 };
 
 export type IntKind = `${'i' | 'u'}${8 | 16 | 32 | 64 | 128}`;
-export type FloatKind = `f${16 | 32 | 64}`;
+export type FloatKind = `f${32 | 64}`;
 
 export type Const = DataType<{
   int: { value: bigint, kind: IntKind | '?' },

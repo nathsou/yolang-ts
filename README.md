@@ -21,7 +21,7 @@ Arguments:
 Options:
   -V, --version        output the version number
   -o, --out <file>     output file
-  -t, --target <name>  target: host | wasm (default: "host")
+  -t, --target <name>  target: host | wasm | wasi (default: "host")
   -r, --run            compile and run the program
   -a, --artifacts      build artificats directory
   -T, --type-check     type check only

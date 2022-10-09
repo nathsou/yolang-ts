@@ -53,8 +53,8 @@ export const MonoTy = {
   int: (kind: IntKind | '?') => MonoTy.Const('int', kind === '?' ? MonoTy.Var(TyVar.fresh()) : MonoTy.Const(kind)),
   float: (kind: FloatKind | '?') => MonoTy.Const('float', kind === '?' ? MonoTy.Var(TyVar.fresh()) : MonoTy.Const(kind)),
   bool: () => MonoTy.Const('bool'),
-  str: () => MonoTy.Const('str'), // not primitive
-  cstr: () => MonoTy.Const('cstr'), // not primitive
+  str: () => MonoTy.Array(MonoTy.int('u8')),
+  cstr: () => MonoTy.ptr(MonoTy.int('u8')),
   void: () => MonoTy.Const('void'),
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
     match(ty, {

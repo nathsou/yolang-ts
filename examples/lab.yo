@@ -1,11 +1,7 @@
+import std/math [sqrt, cos, `**`]
+import std/time [clock]
 
 fun main() {
-  print(1621.12f64)
-  print(1621.12f32)
-  print(1621.12f16)
-  print(1621u32)
-  print(1621i64)
-  print(true)
-  print(c"Hello")
-  print("Yolo")
+  let x = cos(sqrt(2.0f64) / 2.0f64)
+  print(x)
 }

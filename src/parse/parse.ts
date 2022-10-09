@@ -33,7 +33,6 @@ const i64Ty = map(ident('i64'), () => MonoTy.int('i64'));
 const u64Ty = map(ident('u64'), () => MonoTy.int('u64'));
 const i128Ty = map(ident('i128'), () => MonoTy.int('i128'));
 const u128Ty = map(ident('u128'), () => MonoTy.int('u128'));
-const f16Ty = map(ident('f16'), () => MonoTy.float('f16'));
 const f32Ty = map(ident('f32'), () => MonoTy.float('f32'));
 const f64Ty = map(ident('f64'), () => MonoTy.float('f64'));
 const strTy = map(seq(ident('str')), MonoTy.str);
@@ -47,7 +46,7 @@ const constTy = alt(
   u32Ty, i32Ty,
   u64Ty, i64Ty,
   u128Ty, i128Ty,
-  f16Ty, f32Ty, f64Ty,
+  f32Ty, f64Ty,
   parenthesizedTy,
 );
 
@@ -698,12 +697,7 @@ const funDecl: Parser<VariantOf<Decl, 'Function'>> = map(seq(
 const typeAliasDecl: Parser<Decl> = map(seq(
   memberVisibility,
   keyword('type'),
-  expectOrDefault(alt(
-    upperIdent,
-    ident('str', 'cstr'),
-  ),
-    `Expected identifier after 'type' keyword`, '<?>'
-  ),
+  expectOrDefault(upperIdent, `Expected identifier after 'type' keyword`, '<?>'),
   scopedTypeParams(seq(
     expectOrDefault(operator('='), `Expected '=' after type name`, '='),
     monoTy,

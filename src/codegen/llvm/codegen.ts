@@ -440,7 +440,6 @@ export const createLLVMCompiler = () => {
             assert(kind.variant === 'Const', 'Underconstrained float literal');
 
             return matchString(kind.name as FloatKind, {
-              f16: () => llvm.Type.getHalfTy(context),
               f32: () => llvm.Type.getFloatTy(context),
               f64: () => llvm.Type.getDoubleTy(context),
             });

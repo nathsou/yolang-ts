@@ -120,9 +120,7 @@ const Lexer = (source: string, path: string) => {
       let type: FloatKind | '?' = '?';
 
       if (peek() === 'f') {
-        if (matchString('f16')) {
-          type = 'f16';
-        } else if (matchString('f32')) {
+        if (matchString('f32')) {
           type = 'f32';
         } else if (matchString('f64')) {
           type = 'f64';
