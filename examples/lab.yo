@@ -1,5 +1,4 @@
 import std/math [sqrt, cos, `**`]
-import std/time [clock]
 
 fun main() {
   let x = cos(sqrt(2.0f64) / 2.0f64)

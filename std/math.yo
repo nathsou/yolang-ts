@@ -108,3 +108,51 @@ pub fun abs<T in [i8, i16, i32, i64]>(x: T): T {
 pub fun abs<T in [u8, u16, u32, u64]>(x: T): T {
   x
 }
+
+#extern(fabs)
+pub fun abs(x: f64): f64
+
+#extern(fabsf)
+pub fun abs(x: f32): f32
+
+#extern(floor)
+pub fun floor(x: f64): f64
+
+#extern(floorf)
+pub fun floor(x: f32): f32
+
+#extern(ceil)
+pub fun ceil(x: f64): f64
+
+#extern(ceilf)
+pub fun ceil(x: f32): f32
+
+#extern(round)
+pub fun round(x: f64): f64
+
+#extern(roundf)
+pub fun round(x: f32): f32
+
+#extern(exp)
+pub fun exp(x: f64): f64
+
+#extern(expf)
+pub fun exp(x: f32): f32
+
+#extern(log)
+pub fun log(x: f64): f64
+
+#extern(logf)
+pub fun log(x: f32): f32
+
+#extern(log10)
+pub fun log10(x: f64): f64
+
+#extern(log10f)
+pub fun log10(x: f32): f32
+
+#extern(log2)
+pub fun log2(x: f64): f64
+
+#extern(log2f)
+pub fun log2(x: f32): f32
