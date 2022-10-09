@@ -2,5 +2,5 @@
 fun id(x) { x }
       
 fun main() {
-  log(if id(false) { id(1u16) } else { id(3) })
+  print(if id(false) { id(1u16) } else { id(3) })
 }

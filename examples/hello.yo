@@ -1,4 +1,4 @@
 
 fun main() {
-  log("Yo Yolang! 🥳")
+  print("Yo Yolang! 🥳")
 }

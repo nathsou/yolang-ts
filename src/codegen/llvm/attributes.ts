@@ -8,6 +8,7 @@ export const meta = (
   builder: LLVM.IRBuilder,
   llvm: typeof LLVM,
   context: LLVM.LLVMContext,
+  externFuns: { printf: LLVM.Function },
 ): Maybe<LLVM.Value> => {
   switch (name) {
     case '+':
@@ -89,6 +90,29 @@ export const meta = (
       return some(builder.CreateIntCast(f.getArg(0), llvm.Type.getInt8Ty(context), true));
     case 'u8FromUInt':
       return some(builder.CreateIntCast(f.getArg(0), llvm.Type.getInt8Ty(context), false));
+    case 'u64FromFloat':
+      return some(builder.CreateFPCast(f.getArg(0), llvm.Type.getDoubleTy(context)));
+    case 'printUInt': {
+      const fmt = builder.CreateGlobalStringPtr('%u\n');
+      builder.CreateCall(externFuns.printf, [fmt, f.getArg(0)])
+      return none;
+    }
+    case 'printInt': {
+      const fmt = builder.CreateGlobalStringPtr('%i\n');
+      builder.CreateCall(externFuns.printf, [fmt, f.getArg(0)])
+      return none;
+    }
+    case 'printFloat': {
+      const fmt = builder.CreateGlobalStringPtr('%f\n');
+      const argF64 = builder.CreateFPCast(f.getArg(0), llvm.Type.getDoubleTy(context));
+      builder.CreateCall(externFuns.printf, [fmt, argF64])
+      return none;
+    }
+    case 'printCString': {
+      const fmt = builder.CreateGlobalStringPtr('%s\n');
+      builder.CreateCall(externFuns.printf, [fmt, f.getArg(0)])
+      return none;
+    }
     default:
       return panic(`Unknown meta attribute argument: '${name}'`);
   }

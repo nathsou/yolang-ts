@@ -33,15 +33,21 @@ const i64Ty = map(ident('i64'), () => MonoTy.int('i64'));
 const u64Ty = map(ident('u64'), () => MonoTy.int('u64'));
 const i128Ty = map(ident('i128'), () => MonoTy.int('i128'));
 const u128Ty = map(ident('u128'), () => MonoTy.int('u128'));
+const f16Ty = map(ident('f16'), () => MonoTy.float('f16'));
+const f32Ty = map(ident('f32'), () => MonoTy.float('f32'));
+const f64Ty = map(ident('f64'), () => MonoTy.float('f64'));
 const strTy = map(seq(ident('str')), MonoTy.str);
+const cstrTy = map(seq(ident('cstr')), MonoTy.cstr);
 
 const constTy = alt(
-  voidTy, boolTy, strTy,
+  voidTy, boolTy,
+  strTy, cstrTy,
   u8Ty, i8Ty,
   u16Ty, i16Ty,
   u32Ty, i32Ty,
   u64Ty, i64Ty,
   u128Ty, i128Ty,
+  f16Ty, f32Ty, f64Ty,
   parenthesizedTy,
 );
 
@@ -73,7 +79,7 @@ export const structTy = alt(
     curlyBrackets(commas(seq(
       anyIdent,
       symbol(':'),
-      expectOrDefault(monoTy, `Expected type in struct type after ':'`, MonoTy.Const('()')),
+      expect(monoTy, `Expected type in struct type after ':'`),
     ), true)),
     fields => MonoTy.Struct(Row.fromFields(fields.map(([name, _, ty]) => [name, ty]), false))
   ),
@@ -145,7 +151,7 @@ const scopedTypeParamsWithConstraints = <T>(p: Parser<T>): Parser<[{ name: strin
 
 const typeAnnotation: Parser<MonoTy> = map(seq(
   symbol(':'),
-  expectOrDefault(monoTy, `Expected type after ':'`, MonoTy.Const('()')),
+  expect(monoTy, `Expected type after ':'`),
 ), snd);
 
 const argument = alt<Argument>(
@@ -168,7 +174,11 @@ const argumentList = map(parens(optional(commas(argument))), args => args.orDefa
 // EXPRESSIONS
 
 const integerConst = satisfyBy<VariantOf<Const, 'int'>>(token =>
-  token.variant === 'Const' && Const.isInt(token.value) ? some(token.value) : none
+  token.variant === 'Const' && token.value.variant === 'int' ? some(token.value) : none
+);
+
+const floatConst = satisfyBy<VariantOf<Const, 'float'>>(token =>
+  token.variant === 'Const' && token.value.variant === 'float' ? some(token.value) : none
 );
 
 const boolConst = satisfyBy<Const>(token =>
@@ -178,11 +188,15 @@ const boolConst = satisfyBy<Const>(token =>
     none
 );
 
-const stringConst = satisfyBy<Const>(token =>
+const stringConst = satisfyBy<VariantOf<Const, 'str'>>(token =>
   token.variant === 'Const' && token.value.variant === 'str' ? some(token.value) : none
 );
 
-const constVal: Parser<Const> = alt(integerConst, boolConst, stringConst);
+const cstringConst = satisfyBy<VariantOf<Const, 'cstr'>>(token =>
+  token.variant === 'Const' && token.value.variant === 'cstr' ? some(token.value) : none
+);
+
+const constVal: Parser<Const> = alt(integerConst, floatConst, boolConst, stringConst, cstringConst);
 
 const variable = map(anyIdent, (name, pos) => Expr.Variable(name, pos));
 
@@ -686,8 +700,7 @@ const typeAliasDecl: Parser<Decl> = map(seq(
   keyword('type'),
   expectOrDefault(alt(
     upperIdent,
-    ident('str'),
-    map(seq(symbol('['), symbol(']')), () => '[]')
+    ident('str', 'cstr'),
   ),
     `Expected identifier after 'type' keyword`, '<?>'
   ),

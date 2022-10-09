@@ -1,5 +1,5 @@
 #![noImplicitFoundationsImport]
-import std/ops [`-`]
+import std/ops [`+`, `-`, `<`]
 
 pub type Array<T> = {
   len: u32,
@@ -7,10 +7,10 @@ pub type Array<T> = {
 }
 
 #meta
-fun getUnchecked<T>(elems: ptr<T>, index: u32): T
+pub fun getUnchecked<T>(elems: ptr<T>, index: u32): T
 
 #meta
-fun setUnchecked<T>(mut elems: ptr<T>, index: u32, value: T): void
+pub fun setUnchecked<T>(mut elems: ptr<T>, index: u32, value: T): void
 
 pub fun `[]`<T>(a: T[], index: u32): T {
   a.data.getUnchecked(index)
@@ -22,4 +22,17 @@ pub fun `[]=`<T>(mut a: T[], index: u32, value: T): void {
 
 pub fun last<T>(a: T[]): T {
   a[a.len - 1]
+}
+
+pub fun reverseInPlace<T>(mut buf: T[], start: u32, end: u32): void {
+  mut i = start
+  mut j = end
+
+  while i < j {
+    let tmp = buf[i]
+    buf[i] = buf[j]
+    buf[j] = tmp
+    i += 1
+    j -= 1
+  }
 }

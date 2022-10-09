@@ -4,7 +4,7 @@ import { last } from "../utils/array";
 import { panic } from "../utils/misc";
 import { error, ok, Result } from "../utils/result";
 import { Char, isAlpha, isAlphaNum, isDigit } from "../utils/strings";
-import { Const, IntKind, Keyword, Operator, Position, Token } from "./token";
+import { Const, FloatKind, IntKind, Keyword, Operator, Position, Token } from "./token";
 
 const INSERT_SEMICOLONS = false;
 
@@ -106,6 +106,32 @@ const Lexer = (source: string, path: string) => {
       }
     }
 
+    if (match('.')) {
+      while (true) {
+        const c = peek();
+        if (c !== undefined && isDigit(c)) {
+          advance();
+        } else {
+          break;
+        }
+      }
+
+      const lexeme = source.slice(startIndex, index);
+      let type: FloatKind | '?' = '?';
+
+      if (peek() === 'f') {
+        if (matchString('f16')) {
+          type = 'f16';
+        } else if (matchString('f32')) {
+          type = 'f32';
+        } else if (matchString('f64')) {
+          type = 'f64';
+        }
+      }
+
+      return Const.float(Number(lexeme), type);
+    }
+
     const lexeme = source.slice(startIndex, index);
     let type: IntKind | '?' = '?';
 
@@ -147,7 +173,9 @@ const Lexer = (source: string, path: string) => {
     return Const.int(n, type);
   };
 
-  const parseString = (startIndex: number): string => {
+  const parseString = (): string => {
+    const chars: number[] = [];
+
     while (true) {
       const c = peek();
       if (c === undefined) {
@@ -156,12 +184,30 @@ const Lexer = (source: string, path: string) => {
 
       advance();
 
-      if (c === '"') {
+      if (c === '\\') {
+        const nextChar = advance();
+        switch (nextChar) {
+          case 'n':
+            chars.push('\n'.charCodeAt(0));
+            break;
+          case 't':
+            chars.push('\t'.charCodeAt(0));
+            break;
+          case 'r':
+            chars.push('\r'.charCodeAt(0));
+            break;
+          default:
+            chars.push(nextChar!.charCodeAt(0));
+            break;
+        }
+      } else if (c === '"') {
         break;
+      } else {
+        chars.push(c.charCodeAt(0));
       }
     }
 
-    return source.slice(startIndex + 1, index - 1);
+    return new TextDecoder('utf-8').decode(new Uint8Array(chars));
   };
 
   const parseOperatorIdent = (startIndex: number): string => {
@@ -343,10 +389,19 @@ const Lexer = (source: string, path: string) => {
         return push(match('=') ?
           Token.Operator('!=') :
           Token.Symbol('!')
-        ); case '"': {
-          const str = Const.str(parseString(startIndex));
-          return push(Token.Const(str));
+        );
+      case '"': {
+        const str = Const.str(parseString());
+        return push(Token.Const(str));
+      }
+      case 'c': {
+        if (match('"')) {
+          const cstr = Const.cstr(parseString());
+          return push(Token.Const(cstr));
+        } else {
+          return push(parseIdentOrKeywordOrOperator(startIndex));
         }
+      }
       case '`': {
         const op = parseOperatorIdent(startIndex);
         return push(Token.Identifier(op));

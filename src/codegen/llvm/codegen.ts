@@ -6,7 +6,7 @@ import { VarName } from '../../ast/name';
 import { Row } from '../../infer/structs';
 import { TypeContext } from '../../infer/typeContext';
 import { MonoTy } from '../../infer/types';
-import { IntKind } from '../../parse/token';
+import { FloatKind, IntKind } from '../../parse/token';
 import { last, zip } from '../../utils/array';
 import { Maybe } from '../../utils/maybe';
 import { array, assert, block, getMap, matchString, panic, proj } from '../../utils/misc';
@@ -45,12 +45,18 @@ export const createLLVMCompiler = () => {
       controlFlow: array<{ exitBB: llvm.BasicBlock }>(),
     };
 
+    const printf = block(() => {
+      const cstrTy = llvm.PointerType.get(builder.getInt8Ty(), 0);
+      const retTy = llvmTy(MonoTy.int('u32'));
+      return declareFunPrototype('printf', 'printf', [cstrTy], retTy, true, true);
+    });
+
     function declareImports() {
       for (const [name, { sourceMod: sourceModPath }] of module.imports) {
         const sourceMod = modules.get(sourceModPath)!;
         const decls = sourceMod.members.get(name);
         decls?.forEach(d => {
-          declareFunc(d, true);
+          declareFun(d, true);
         });
       }
     }
@@ -206,12 +212,16 @@ export const createLLVMCompiler = () => {
         Const: ({ value: c }) => match(c, {
           bool: ({ value }) => llvm.ConstantInt[value ? 'getTrue' : 'getFalse'](context),
           int: ({ value }) => llvm.ConstantInt.get(llvmTy(expr.ty), Number(value)),
+          float: ({ value }) => llvm.ConstantFP.get(llvmTy(expr.ty), value),
           str: ({ value }) => {
             const buffer = new TextEncoder().encode(value);
             const int8Ty = llvm.Type.getInt8Ty(context);
             const bytes = Array.from(buffer).map(b => llvm.ConstantInt.get(int8Ty, b));
 
             return createArray(MonoTy.int('u8'), bytes);
+          },
+          cstr: ({ value }) => {
+            return builder.CreateGlobalStringPtr(value);
           },
         }),
         Variable: ({ name }) => {
@@ -425,6 +435,16 @@ export const createLLVMCompiler = () => {
               u128: () => llvm.Type.getInt128Ty(context),
             });
           },
+          float: () => {
+            const kind = MonoTy.deref(c.args[0]);
+            assert(kind.variant === 'Const', 'Underconstrained float literal');
+
+            return matchString(kind.name as FloatKind, {
+              f16: () => llvm.Type.getHalfTy(context),
+              f32: () => llvm.Type.getFloatTy(context),
+              f64: () => llvm.Type.getDoubleTy(context),
+            });
+          },
           void: () => llvm.Type.getVoidTy(context),
           bool: () => llvm.Type.getInt1Ty(context),
           ptr: () => llvm.PointerType.get(llvmTy(c.args[0]), 0),
@@ -462,26 +482,40 @@ export const createLLVMCompiler = () => {
       return ret;
     }
 
-    function declareFunc(f: VariantOf<Decl, 'Function'>, isExternal?: boolean): LLVM.Function {
+    function declareFunPrototype(
+      name: string,
+      mangledName: string,
+      args: LLVM.Type[],
+      ret: LLVM.Type,
+      isExternal = false,
+      isVarArg = false
+    ): LLVM.Function {
+      const funTy = llvm.FunctionType.get(ret, args, isVarArg);
+      const linkage = llvm.Function.LinkageTypes[isExternal ? 'ExternalLinkage' : 'PrivateLinkage'];
+      const func = llvm.Function.Create(funTy, linkage, name, mod);
+      funcs.set(mangledName, func);
+
+      return func;
+    }
+
+    function declareFun(f: VariantOf<Decl, 'Function'>, isExternal?: boolean): LLVM.Function {
       const returnTy = llvmTy(f.returnTy);
       const argTys = f.args.map(a => llvmTy(a.name.ty));
-      const funcTy = llvm.FunctionType.get(returnTy, argTys, false);
       const ext = isExternal ?? (
         f.pub ||
         f.name.original === 'main' ||
         f.attributes.has('extern')
       );
-      const linkage = llvm.Function.LinkageTypes[ext ? 'ExternalLinkage' : 'PrivateLinkage'];
-      const func = llvm.Function.Create(funcTy, linkage, f.name.mangled, mod);
-      funcs.set(f.name.mangled, func);
 
-      return func;
+      const linkageName = f.attributes.get('extern')?.args[0] ?? f.name.mangled;
+
+      return declareFunPrototype(linkageName, f.name.mangled, argTys, returnTy, ext);
     }
 
     function compileDecl(decl: Decl): void {
       match(decl, {
         Function: f => {
-          const proto = declareFunc(f);
+          const proto = declareFun(f);
 
           if (f.attributes.has('extern')) {
             return;
@@ -543,7 +577,7 @@ export const createLLVMCompiler = () => {
               None: () => {
                 getMap(f.attributes, 'meta').match({
                   Some: ({ args }) => {
-                    const ret = meta(args[0] ?? f.name.original, proto, builder, llvm, context);
+                    const ret = meta(args[0] ?? f.name.original, proto, builder, llvm, context, { printf });
                     assert(ret.isNone() ? returnsVoid : !returnsVoid);
 
                     ret.match({

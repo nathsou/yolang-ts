@@ -1,14 +1,11 @@
 
-fun lhs() {
-  log("lhs")
-  true
-}
-
-fun rhs() {
-  log("rhs")
-  true
-}
-
 fun main() {
-  log(lhs() nor rhs())
+  print(1621.12f64)
+  print(1621.12f32)
+  print(1621.12f16)
+  print(1621u32)
+  print(1621i64)
+  print(true)
+  print(c"Hello")
+  print("Yolo")
 }

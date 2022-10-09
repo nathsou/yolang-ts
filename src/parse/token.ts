@@ -114,33 +114,37 @@ export const Keyword = {
 };
 
 export type IntKind = `${'i' | 'u'}${8 | 16 | 32 | 64 | 128}`;
+export type FloatKind = `f${16 | 32 | 64}`;
 
 export type Const = DataType<{
   int: { value: bigint, kind: IntKind | '?' },
+  float: { value: number, kind: FloatKind | '?' },
   bool: { value: boolean },
   str: { value: string },
+  cstr: { value: string },
 }>;
 
-const { int, bool, str } = genConstructors<Const>(['int', 'bool', 'str']);
+const { int, float, bool, str, cstr } = genConstructors<Const>(['int', 'float', 'bool', 'str', 'cstr']);
 
 export const Const = {
   int: (n: bigint | number, kind: IntKind | '?') => int({ value: BigInt(n), kind }),
+  float: (x: number, kind: FloatKind | '?') => float({ value: x, kind }),
   bool: (value: boolean) => bool({ value }),
   str: (value: string) => str({ value }),
+  cstr: (value: string) => cstr({ value }),
   type: (c: Const): MonoTy => match(c, {
     bool: MonoTy.bool,
     int: ({ kind }) => MonoTy.int(kind),
+    float: ({ kind }) => MonoTy.float(kind),
     str: MonoTy.str,
+    cstr: MonoTy.cstr,
   }),
   show: (c: Const): string => match(c, {
     int: ({ value, kind }) => kind === '?' ? `${value}` : `${value}${kind}`,
+    float: ({ value, kind }) => kind === '?' ? `${value}` : `${value}${kind}`,
     bool: ({ value }) => `${value}`,
     str: ({ value }) => `"${value}"`,
-    unit: () => '()',
+    cstr: ({ value }) => `c"${value}"`,
   }),
   eq: (a: Const, b: Const) => a.variant === b.variant && a.value === b.value,
-  isInt: (c: Const) => match(c, {
-    int: () => true,
-    _: () => false,
-  }),
 };

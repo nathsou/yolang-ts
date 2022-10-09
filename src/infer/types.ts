@@ -1,6 +1,6 @@
 import { DataType, match, matchMany, VariantOf } from "itsamatch";
 import { Context } from "../ast/context";
-import { IntKind } from "../parse/token";
+import { FloatKind, IntKind } from "../parse/token";
 import { filter, gen, joinWith, sum, zip } from "../utils/array";
 import { assert, cond, letIn, matchString, panic, parenthesized } from "../utils/misc";
 import { diffSet } from "../utils/set";
@@ -51,8 +51,10 @@ export const MonoTy = {
   toPoly: (ty: MonoTy): PolyTy => [[], ty],
   ptr: (ty: MonoTy): MonoTy => MonoTy.Const('ptr', ty),
   int: (kind: IntKind | '?') => MonoTy.Const('int', kind === '?' ? MonoTy.Var(TyVar.fresh()) : MonoTy.Const(kind)),
+  float: (kind: FloatKind | '?') => MonoTy.Const('float', kind === '?' ? MonoTy.Var(TyVar.fresh()) : MonoTy.Const(kind)),
   bool: () => MonoTy.Const('bool'),
   str: () => MonoTy.Const('str'), // not primitive
+  cstr: () => MonoTy.Const('cstr'), // not primitive
   void: () => MonoTy.Const('void'),
   freeTypeVars: (ty: MonoTy, fvs: Set<TyVarId> = new Set()): Set<TyVarId> =>
     match(ty, {
@@ -109,8 +111,8 @@ export const MonoTy = {
   },
   generalize: (env: Env, ty: MonoTy): PolyTy => {
     const dTy = MonoTy.deref(ty);
-    // unconstrainted int types contain a variable but should not be generalized
-    if (dTy.variant === 'Const' && dTy.name === 'int') {
+    // unconstrainted int & float types contain a type variable but should not be generalized
+    if (dTy.variant === 'Const' && (dTy.name === 'int' || dTy.name === 'float')) {
       return PolyTy.make([], dTy);
     }
 
@@ -213,6 +215,7 @@ export const MonoTy = {
       else: () => matchString(name, {
         'Array': () => `${MonoTy.show(args[0])}[]`,
         'int': () => letIn(MonoTy.deref(args[0]), t => t.variant === 'Var' ? 'Int' : MonoTy.show(t)),
+        'float': () => letIn(MonoTy.deref(args[0]), t => t.variant === 'Var' ? 'Float' : MonoTy.show(t)),
         _: () => `${name}<${joinWith(args, MonoTy.show, ', ')}>`,
       }),
     }),
@@ -225,13 +228,13 @@ export const MonoTy = {
     },
     Tuple: ({ tuple }) => Tuple.show(tuple),
     Struct: ({ row, name, params }) => {
-      if (name != null) {
-        if (params.length > 0) {
-          return `${name}<${params.map(MonoTy.show).join(', ')}>`;
-        } else {
-          return name;
-        }
-      }
+      // if (name != null) {
+      //   if (params.length > 0) {
+      //     return `${name}<${params.map(MonoTy.show).join(', ')}>`;
+      //   } else {
+      //     return name;
+      //   }
+      // }
 
       if (row.type === 'empty') {
         return '{}';

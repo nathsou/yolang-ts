@@ -4,6 +4,7 @@ import std/ops
 import std/arrays
 
 pub type str = u8[]
+pub type cstr = ptr<u8>
 
 #extern
 fun putchar(char: u8): u32
@@ -12,7 +13,7 @@ pub fun newline(): void {
   putchar(10);
 }
 
-pub fun log(msg: str): void {
+pub fun print(msg: str): void {
   mut index = 0
   while index < msg.len {
     putchar(msg[index])
@@ -22,46 +23,18 @@ pub fun log(msg: str): void {
   newline()
 }
 
-pub fun log(b: bool) {
-  log(if b { "true" } else { "false" })
-}
+#meta(printCString)
+pub fun print(s: cstr): void
 
-pub fun reverse(mut buf: str, start: u32, end: u32): void {
-  mut i = start
-  mut j = end
+#meta(printUInt)
+pub fun print<T in [u8, u16, u32, u64]>(n: T): void
 
-  while i < j {
-    let tmp = buf[i]
-    buf[i] = buf[j]
-    buf[j] = tmp
-    i += 1
-    j -= 1
-  }
-}
+#meta(printInt)
+pub fun print<T in [i8, i16, i32, i64]>(n: T): void
 
-// does not work with the most negative value of each signed type
-pub fun log<T in [i8, u8, i16, u16, i32, u32, i64, u64, i128, u128]>(n: T): void {
-  mut r = abs(n)
-  // buffer length of 40 for i128
-  mut buf = [0u8; 40]
-  mut index = 0
+#meta(printFloat)
+pub fun print<T in [f16, f32, f64]>(x: T): void
 
-  while r != 0 {
-    let ch = u8(48 + r mod 10)
-    buf[index] = ch
-    r /= 10
-    index += 1
-  }
-
-  if n < 0 {
-    // append '-'
-    buf[index] = 45
-    index += 1
-  } else if n == 0 {
-    buf[0] = 48
-  }
-
-  buf.reverse(0, index)
-
-  log(buf)
+pub fun print(q: bool): void {
+  print(if q { c"true" } else { c"false" })
 }

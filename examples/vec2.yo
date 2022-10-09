@@ -13,5 +13,5 @@ fun main() {
   let u = Vec2 { x: 3, y: 4 }
   let v = Vec2 { x: 7, y: 11 }
 
-  log(u.dot(v))
+  print(u.dot(v))
 }

@@ -347,7 +347,7 @@ export const Stmt = {
     const goExpr = (expr: Expr) => Expr.rewrite(expr, nameEnv, rewriteExpr, rewriteTy);
     return match(stmt, {
       Let: ({ name, expr, mutable, annotation }) => Stmt.Let(
-        NameEnv.resolveVar(nameEnv, name.original),
+        NameEnv.declareVar(nameEnv, name.original, mutable),
         goExpr(expr),
         mutable,
         annotation.map(rewriteTy)

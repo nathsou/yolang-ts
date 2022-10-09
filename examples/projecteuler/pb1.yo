@@ -15,5 +15,5 @@ fun pb1(m: u64) {
 }
 
 fun main() {
-  log(pb1(1000))
+  print(pb1(1000))
 }
