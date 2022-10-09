@@ -1,4 +1,5 @@
 import { match, VariantOf } from 'itsamatch';
+import { Context } from '../ast/context';
 import { Argument, ArrayInit, Attribute, Decl, Expr, Imports, Pattern, Stmt, TypeParamConstraint } from '../ast/sweet';
 import { Error } from '../errors/errors';
 import { Row } from '../infer/structs';
@@ -33,8 +34,11 @@ const i64Ty = map(ident('i64'), () => MonoTy.int('i64'));
 const u64Ty = map(ident('u64'), () => MonoTy.int('u64'));
 const i128Ty = map(ident('i128'), () => MonoTy.int('i128'));
 const u128Ty = map(ident('u128'), () => MonoTy.int('u128'));
+const intTy = map(ident('int'), () => MonoTy.int(`i${Context.arch()}`));
+const uintTy = map(ident('uint'), () => MonoTy.int(`u${Context.arch()}`));
 const f32Ty = map(ident('f32'), () => MonoTy.float('f32'));
 const f64Ty = map(ident('f64'), () => MonoTy.float('f64'));
+const floatTy = map(ident('float'), () => MonoTy.float(`f${Context.arch()}`));
 const strTy = map(seq(ident('str')), MonoTy.str);
 const cstrTy = map(seq(ident('cstr')), MonoTy.cstr);
 
@@ -47,6 +51,7 @@ const constTy = alt(
   u64Ty, i64Ty,
   u128Ty, i128Ty,
   f32Ty, f64Ty,
+  intTy, uintTy, floatTy,
   parenthesizedTy,
 );
 

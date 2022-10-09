@@ -1,6 +1,7 @@
 import { match, VariantOf } from 'itsamatch';
 import type LLVM from 'llvm-bindings';
 import llvm from 'llvm-bindings';
+import { Context } from '../../ast/context';
 import { ArrayInit, Decl, Expr, Module, Prog, Stmt } from '../../ast/core';
 import { VarName } from '../../ast/name';
 import { Row } from '../../infer/structs';
@@ -157,7 +158,7 @@ export const createLLVMCompiler = () => {
       const lenFieldPtr = structFieldPtr(arrayStruct, arrayStructPtr, 'len');
 
       builder.CreateStore(arrayDataPtr, dataFieldPtr);
-      builder.CreateStore(llvm.ConstantInt.get(llvm.Type.getInt32Ty(context), len), lenFieldPtr);
+      builder.CreateStore(llvm.ConstantInt.get(llvm.Type[`getInt${Context.arch()}Ty`](context), len), lenFieldPtr);
 
       return {
         arrayTy,

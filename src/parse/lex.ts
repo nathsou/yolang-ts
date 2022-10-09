@@ -1,4 +1,5 @@
 import { DataType } from "itsamatch";
+import { Context } from "../ast/context";
 import { Error } from "../errors/errors";
 import { last } from "../utils/array";
 import { panic } from "../utils/misc";
@@ -124,6 +125,8 @@ const Lexer = (source: string, path: string) => {
           type = 'f32';
         } else if (matchString('f64')) {
           type = 'f64';
+        } else if (matchString('float')) {
+          type = `f${Context.arch()}`;
         }
       }
 
@@ -145,6 +148,8 @@ const Lexer = (source: string, path: string) => {
           type = 'u64';
         } else if (matchString('u128')) {
           type = 'u128';
+        } else if (matchString('uint')) {
+          type = `u${Context.arch()}`;
         }
         break;
       case 'i':
@@ -158,6 +163,8 @@ const Lexer = (source: string, path: string) => {
           type = 'i64';
         } else if (matchString('i128')) {
           type = 'i128';
+        } else if (matchString('int')) {
+          type = `i${Context.arch()}`;
         }
         break;
     }
@@ -194,6 +201,12 @@ const Lexer = (source: string, path: string) => {
           case 'r':
             chars.push('\r'.charCodeAt(0));
             break;
+          case 's':
+            chars.push('\s'.charCodeAt(0));
+            break;
+          case '0':
+            chars.push('\0'.charCodeAt(0));
+            break;
           default:
             chars.push(nextChar!.charCodeAt(0));
             break;
@@ -205,7 +218,7 @@ const Lexer = (source: string, path: string) => {
       }
     }
 
-    return new TextDecoder('utf-8').decode(new Uint8Array(chars));
+    return String.fromCharCode(...chars);
   };
 
   const parseOperatorIdent = (startIndex: number): string => {

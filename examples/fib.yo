@@ -1,14 +1,14 @@
 
-fun fact(n: i32, acc: i32): i32 {
+fun fact(n: uint, acc: uint): uint {
   if n <= 1 { acc } else { fact(n - 1, n * acc) }
 }
 
-fun fibRec(n: i32): i32 {
+fun fibRec(n: uint): uint {
   if n <= 2 { n } else { fibRec(n - 2) + fibRec(n - 1) }
 }
 
-fun fibIter(n: i32): i32 {
-  mut a = 1i32
+fun fibIter(n: uint): uint {
+  mut a = 1uint
   mut b = 1
   mut i = 0
 

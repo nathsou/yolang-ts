@@ -1,3 +1,4 @@
+import std/math [even]
 
 fun fib(n) {
   mut i = 0u64

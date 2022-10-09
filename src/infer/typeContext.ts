@@ -1,5 +1,5 @@
 import { Module } from "../ast/bitter";
-import { zip, last } from "../utils/array";
+import { last, zip } from "../utils/array";
 import { Maybe, none, some } from "../utils/maybe";
 import { proj } from "../utils/misc";
 import { Env } from "./env";

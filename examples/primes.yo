@@ -1,7 +1,7 @@
 
 type Sieve = {
-  primes: i32[],
-  count: u32,
+  primes: uint[],
+  count: uint,
 }
 
 fun init(mut sieve: Sieve): void {
@@ -10,7 +10,7 @@ fun init(mut sieve: Sieve): void {
   sieve.count = 1
 }
 
-fun isPrime(sieve: Sieve, n: i32): bool {
+fun isPrime(sieve: Sieve, n: uint): bool {
   mut i = 1
 
   while true {
@@ -30,7 +30,7 @@ fun isPrime(sieve: Sieve, n: i32): bool {
   true
 }
 
-fun nextPrime(mut sieve: Sieve): i32 {
+fun nextPrime(mut sieve: Sieve): uint {
   mut n = sieve.primes[sieve.count] + 2
   
   while not sieve.isPrime(n) {

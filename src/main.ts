@@ -118,7 +118,13 @@ const timeAsync = async <T>(fn: () => Promise<T>): Promise<[T, number]> => {
 };
 
 async function yo(source: string, options: Options): Promise<number> {
+  Context.clear();
   const nfs = await createNodeFileSystem();
+  Context.setArch(matchString(options.target, {
+    host: () => ['arm64', 'ppc64', 'x64', 's390x'].includes(process.arch) ? 64 : 32,
+    wasi: () => 32,
+    wasm: () => 32,
+  }));
 
   const logErrors = async (errors: Error[]) => {
     let index = 1;

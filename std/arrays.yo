@@ -2,21 +2,21 @@
 import std/ops [`+`, `-`, `<`]
 
 pub type Array<T> = {
-  len: u32,
+  len: uint,
   data: ptr<T>,
 }
 
 #meta
-pub fun getUnchecked<T>(elems: ptr<T>, index: u32): T
+pub fun getUnchecked<T>(elems: ptr<T>, index: uint): T
 
 #meta
-pub fun setUnchecked<T>(mut elems: ptr<T>, index: u32, value: T): void
+pub fun setUnchecked<T>(mut elems: ptr<T>, index: uint, value: T): void
 
-pub fun `[]`<T>(a: T[], index: u32): T {
+pub fun `[]`<T>(a: T[], index: uint): T {
   a.data.getUnchecked(index)
 }
 
-pub fun `[]=`<T>(mut a: T[], index: u32, value: T): void {
+pub fun `[]=`<T>(mut a: T[], index: uint, value: T): void {
   a.data.setUnchecked(index, value)
 }
 
@@ -24,7 +24,7 @@ pub fun last<T>(a: T[]): T {
   a[a.len - 1]
 }
 
-pub fun reverseInPlace<T>(mut buf: T[], start: u32, end: u32): void {
+pub fun reverseInPlace<T>(mut buf: T[], start: uint, end: uint): void {
   mut i = start
   mut j = end
 

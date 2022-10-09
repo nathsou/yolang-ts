@@ -4,7 +4,7 @@ import std/ops
 import std/arrays
 
 #extern
-fun putchar(c: u8): u32
+fun putchar(c: u8): int
 
 pub fun newline(): void {
   putchar(10);
